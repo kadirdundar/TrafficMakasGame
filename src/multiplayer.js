@@ -310,11 +310,16 @@ export class MultiplayerManager {
 
       if (data.type === 'join_hello' && this.role === 'host') {
         this.remote.name = data.name || 'OYUNCU 2';
+        if (!this._matchStarted) {
+          this.localWorldDistM = 0;
+          this.traffic.resetTraffic();
+        }
         this.onPeerConnected('Yerel Sekme / Wi-Fi');
         this.sendPacket({
           type: 'host_welcome',
           hostDistM: this.localWorldDistM,
           name: this.playerName,
+          trafficSnapshot: this.traffic.exportSyncState(this.localWorldDistM),
         });
         if (!this._matchStarted) {
           this._matchStarted = true;
@@ -325,10 +330,16 @@ export class MultiplayerManager {
         }
       } else if (data.type === 'host_welcome' && this.role === 'guest') {
         this._welcomeReceived = true;
-        this.localWorldDistM = data.hostDistM - 6; // Spawn 6m behind/beside Host!
+        this.localWorldDistM = data.hostDistM; // Start side-by-side with Host at the exact same meter!
         this.remote.worldDistM = data.hostDistM;
         this.remote.targetWorldDistM = data.hostDistM;
         this.remote.name = data.name || 'ODA KURUCUSU';
+        if (data.trafficSnapshot) {
+          this.traffic.applySyncState(data.trafficSnapshot, this.localWorldDistM);
+          if (data.trafficSnapshot.weatherKey) {
+            this.callbacks.onWeatherSync?.(data.trafficSnapshot.weatherKey);
+          }
+        }
         this.onPeerConnected('Yerel Sekme / Wi-Fi');
         if (!this._matchStarted) {
           this._matchStarted = true;
@@ -493,11 +504,16 @@ export class MultiplayerManager {
       if (!data) return;
       if (data.type === 'join_hello' && this.role === 'host') {
         this.remote.name = data.name || 'OYUNCU 2';
+        if (!this._matchStarted) {
+          this.localWorldDistM = 0;
+          this.traffic.resetTraffic();
+        }
         this.onPeerConnected('WebRTC P2P');
         this.sendPacket({
           type: 'host_welcome',
           hostDistM: this.localWorldDistM,
           name: this.playerName,
+          trafficSnapshot: this.traffic.exportSyncState(this.localWorldDistM),
         });
         if (!this._matchStarted) {
           this._matchStarted = true;
@@ -512,10 +528,16 @@ export class MultiplayerManager {
           clearInterval(this._helloInterval);
           this._helloInterval = null;
         }
-        this.localWorldDistM = data.hostDistM - 6; // Start 6m behind/beside Host
+        this.localWorldDistM = data.hostDistM; // Start side-by-side with Host at the exact same meter!
         this.remote.worldDistM = data.hostDistM;
         this.remote.targetWorldDistM = data.hostDistM;
         this.remote.name = data.name || 'OYUNCU 1';
+        if (data.trafficSnapshot) {
+          this.traffic.applySyncState(data.trafficSnapshot, this.localWorldDistM);
+          if (data.trafficSnapshot.weatherKey) {
+            this.callbacks.onWeatherSync?.(data.trafficSnapshot.weatherKey);
+          }
+        }
         this.onPeerConnected('WebRTC P2P');
         if (!this._matchStarted) {
           this._matchStarted = true;
@@ -539,6 +561,7 @@ export class MultiplayerManager {
           type: 'host_welcome',
           hostDistM: this.localWorldDistM,
           name: this.playerName,
+          trafficSnapshot: this.traffic.exportSyncState(this.localWorldDistM),
         });
       } else {
         this.sendPacket({
@@ -613,6 +636,7 @@ export class MultiplayerManager {
 
     if (data.type === 'state') {
       if (data.name) this.remote.name = data.name;
+      const prevHighBeam = this.remote.highBeam;
       this.remote.targetX = data.x;
       this.remote.targetWorldDistM = data.worldDistM;
       this.remote.speedKmh = data.speedKmh;
@@ -623,13 +647,67 @@ export class MultiplayerManager {
       this.remote.score = data.score || 0;
       this.remote.combo = data.combo || 1.0;
 
+      // If Guest just flashed Selektör, make Host's authoritative traffic yield to Guest too!
+      if (this.role === 'host' && this.remote.highBeam && !prevHighBeam) {
+        const guestRelZ = this.localWorldDistM - data.worldDistM;
+        if (this.traffic.notifyHighBeamFlash(data.x, guestRelZ)) {
+          this.trafficSyncAccum = 1.0; // Force immediate traffic sync broadcast
+        }
+      }
+
       if (data.horn && !this.remote.horn) {
         this.callbacks.onPeerHorn?.();
       }
       this.remote.horn = Boolean(data.horn);
     } else if (data.type === 'traffic' && this.role === 'guest') {
       this.traffic.applySyncState(data.snapshot, this.localWorldDistM);
+      if (data.snapshot?.weatherKey) {
+        this.callbacks.onWeatherSync?.(data.snapshot.weatherKey);
+      }
+    } else if (data.type === 'peer_selektor' && this.role === 'host') {
+      const guestRelZ = this.localWorldDistM - data.worldDistM;
+      if (this.traffic.notifyHighBeamFlash(data.x, guestRelZ)) {
+        this.trafficSyncAccum = 1.0;
+      }
+    } else if (data.type === 'peer_car_hit' && this.role === 'host') {
+      this.traffic.applyPeerCarHit(
+        data.carId,
+        this.localWorldDistM,
+        data.carWorldDistM,
+        data.speedKmh
+      );
+      this.trafficSyncAccum = 1.0;
     }
+  }
+
+  notifyLocalSelektor(playerX) {
+    if (!this.connected || this.role !== 'guest') return;
+    this.sendPacket({
+      type: 'peer_selektor',
+      x: Number(playerX.toFixed(2)),
+      worldDistM: Number(this.localWorldDistM.toFixed(2)),
+    });
+  }
+
+  notifyLocalCarHit(car) {
+    if (!this.connected || this.role !== 'guest' || !car) return;
+    this.sendPacket({
+      type: 'peer_car_hit',
+      carId: car.id,
+      carWorldDistM: Number((this.localWorldDistM - car.z).toFixed(2)),
+      speedKmh: Math.round(car.speedKmh),
+    });
+  }
+
+  getTrafficContext() {
+    return {
+      connected: this.connected,
+      role: this.role,
+      localWorldDistM: this.localWorldDistM,
+      peerX: this.remote.x,
+      peerRelZ: this.remote.relZ,
+      peerSpeedKmh: this.remote.speedKmh,
+    };
   }
 
   // Teleport / Catch up right behind friend if separated by a big gap
@@ -672,14 +750,14 @@ export class MultiplayerManager {
       });
     }
 
-    // 2. If Host, broadcast authoritative traffic snapshot at ~12 Hz so both weave through identical cars
+    // 2. If Host, broadcast authoritative traffic snapshot at ~20 Hz so both weave through identical cars
     if (this.role === 'host') {
       this.trafficSyncAccum += dt;
-      if (this.trafficSyncAccum >= 0.085) {
+      if (this.trafficSyncAccum >= 0.05) {
         this.trafficSyncAccum = 0;
         this.sendPacket({
           type: 'traffic',
-          snapshot: this.traffic.exportSyncState(this.localWorldDistM),
+          snapshot: this.traffic.exportSyncState(this.localWorldDistM, world?.weatherKey),
         });
       }
     }

@@ -66,6 +66,11 @@ class OtobanMakasGame {
       onPeerHorn: () => {
         this.showMakasNotification(`📯 ${this.multiplayer.remote.name} KORNA ÇALDI!`, 50, 'normal');
       },
+      onWeatherSync: (weatherKey) => {
+        if (weatherKey && weatherKey !== this.world.weatherKey) {
+          this.setWeather(weatherKey);
+        }
+      },
     });
     this.lastTandemTime = 0;
 
@@ -531,7 +536,8 @@ class OtobanMakasGame {
   setHighBeam(active) {
     if (active && !this.keys.highBeam) {
       this.sound.playSelektorClick();
-      this.traffic.notifyHighBeamFlash(this.playerX);
+      this.traffic.notifyHighBeamFlash(this.playerX, 0);
+      this.multiplayer.notifyLocalSelektor(this.playerX);
     }
     this.keys.highBeam = active;
     const ind = document.getElementById('ind-highbeam');
@@ -983,9 +989,13 @@ class OtobanMakasGame {
       this.playerX,
       {
         onMakas: (data) => this.handleMakas(data),
-        onCollision: () => this.handleCollision(),
+        onCollision: (car) => {
+          this.multiplayer.notifyLocalCarHit(car);
+          this.handleCollision();
+        },
       },
-      this.world
+      this.world,
+      this.multiplayer.getTrafficContext()
     );
 
     const radarCars = this.traffic.getRadarSnapshot(this.playerX);

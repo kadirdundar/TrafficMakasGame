@@ -25,20 +25,21 @@ export class TrafficManager {
     this.scene = scene;
     this.vehicles = [];
     this.densityMode = 'heavy'; // 'normal' | 'heavy' | 'extreme'
-    this.maxVehicles = 16;
+    this.maxVehicles = 18;
+    this.isRemoteControlled = false;
 
     // Track recent makas timestamp to detect "ÇİFT MAKAS / İĞNE DELİĞİ" (threading the needle between 2 cars)
     this.lastMakasTime = 0;
     this.lastMakasCarId = -1;
 
-    this.initPool(20);
+    this.initPool(24);
   }
 
   setDensity(mode) {
     this.densityMode = mode;
-    if (mode === 'normal') this.maxVehicles = 11;
-    else if (mode === 'heavy') this.maxVehicles = 16;
-    else this.maxVehicles = 20;
+    if (mode === 'normal') this.maxVehicles = 12;
+    else if (mode === 'heavy') this.maxVehicles = 18;
+    else this.maxVehicles = 24;
   }
 
   createLicensePlateTexture() {
@@ -378,7 +379,10 @@ export class TrafficManager {
         lane: i % 4,
         targetLane: i % 4,
         x: LANE_CENTERS[i % 4],
-        z: -45 - i * 24,
+        z: -45 - i * 22,
+        syncWorldDistM: 45 + i * 22,
+        hasSynced: false,
+        isBraking: false,
         speedKmh: spec.baseSpeedKmh,
         targetSpeedKmh: spec.baseSpeedKmh,
         changingLaneTimer: 0,
@@ -396,11 +400,13 @@ export class TrafficManager {
   }
 
   resetTraffic() {
+    this.isRemoteControlled = false;
     for (let i = 0; i < this.vehicles.length; i++) {
       const car = this.vehicles[i];
       car.active = i < this.maxVehicles;
       car.mesh.visible = car.active;
-      this.respawnVehicle(car, -40 - i * 19);
+      car.hasSynced = false;
+      this.respawnVehicle(car, -42 - i * 18);
     }
   }
 
@@ -415,7 +421,7 @@ export class TrafficManager {
     return base + typeOffset + (Math.random() * 10 - 5);
   }
 
-  respawnVehicle(car, customZ = null) {
+  respawnVehicle(car, customZ = null, frontAnchorZ = 0) {
     // Trucks & vans stay in right lanes (2 or 3); sport/sedans prefer left lanes (0, 1, 2)
     let lane = Math.floor(Math.random() * 4);
     if (car.spec.type === 'truck') {
@@ -428,8 +434,8 @@ export class TrafficManager {
       lane = Math.random() < 0.45 ? 0 : Math.random() < 0.75 ? 1 : 2;
     }
 
-    // Choose a Z position ahead of player (-150m to -290m) that doesn't overlap another car
-    let z = customZ !== null ? customZ : -165 - Math.random() * 135;
+    // Choose a Z position ahead of the leading player (-165m to -300m ahead of frontAnchorZ)
+    let z = customZ !== null ? customZ : frontAnchorZ - 165 - Math.random() * 135;
 
     for (let attempt = 0; attempt < 10; attempt++) {
       const conflict = this.vehicles.some(
@@ -468,6 +474,7 @@ export class TrafficManager {
     car.speedKmh = car.targetSpeedKmh;
     car.blinkerDir = 0;
     car.changingLaneTimer = 0;
+    car.isBraking = false;
     car.overtaken = false;
 
     // Fresh random paint color for variety
@@ -478,13 +485,20 @@ export class TrafficManager {
     car.mesh.rotation.y = 0;
   }
 
-  isLaneClear(car, candidateLane, marginZ = 15, playerX = null) {
+  isLaneClear(car, candidateLane, marginZ = 15, playerX = null, peerState = null) {
     if (candidateLane < 0 || candidateLane > 3) return false;
+    const candidateX = LANE_CENTERS[candidateLane];
 
-    // Never swerve into the lane if the player car is nearby in or near that lane
+    // Never swerve into the lane if the local player car is nearby in or near that lane
     if (playerX !== null && Math.abs(car.z) < 16) {
-      const candidateX = LANE_CENTERS[candidateLane];
       if (Math.abs(candidateX - playerX) < 2.8) {
+        return false;
+      }
+    }
+
+    // Never swerve into the lane if the 2P friend's car is nearby in or near that lane
+    if (peerState?.connected && Math.abs(car.z - peerState.relZ) < 16) {
+      if (Math.abs(candidateX - peerState.x) < 2.8) {
         return false;
       }
     }
@@ -498,89 +512,149 @@ export class TrafficManager {
     );
   }
 
-  // Triggered when the player flashes Selektör (High-beam)!
-  // Vehicles ahead of the player in the same lane try to yield to the right lane!
-  notifyHighBeamFlash(playerX) {
+  // Triggered when a player (Host or Guest) flashes Selektör (High-beam)!
+  // Vehicles ahead of flasherZ (-85m to -8m) in the same lane signal and yield to an adjacent lane!
+  notifyHighBeamFlash(flasherX, flasherZ = 0) {
+    let anyYielded = false;
     for (const car of this.vehicles) {
       if (!car.active) continue;
-      // Check if car is ahead of player (-85m to -10m) and roughly in player's lane
-      if (car.z < -8 && car.z > -85 && Math.abs(car.x - playerX) < 2.2) {
+      const relZToFlasher = car.z - flasherZ; // Negative means ahead of the flashing player
+      if (relZToFlasher < -8 && relZToFlasher > -85 && Math.abs(car.x - flasherX) < 2.2) {
         const rightLane = car.targetLane + 1;
-        if (rightLane <= 3 && this.isLaneClear(car, rightLane, 14, playerX)) {
+        if (rightLane <= 3 && this.isLaneClear(car, rightLane, 14, flasherX)) {
           car.targetLane = rightLane;
           car.targetSpeedKmh = this.getLaneTargetSpeed(rightLane, car.spec);
           car.blinkerDir = 1;
           car.changingLaneTimer = 1.6;
-        } else if (car.targetLane > 0 && this.isLaneClear(car, car.targetLane - 1, 14, playerX)) {
+          anyYielded = true;
+        } else if (car.targetLane > 0 && this.isLaneClear(car, car.targetLane - 1, 14, flasherX)) {
           car.targetLane = car.targetLane - 1;
           car.targetSpeedKmh = this.getLaneTargetSpeed(car.targetLane, car.spec);
           car.blinkerDir = -1;
           car.changingLaneTimer = 1.6;
+          anyYielded = true;
         }
       }
     }
+    return anyYielded;
   }
 
-  update(dt, playerSpeedKmh, playerX, callbacks, world = null) {
+  // Apply collision impulse reported by Guest on Host's authoritative vehicle
+  applyPeerCarHit(carId, hostWorldDistM, newCarWorldDistM, newSpeedKmh) {
+    const car = this.vehicles.find((c) => c.id === carId);
+    if (!car) return;
+    car.z = hostWorldDistM - newCarWorldDistM;
+    car.speedKmh = newSpeedKmh;
+  }
+
+  update(dt, playerSpeedKmh, playerX, callbacks, world = null, mpContext = null) {
     const nowSec = performance.now() / 1000;
     const blinkState = Math.floor(nowSec * 3.5) % 2 === 0;
+    const isConnected = Boolean(mpContext?.connected);
+    const activeTargetCount = isConnected
+      ? Math.min(this.vehicles.length, this.maxVehicles + 4)
+      : this.maxVehicles;
+
+    const frontMostZ = isConnected ? Math.min(0, mpContext.peerRelZ || 0) : 0;
+    const rearMostZ = isConnected ? Math.max(0, mpContext.peerRelZ || 0) : 0;
 
     for (let i = 0; i < this.vehicles.length; i++) {
       const car = this.vehicles[i];
-      car.active = i < this.maxVehicles;
-      car.mesh.visible = car.active;
+      if (!this.isRemoteControlled) {
+        car.active = i < activeTargetCount;
+        car.mesh.visible = car.active;
+      }
       if (!car.active) continue;
 
-      // 1. Check if there is a slower AI car directly ahead in the same lane
-      let carAhead = null;
-      let minDistAhead = 999;
-      for (const other of this.vehicles) {
-        if (other === car || !other.active) continue;
-        if (other.targetLane === car.targetLane && other.z < car.z) {
-          const dist = car.z - other.z;
-          if (dist < minDistAhead) {
-            minDistAhead = dist;
-            carAhead = other;
-          }
-        }
-      }
+      const prevZ = car.z;
 
-      let isBraking = false;
-      if (carAhead && minDistAhead < 18) {
-        // Either change lane with blinker or match speed and brake (only when well ahead of player)
-        if (car.z < -16 && car.lane === car.targetLane && Math.random() < 0.02) {
-          const tryLeft = car.lane - 1;
-          const tryRight = car.lane + 1;
-          if (this.isLaneClear(car, tryLeft, 16, playerX)) {
-            car.targetLane = tryLeft;
-            car.blinkerDir = -1;
-            car.changingLaneTimer = 1.8;
-          } else if (this.isLaneClear(car, tryRight, 16, playerX)) {
-            car.targetLane = tryRight;
-            car.blinkerDir = 1;
-            car.changingLaneTimer = 1.8;
-          }
+      if (this.isRemoteControlled) {
+        // GUEST MODE: Smooth 60 FPS dead-reckoning from Host's synchronized traffic state!
+        car.syncWorldDistM += (car.speedKmh / 3.6) * dt;
+        const guestWorldDistM = mpContext?.localWorldDistM ?? 0;
+        const desiredZ = guestWorldDistM - car.syncWorldDistM;
+
+        if (!car.hasSynced || Math.abs(car.z - desiredZ) > 22) {
+          car.z = desiredZ;
+          car.hasSynced = true;
+          car.overtaken = car.z > 0.5;
+        } else {
+          car.z = THREE.MathUtils.lerp(car.z, desiredZ, Math.min(1, dt * 18));
         }
-        car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, carAhead.speedKmh * 0.92, dt * 4);
-        isBraking = true;
-      } else {
+
+        // Smoothly interpolate speed toward targetSpeedKmh between packets
         car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, car.targetSpeedKmh, dt * 1.5);
-      }
-
-      // CRITICAL PROTECTION: If this car is behind the player (car.z > 0),
-      // it sees the player ahead of it and MUST NOT go faster than the player or rear-end the player!
-      if (car.z > 0) {
-        const maxRearSpeed = Math.max(40, playerSpeedKmh - 14);
-        if (car.speedKmh > maxRearSpeed) {
-          car.speedKmh = maxRearSpeed;
-          isBraking = true;
+        car.tailLightMat.color.setHex(car.isBraking ? 0xff4455 : 0xd90429);
+      } else {
+        // HOST / SINGLE-PLAYER AUTHORITATIVE SIMULATION:
+        // 1. Check if there is a slower AI car directly ahead in the same lane
+        let carAhead = null;
+        let minDistAhead = 999;
+        for (const other of this.vehicles) {
+          if (other === car || !other.active) continue;
+          if (other.targetLane === car.targetLane && other.z < car.z) {
+            const dist = car.z - other.z;
+            if (dist < minDistAhead) {
+              minDistAhead = dist;
+              carAhead = other;
+            }
+          }
         }
+
+        let isBraking = false;
+        if (carAhead && minDistAhead < 18) {
+          // Either change lane with blinker or match speed and brake (only when well ahead of players)
+          if (car.z < frontMostZ - 16 && car.lane === car.targetLane && Math.random() < 0.02) {
+            const tryLeft = car.lane - 1;
+            const tryRight = car.lane + 1;
+            if (this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
+              car.targetLane = tryLeft;
+              car.blinkerDir = -1;
+              car.changingLaneTimer = 1.8;
+            } else if (this.isLaneClear(car, tryRight, 16, playerX, mpContext)) {
+              car.targetLane = tryRight;
+              car.blinkerDir = 1;
+              car.changingLaneTimer = 1.8;
+            }
+          }
+          car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, carAhead.speedKmh * 0.92, dt * 4);
+          isBraking = true;
+        } else {
+          car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, car.targetSpeedKmh, dt * 1.5);
+        }
+
+        // CRITICAL PROTECTION FOR HOST: If this car is behind Host (car.z > 0), do not rear-end Host!
+        if (car.z > 0 && car.z < 30 && Math.abs(car.x - playerX) < 2.8) {
+          const maxRearSpeed = Math.max(40, playerSpeedKmh - 14);
+          if (car.speedKmh > maxRearSpeed) {
+            car.speedKmh = maxRearSpeed;
+            isBraking = true;
+          }
+        }
+
+        // CRITICAL PROTECTION FOR GUEST: If this car is behind Guest (car.z > peerRelZ), do not rear-end Guest!
+        if (
+          isConnected &&
+          car.z > mpContext.peerRelZ &&
+          car.z < mpContext.peerRelZ + 30 &&
+          Math.abs(car.x - mpContext.peerX) < 2.8
+        ) {
+          const maxPeerRearSpeed = Math.max(40, (mpContext.peerSpeedKmh || 90) - 14);
+          if (car.speedKmh > maxPeerRearSpeed) {
+            car.speedKmh = maxPeerRearSpeed;
+            isBraking = true;
+          }
+        }
+
+        car.isBraking = isBraking;
+        car.tailLightMat.color.setHex(isBraking ? 0xff4455 : 0xd90429);
+
+        // Relative longitudinal movement along Z (Host is at Z = 0)
+        const relSpeedMs = (playerSpeedKmh - car.speedKmh) / 3.6;
+        car.z += relSpeedMs * dt;
       }
 
-      // Brighten tail lights when braking
-      car.tailLightMat.color.setHex(isBraking ? 0xff4455 : 0xd90429);
-
-      // 2. Smooth lateral lane changing & blinker lights
+      // 2. Smooth lateral lane changing & blinker lights (runs identically on Host & Guest!)
       const targetX = LANE_CENTERS[car.targetLane];
       const dx = targetX - car.x;
       let laneChangeYaw = 0;
@@ -601,18 +675,16 @@ export class TrafficManager {
       car.leftBlinker.visible = car.blinkerDir === -1 && blinkState;
       car.rightBlinker.visible = car.blinkerDir === 1 && blinkState;
 
-      // 3. Relative longitudinal movement along Z (Player is at Z = 0)
-      const relSpeedMs = (playerSpeedKmh - car.speedKmh) / 3.6;
-      const prevZ = car.z;
-      car.z += relSpeedMs * dt;
-
       const halfL = car.spec.length / 2 + 1.85; // Player car half-length ~ 1.85m
       const halfW = car.spec.width / 2 + 0.86; // Player car half-width ~ 0.86m
 
-      // Ensure a car that was already behind the player (prevZ >= 1.2) never creeps forward into the player's rear bumper
+      // Ensure a car that was already behind the local player (prevZ >= 1.2) never creeps forward into the player's rear bumper
       if (prevZ >= 1.2 && car.z < halfL + 1.5 && Math.abs(car.x - playerX) < halfW + 0.5) {
         car.z = halfL + 1.5;
         car.speedKmh = Math.max(35, playerSpeedKmh - 18);
+        if (this.isRemoteControlled && mpContext) {
+          car.syncWorldDistM = mpContext.localWorldDistM - car.z;
+        }
       }
 
       // Follow 3D highway curve offset & tangent angle
@@ -630,6 +702,9 @@ export class TrafficManager {
         // Collision! Push traffic car ahead and trigger crash callback
         car.z = -halfL - 1.2;
         car.speedKmh = Math.max(50, playerSpeedKmh * 0.7);
+        if (this.isRemoteControlled && mpContext) {
+          car.syncWorldDistM = mpContext.localWorldDistM - car.z;
+        }
         callbacks?.onCollision?.(car);
         car.overtaken = true;
       }
@@ -659,23 +734,26 @@ export class TrafficManager {
         }
       }
 
-      // 5. Respawn vehicle when it falls far behind (+42m, after being visible in rear-view mirror!)
-      // or if player brakes and car gets too far ahead (-310m)
+      // 5. Respawn vehicle on Host only when it falls >42m behind BOTH players,
+      // or gets >320m ahead of the leading player!
       if (!this.isRemoteControlled) {
-        if (car.z > 42) {
-          this.respawnVehicle(car);
-        } else if (car.z < -310) {
-          this.respawnVehicle(car, -160);
+        if (car.z > rearMostZ + 42) {
+          this.respawnVehicle(car, null, frontMostZ);
+        } else if (car.z < frontMostZ - 320) {
+          this.respawnVehicle(car, frontMostZ - 160, frontMostZ);
         }
       }
     }
   }
 
-  exportSyncState(hostWorldDistM) {
+  exportSyncState(hostWorldDistM, weatherKey = null) {
+    const activeCount = Math.min(this.vehicles.length, this.maxVehicles + 4);
     return {
       densityMode: this.densityMode,
-      cars: this.vehicles.slice(0, this.maxVehicles).map((c) => ({
+      weatherKey,
+      cars: this.vehicles.slice(0, activeCount).map((c) => ({
         id: c.id,
+        active: c.active,
         lane: c.lane,
         targetLane: c.targetLane,
         x: Number(c.x.toFixed(2)),
@@ -683,6 +761,7 @@ export class TrafficManager {
         speedKmh: Math.round(c.speedKmh),
         targetSpeedKmh: Math.round(c.targetSpeedKmh),
         blinkerDir: c.blinkerDir,
+        braking: c.isBraking ? 1 : 0,
         colorHex: c.bodyMat.color.getHex(),
       })),
     };
@@ -695,9 +774,15 @@ export class TrafficManager {
       this.setDensity(snapshot.densityMode);
     }
 
-    for (let i = 0; i < snapshot.cars.length && i < this.vehicles.length; i++) {
+    for (let i = 0; i < this.vehicles.length; i++) {
       const s = snapshot.cars[i];
       const car = this.vehicles[i];
+      if (!s || s.active === false) {
+        car.active = false;
+        car.mesh.visible = false;
+        continue;
+      }
+
       car.active = true;
       car.mesh.visible = true;
       car.lane = s.lane;
@@ -705,21 +790,27 @@ export class TrafficManager {
       car.speedKmh = s.speedKmh;
       car.targetSpeedKmh = s.targetSpeedKmh;
       car.blinkerDir = s.blinkerDir;
+      car.isBraking = Boolean(s.braking);
+      if (s.blinkerDir !== 0 && car.changingLaneTimer <= 0) {
+        car.changingLaneTimer = 1.0;
+      }
       if (typeof s.colorHex === 'number') {
         car.bodyMat.color.setHex(s.colorHex);
       }
 
+      car.syncWorldDistM = s.worldDistM;
       const targetZ = guestWorldDistM - s.worldDistM;
-      // If car teleported/respawned or jumped more than 12m, snap immediately; otherwise smooth-lerp
-      if (Math.abs(car.z - targetZ) > 12) {
+
+      // If car just respawned far ahead or this is the initial sync packet, snap immediately;
+      // otherwise let 60 FPS update() smoothly track syncWorldDistM!
+      if (!car.hasSynced || Math.abs(car.z - targetZ) > 16) {
         car.z = targetZ;
         car.x = s.x;
         car.overtaken = car.z > 0.5;
-      } else {
-        car.z = THREE.MathUtils.lerp(car.z, targetZ, 0.45);
-        car.x = THREE.MathUtils.lerp(car.x, s.x, 0.45);
+        car.hasSynced = true;
+      } else if (Math.abs(car.x - s.x) > 0.9) {
+        car.x = THREE.MathUtils.lerp(car.x, s.x, 0.5);
       }
-      car.mesh.position.set(car.x, 0, car.z);
     }
   }
 
