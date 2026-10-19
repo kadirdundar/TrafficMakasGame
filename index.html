@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#080b12" />
+  <title>OTOBAN MAKAS 3D — Kokpit Sürüş Simülasyonu</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- 3D WebGL Highway Canvas Container -->
+  <div id="canvas-container" aria-label="3D Otoyol Ekranı"></div>
+
+  <!-- Photorealistic Audi A8 Cockpit Interactive Layer -->
+  <canvas id="cockpit-canvas" aria-label="Audi A8 İnteraktif Kokpit"></canvas>
+
+  <!-- Flash / Damage / Near-Miss Screen Vignette -->
+  <div id="screen-vignette" class="vignette"></div>
+
+  <!-- Top HUD Bar -->
+  <header id="hud-top" class="hud-top">
+    <div class="hud-stats">
+      <div class="stat-card score-card">
+        <span class="stat-label">SKOR</span>
+        <span id="hud-score" class="stat-value">0</span>
+      </div>
+      <div class="stat-card combo-card" id="combo-card">
+        <span class="stat-label">MAKAS KOMBO</span>
+        <div class="combo-row">
+          <span id="hud-combo" class="stat-value combo-val">1.0x</span>
+          <div class="combo-bar-wrap">
+            <div id="hud-combo-bar" class="combo-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-card best-card hide-mobile">
+        <span class="stat-label">EN İYİ SKOR</span>
+        <span id="hud-best" class="stat-value">0</span>
+      </div>
+      <div class="stat-card health-card">
+        <span class="stat-label">ARAÇ DURUMU</span>
+        <div class="health-bar-wrap">
+          <div id="hud-health-bar" class="health-bar-fill"></div>
+        </div>
+      </div>
+      <!-- Live 2-Player Opponent Status Card (Visible when connected) -->
+      <div id="mp-hud-card" class="stat-card mp-hud-card hidden">
+        <div class="mp-hud-top-row">
+          <span id="mp-peer-name" class="mp-peer-name">🟢 OYUNCU 2</span>
+          <span id="mp-peer-dist" class="mp-peer-dist">ÖNÜNDE 12m</span>
+        </div>
+        <div class="mp-hud-bottom-row">
+          <span id="mp-peer-stats" class="mp-peer-stats">140 KM/S • 2.5x • 4,200 P</span>
+          <button id="btn-mp-catchup" type="button" class="mp-catchup-btn" title="Arkadaşının yanına yetiş (R)">🚀 Yakala</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Toolbar (Multiplayer, Weather, Ambient LED, Camera, Audio, Pause) -->
+    <div class="hud-toolbar">
+      <button id="btn-mp-quick" class="QuickBtn mp-quick-btn" title="2 Kişilik Oda Kur / Katıl">
+        <span>👥</span>
+        <span id="mp-quick-label" class="btn-text">2 Kişilik</span>
+      </button>
+      <button id="btn-weather" class="QuickBtn" title="Hava Durumu / Zaman (T)">
+        <span id="weather-icon">🌙</span>
+        <span id="weather-label" class="btn-text">Gece</span>
+      </button>
+      <button id="btn-ambient" class="QuickBtn" title="Kokpit Ambiyans LED Rengi (L)">
+        <span class="ambient-dot" id="ambient-dot"></span>
+        <span class="btn-text">Ambiyans</span>
+      </button>
+      <button id="btn-wipers" class="QuickBtn" title="Silecekleri Aç/Kapat (V)">
+        <span>🪥</span>
+        <span class="btn-text">Silecek</span>
+      </button>
+      <button id="btn-camera" class="QuickBtn" title="Koltuk / Kokpit Açısı (C)">
+        <span>🎥</span>
+        <span id="camera-label" class="btn-text">Standart</span>
+      </button>
+      <button id="btn-sound" class="QuickBtn" title="Ses Aç/Kapat (M)">
+        <span id="sound-icon">🔊</span>
+      </button>
+      <button id="btn-pause" class="QuickBtn primary-icon-btn" title="Ayarlar / Duraklat (ESC)">
+        <span>⚙️</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Center Makas Feed / Notifications -->
+  <div id="makas-feed" class="makas-feed" aria-live="polite"></div>
+
+  <!-- Mini Speed & Gear Pill -->
+  <div id="hud-mini-cluster" class="hud-mini-cluster">
+    <div class="mini-gear" id="mini-gear">S1</div>
+    <div class="mini-speed-block">
+      <span id="mini-speed">0</span>
+      <small>KM/S</small>
+    </div>
+    <div class="mini-indicators">
+      <span id="ind-highbeam" class="ind-badge highbeam" title="Uzun Far / Selektör">≡O</span>
+      <span id="ind-danger" class="ind-badge danger" title="Yakın Mesafe">⚠️</span>
+    </div>
+  </div>
+
+  <!-- Desktop Controls Hint Bar (Bottom Center) -->
+  <div id="desktop-hints" class="desktop-hints">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> veya <strong>Direksiyonu Sürükle</strong></span>
+    <span><kbd>F</kbd> / <kbd>BOŞLUK</kbd> Selektör</span>
+    <span><kbd>H</kbd> Korna</span>
+    <span><kbd>R</kbd> Arkadaşına Yetiş</span>
+    <span><kbd>V</kbd> Silecek</span>
+    <span><kbd>L</kbd> Ambiyans</span>
+    <span><kbd>T</kbd> Hava</span>
+    <span><kbd>C</kbd> Açı</span>
+  </div>
+
+  <!-- Mobile & Touch Controls Overlay -->
+  <div id="touch-controls" class="touch-controls">
+    <!-- Left Side: Selektör, Horn & Optional Left/Right Buttons -->
+    <div class="touch-left">
+      <div class="touch-aux-row">
+        <button id="touch-selektor" class="aux-action-btn selektor-btn" type="button">
+          <span class="aux-icon">≡O</span>
+          <span>SELEKTÖR</span>
+        </button>
+        <button id="touch-horn" class="aux-action-btn horn-btn" type="button">
+          <span class="aux-icon">📯</span>
+          <span>KORNA</span>
+        </button>
+      </div>
+
+      <!-- Button Steering Mode (Hidden unless selected in settings; Wheel mode uses the real Audi steering wheel!) -->
+      <div id="button-steer-zone" class="button-steer-zone hidden">
+        <button id="touch-left-btn" class="steer-btn" type="button" aria-label="Sola Dön">◀</button>
+        <button id="touch-right-btn" class="steer-btn" type="button" aria-label="Sağa Dön">▶</button>
+      </div>
+    </div>
+
+    <!-- Right Side: Brake & Gas Pedals + Nitro/Boost -->
+    <div class="touch-right">
+      <button id="touch-brake" class="pedal-btn brake-pedal" type="button">
+        <span class="pedal-label">FREN</span>
+        <div class="pedal-ribs"></div>
+      </button>
+      <button id="touch-gas" class="pedal-btn gas-pedal" type="button">
+        <span class="pedal-label">GAZ</span>
+        <div class="pedal-ribs"></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Start / Pause / Settings Modal -->
+  <div id="menu-overlay" class="menu-overlay">
+    <div class="menu-modal">
+      <div class="menu-header">
+        <div class="badge-pill">NO HESI • İSTANBUL OTOBAN EDITION</div>
+        <h1>OTOBAN <span>MAKAS</span> 3D</h1>
+        <p class="subtitle">Gerçekçi Kokpit • Dinamik Trafik • 2 Kişilik Online &amp; Yakın Geçiş Simülasyonu</p>
+      </div>
+
+      <!-- 2-Player WebRTC P2P Multiplayer Lobby Banner -->
+      <div class="mp-lobby-box">
+        <div class="mp-lobby-header">
+          <div>
+            <h3>👥 2 Kişilik Beraber Sürüş (Ücretsiz P2P Oda Kodu)</h3>
+            <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşına gönder, aynı trafikte beraber makas atın!</p>
+          </div>
+          <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
+            <span>ODA KODU:</span>
+            <strong id="mp-room-code-val">----</strong>
+          </div>
+        </div>
+
+        <div class="mp-controls-row">
+          <div class="mp-input-group">
+            <label for="mp-player-name">Oyuncu Adın</label>
+            <input id="mp-player-name" type="text" maxlength="14" placeholder="Örn: KADİR" value="OYUNCU 1" />
+          </div>
+
+          <button id="btn-mp-host" type="button" class="mp-btn host-btn">
+            🏁 ODA KUR (KOD AL)
+          </button>
+
+          <div class="mp-join-group">
+            <input id="mp-join-code" type="text" inputmode="numeric" maxlength="4" placeholder="4 Haneli Kod" />
+            <button id="btn-mp-join" type="button" class="mp-btn join-btn">
+              🔗 ODAYA KATIL
+            </button>
+          </div>
+
+          <button id="btn-mp-leave" type="button" class="mp-btn leave-btn hidden">
+            ✖ Odadan Ayrıl
+          </button>
+        </div>
+      </div>
+
+      <div class="menu-grid">
+        <!-- Time & Weather Selection -->
+        <div class="menu-section">
+          <h3>🌍 Atmosfer &amp; Hava Durumu</h3>
+          <div class="option-cards" id="weather-select-group">
+            <button type="button" class="opt-card active" data-weather="night">
+              <span class="opt-icon">🌙</span>
+              <span class="opt-title">Gece Otobanı</span>
+              <span class="opt-desc">Neon stoplar &amp; sokak lambaları</span>
+            </button>
+            <button type="button" class="opt-card" data-weather="rain">
+              <span class="opt-icon">🌧️</span>
+              <span class="opt-title">Yağmurlu Gece</span>
+              <span class="opt-desc">Islak asfalt &amp; aktif silecekler</span>
+            </button>
+            <button type="button" class="opt-card" data-weather="sunset">
+              <span class="opt-icon">🌇</span>
+              <span class="opt-title">Gün Batımı</span>
+              <span class="opt-desc">Altın saatler &amp; kızıl ufuk</span>
+            </button>
+            <button type="button" class="opt-card" data-weather="day">
+              <span class="opt-icon">☀️</span>
+              <span class="opt-title">Gündüz</span>
+              <span class="opt-desc">Açık hava &amp; net görüş</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cockpit & Control Customizations -->
+        <div class="menu-section">
+          <h3>🏎️ Kokpit &amp; Kontrol Ayarları</h3>
+
+          <div class="setting-row">
+            <label>Ambiyans Aydınlatması</label>
+            <div class="color-swatches" id="ambient-select-group">
+              <button type="button" class="swatch active" data-color="cyan" style="--sw-color: #00f0ff" title="Buz Mavisi"></button>
+              <button type="button" class="swatch" data-color="purple" style="--sw-color: #b829ff" title="Neon Mor"></button>
+              <button type="button" class="swatch" data-color="red" style="--sw-color: #ff1e42" title="Sport Kırmızı"></button>
+              <button type="button" class="swatch" data-color="emerald" style="--sw-color: #00ff88" title="Zümrüt Yeşili"></button>
+              <button type="button" class="swatch" data-color="amber" style="--sw-color: #ffaa00" title="Altın Kehribar"></button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <label>Mobil / Dokunmatik Kontrol Tipi</label>
+            <div class="segmented-control" id="steer-mode-group">
+              <button type="button" class="seg-btn active" data-steermode="wheel">Direksiyon</button>
+              <button type="button" class="seg-btn" data-steermode="buttons">Ok Tuşları</button>
+              <button type="button" class="seg-btn" data-steermode="tilt">Sensör (Eğim)</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <label>Trafik Yoğunluğu</label>
+            <div class="segmented-control" id="traffic-density-group">
+              <button type="button" class="seg-btn" data-density="normal">Akıcı</button>
+              <button type="button" class="seg-btn active" data-density="heavy">Yoğun (No Hesi)</button>
+              <button type="button" class="seg-btn" data-density="extreme">İstanbul Köprü Trafiği</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <label>Dokunmatik Kontrolleri Göster</label>
+            <div class="segmented-control" id="touch-vis-group">
+              <button type="button" class="seg-btn active" data-touchvis="auto">Otomatik</button>
+              <button type="button" class="seg-btn" data-touchvis="always">Her Zaman Açık</button>
+              <button type="button" class="seg-btn" data-touchvis="hide">Gizle (PC)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Features Callout -->
+      <div class="features-banner">
+        <div class="feat-item">⚡ <strong>Yakın Makas:</strong> 100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div>
+        <div class="feat-item">🔦 <strong>Selektör Tepkisi:</strong> Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div>
+        <div class="feat-item">👥 <strong>2 Kişilik P2P Mod:</strong> Arkadaşınla aynı trafikte makas at, dikiz aynasından selektörünü gör!</div>
+      </div>
+
+      <div class="menu-actions">
+        <button id="btn-start-game" type="button" class="cta-btn">
+          <span>SÜRÜŞE BAŞLA</span>
+          <small>MOTORU ÇALIŞTIR</small>
+        </button>
+        <button id="btn-reset-car" type="button" class="secondary-btn hidden">
+          Yolu Sıfırla &amp; Tamir Et
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
