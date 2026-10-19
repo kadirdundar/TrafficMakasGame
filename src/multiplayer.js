@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Peer } from 'peerjs';
+import { WEATHER_PRESETS } from './world.js';
+import { createLuxurySedan } from './vehicleModels.js';
 
 const PEER_PREFIX = 'otoban-makas-v1-room-';
 
@@ -95,151 +97,11 @@ export class MultiplayerManager {
   }
 
   createPeerCarMesh() {
+    // Procedural A8-style saloon is shown immediately; the real A8 glTF replaces it once
+    // loaded (see loadA8Model), so a slow or failed download never leaves the friend invisible.
     const group = new THREE.Group();
-
-    // Distinctive Metallic Emerald-Cyan RS Paint
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x0ea5e9,
-      roughness: 0.12,
-      metalness: 0.86,
-    });
-
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x050912,
-      roughness: 0.05,
-      metalness: 0.95,
-    });
-
-    const carbonMat = new THREE.MeshStandardMaterial({
-      color: 0x11151f,
-      roughness: 0.45,
-      metalness: 0.35,
-    });
-
-    const w = 1.94;
-    const h = 1.32;
-    const l = 4.55;
-    const lowerH = h * 0.48;
-
-    // Lower sculpted body + wide RS fenders
-    const lowerMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w * 0.96, lowerH, l * 0.95),
-      bodyMat
-    );
-    lowerMesh.position.y = lowerH / 2 + 0.24;
-    group.add(lowerMesh);
-
-    const flareMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w * 1.02, lowerH * 0.62, l * 0.88),
-      bodyMat
-    );
-    flareMesh.position.y = lowerH * 0.36 + 0.23;
-    group.add(flareMesh);
-
-    // Carbon splitter & diffuser
-    const skirtMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w * 0.99, 0.13, l * 0.98),
-      carbonMat
-    );
-    skirtMesh.position.y = 0.2;
-    group.add(skirtMesh);
-
-    // Sloped Sport Fastback Cabin
-    const roofW = w * 0.8;
-    const roofH = h * 0.44;
-    const roofL = l * 0.44;
-    const cabinY = lowerH + roofH / 2 + 0.22;
-    const cabinZ = -l * 0.04;
-
-    const cabinMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(roofW, roofH, roofL),
-      glassMat
-    );
-    cabinMesh.position.set(0, cabinY, cabinZ);
-    group.add(cabinMesh);
-
-    const roofCap = new THREE.Mesh(
-      new THREE.BoxGeometry(roofW * 0.96, 0.06, roofL * 0.94),
-      carbonMat
-    );
-    roofCap.position.set(0, cabinY + roofH / 2 + 0.01, cabinZ);
-    group.add(roofCap);
-
-    // Rear Carbon Spoiler Wing
-    const rearZ = l * 0.47;
-    const spoilerBlade = new THREE.Mesh(
-      new THREE.BoxGeometry(w * 0.88, 0.05, 0.24),
-      carbonMat
-    );
-    spoilerBlade.position.set(0, lowerH + 0.38, rearZ - 0.14);
-    group.add(spoilerBlade);
-
-    // Full-Width Audi RS LED Tail Lightbar
-    const tailLightMat = new THREE.MeshBasicMaterial({ color: 0xff1e38 });
-    const tailBar = new THREE.Mesh(
-      new THREE.BoxGeometry(w * 0.88, 0.085, 0.06),
-      tailLightMat
-    );
-    tailBar.position.set(0, lowerH * 0.82 + 0.22, rearZ);
-    group.add(tailBar);
-
-    // Front Matrix LED Headlights (At -Z, clearly visible in Rear-View Mirror when friend is behind you!)
-    const frontZ = -l * 0.47;
-    const headLightMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
-    const headGeo = new THREE.BoxGeometry(w * 0.25, 0.12, 0.07);
-
-    const leftHead = new THREE.Mesh(headGeo, headLightMat);
-    leftHead.position.set(-w * 0.34, lowerH * 0.72 + 0.2, frontZ);
-    group.add(leftHead);
-
-    const rightHead = new THREE.Mesh(headGeo, headLightMat);
-    rightHead.position.set(w * 0.34, lowerH * 0.72 + 0.2, frontZ);
-    group.add(rightHead);
-
-    // High-Beam Selektör Flare Glare Spheres (Visible when friend flashes Selektör!)
-    const flareMat = new THREE.MeshBasicMaterial({
-      color: 0x60a5fa,
-      transparent: true,
-      opacity: 0.92,
-    });
-    const flareGeo = new THREE.SphereGeometry(0.26, 12, 12);
-    const leftFlare = new THREE.Mesh(flareGeo, flareMat);
-    leftFlare.position.set(-w * 0.34, lowerH * 0.72 + 0.2, frontZ - 0.06);
-    leftFlare.visible = false;
-    group.add(leftFlare);
-
-    const rightFlare = new THREE.Mesh(flareGeo, flareMat);
-    rightFlare.position.set(w * 0.34, lowerH * 0.72 + 0.2, frontZ - 0.06);
-    rightFlare.visible = false;
-    group.add(rightFlare);
-
-    // 4 Sport Alloy Wheels
-    const wheelR = 0.35;
-    const wheelW = 0.25;
-    const tireGeo = new THREE.CylinderGeometry(wheelR, wheelR, wheelW, 16);
-    tireGeo.rotateZ(Math.PI / 2);
-    const rimGeo = new THREE.CylinderGeometry(wheelR * 0.7, wheelR * 0.7, wheelW + 0.015, 12);
-    rimGeo.rotateZ(Math.PI / 2);
-    const alloyMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      roughness: 0.15,
-      metalness: 0.92,
-    });
-
-    const wheelCoords = [
-      [-w * 0.49, wheelR, -l * 0.32],
-      [w * 0.49, wheelR, -l * 0.32],
-      [-w * 0.49, wheelR, l * 0.32],
-      [w * 0.49, wheelR, l * 0.32],
-    ];
-    for (const [wx, wy, wz] of wheelCoords) {
-      const tire = new THREE.Mesh(tireGeo, carbonMat);
-      tire.position.set(wx, wy, wz);
-      group.add(tire);
-      const rim = new THREE.Mesh(rimGeo, alloyMat);
-      rim.position.set(wx, wy, wz);
-      group.add(rim);
-    }
+    const fallback = createLuxurySedan();
+    group.add(fallback.group);
 
     // Floating Overhead Nameplate Sprite
     const badgeTex = this.createNameplateTexture('OYUNCU 2', 100, 1.0);
@@ -254,14 +116,36 @@ export class MultiplayerManager {
     badgeSprite.renderOrder = 10;
     group.add(badgeSprite);
 
-    return {
+    const peerCar = {
       group,
-      tailLightMat,
-      headLightMat,
-      leftFlare,
-      rightFlare,
       badgeSprite,
+      active: fallback,
+      lights: { night: false, braking: false, highBeam: false },
+      setLights(lights) {
+        peerCar.lights = lights;
+        peerCar.active.setLights(lights);
+      },
+      swapModel(model) {
+        fallback.group.visible = false;
+        group.add(model.group);
+        peerCar.active = model;
+        model.setLights(peerCar.lights);
+      },
     };
+    return peerCar;
+  }
+
+  // Lazily fetch the optimized A8 model (separate chunk + ~0.55 MB glb) the first time a
+  // friend connects; single-player never downloads it.
+  loadA8Model() {
+    if (this._a8Promise) return this._a8Promise;
+    this._a8Promise = import('./peerA8.js')
+      .then((m) => m.loadA8PeerCar())
+      .then((model) => this.peerCar.swapModel(model))
+      .catch((err) => {
+        console.warn('A8 modeli yüklenemedi, yedek model kullanılıyor:', err);
+      });
+    return this._a8Promise;
   }
 
   disconnect() {
@@ -606,6 +490,7 @@ export class MultiplayerManager {
     if (this.connected) return;
     this.connected = true;
     this.peerCar.group.visible = true;
+    this.loadA8Model();
     this.lastRecvTime = performance.now();
 
     this.callbacks.onStatusChange?.({
@@ -803,10 +688,11 @@ export class MultiplayerManager {
     this.peerCar.group.rotation.z = this.remote.bodyRoll;
 
     // Brake lights & High-Beam Selektör visuals
-    this.peerCar.tailLightMat.color.setHex(this.remote.braking ? 0xff4455 : 0xd90429);
-    this.peerCar.headLightMat.color.setHex(this.remote.highBeam ? 0x93c5fd : 0xe0f2fe);
-    this.peerCar.leftFlare.visible = this.remote.highBeam;
-    this.peerCar.rightFlare.visible = this.remote.highBeam;
+    this.peerCar.setLights({
+      night: Boolean(WEATHER_PRESETS[world?.weatherKey]?.streetlightsOn),
+      braking: this.remote.braking,
+      highBeam: this.remote.highBeam,
+    });
 
     // Refresh overhead floating nameplate every ~150ms
     if (!this._lastBadgeUpdate || performance.now() - this._lastBadgeUpdate > 150) {

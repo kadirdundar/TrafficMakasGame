@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
-import { HighwayWorld, ROAD_HALF_WIDTH } from './world.js';
+import { HighwayWorld, ROAD_HALF_WIDTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
 import { MultiplayerManager } from './multiplayer.js';
+
+const COCKPIT_MODE_KEY = 'otoban_cockpit_mode_v2';
 
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
@@ -68,7 +70,8 @@ class OtobanMakasGame {
       },
       onWeatherSync: (weatherKey) => {
         if (weatherKey && weatherKey !== this.world.weatherKey) {
-          this.setWeather(weatherKey);
+          const preset = this.world.applyWeather(weatherKey);
+          this.syncWeatherUI(preset);
         }
       },
     });
@@ -76,6 +79,7 @@ class OtobanMakasGame {
 
     // Add camera to cockpit group so it moves laterally with the car
     this.cockpit.group.add(this.camera);
+    this.cockpit.camera = this.camera;
     this.applyCameraPreset(0);
 
     // Game & Vehicle Physics State
@@ -188,6 +192,9 @@ class OtobanMakasGame {
       }
       if (code === 'KeyC') {
         this.applyCameraPreset(this.cameraPresetIndex + 1);
+      }
+      if (code === 'KeyK') {
+        this.setCockpitMode(this.cockpit.mode === '3d' ? 'photo' : '3d');
       }
       if (code === 'KeyM') {
         this.toggleSound();
@@ -328,6 +335,17 @@ class OtobanMakasGame {
         this.traffic.setDensity(btn.getAttribute('data-density'));
       });
     });
+
+    document.querySelectorAll('#cockpit-mode-group .seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this.setCockpitMode(btn.getAttribute('data-cockpit')));
+    });
+    // The 3D interior is the default; a saved "photo" choice is kept (v2 key so the new
+    // default reaches players who had the old photo default stored)
+    let savedCockpit = '3d';
+    try {
+      savedCockpit = localStorage.getItem(COCKPIT_MODE_KEY) || '3d';
+    } catch (_) {}
+    this.setCockpitMode(savedCockpit);
 
     document.querySelectorAll('#touch-vis-group .seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -557,6 +575,16 @@ class OtobanMakasGame {
     // Automatically turn on wipers in Rainy weather
     this.cockpit.toggleWipers(preset.rain);
     this.sound.setRainAmbience(preset.rain);
+  }
+
+  async setCockpitMode(mode) {
+    const applied = await this.cockpit.setMode(mode, CAMERA_PRESETS[0].offset);
+    document.querySelectorAll('#cockpit-mode-group .seg-btn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-cockpit') === applied);
+    });
+    try {
+      localStorage.setItem(COCKPIT_MODE_KEY, applied);
+    } catch (_) {}
   }
 
   syncAmbientUI(key, cssColor) {
@@ -1055,6 +1083,7 @@ class OtobanMakasGame {
         lateralG: this.lateralG,
         bodyRoll: this.bodyRoll,
         bodyPitch: this.bodyPitch,
+        cabinNight: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
       },
       radarCars
     );
@@ -1158,6 +1187,7 @@ class OtobanMakasGame {
           score: this.score,
           odometerKm: this.odometerKm,
           lateralG: 0,
+          cabinNight: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
         },
         radarCars
       );

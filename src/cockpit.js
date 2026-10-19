@@ -278,7 +278,45 @@ export class CarCockpit {
     this.wheelCanvas.width = this.wheelSize * this.texScale;
     this.wheelCanvas.height = this.wheelSize * this.texScale;
 
+    // 'photo' = processed reference photo on the 2D overlay, '3d' = glTF interior (the game
+    // switches to '3d' on startup; 'photo' stays the fallback while/if it fails to load)
+    this.mode = 'photo';
+    this.interior3d = null;
+    this._interiorPromise = null;
+    this._overlayCleared = false;
+    this.camera = null; // set by the game; needed to project the 3D wheel for touch steering
+
     this.loadPhotorealisticCockpit();
+  }
+
+  get is3D() {
+    return this.mode === '3d' && Boolean(this.interior3d);
+  }
+
+  // Switches between the photo cockpit and the 3D interior. The 3D module + model are only
+  // downloaded the first time it is enabled; on failure we stay on the photo cockpit.
+  async setMode(mode, eyeAnchor) {
+    this.mode = mode === '3d' ? '3d' : 'photo';
+    this._overlayCleared = false;
+    if (this.mode === '3d' && !this.interior3d) {
+      this._interiorPromise ??= import('./cockpit3d.js').then((m) =>
+        m.loadCockpit3D({
+          eyeAnchor,
+          mirrorTexture: this.mirrorRenderTarget.texture,
+          paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
+        })
+      );
+      try {
+        this.interior3d = await this._interiorPromise;
+        this.group.add(this.interior3d.group);
+      } catch (err) {
+        console.warn('3D kokpit yüklenemedi, fotoğraf kokpite dönülüyor:', err);
+        this._interiorPromise = null;
+        this.mode = 'photo';
+      }
+    }
+    if (this.interior3d) this.interior3d.group.visible = this.mode === '3d';
+    return this.mode;
   }
 
   loadPhotorealisticCockpit() {
@@ -629,6 +667,15 @@ export class CarCockpit {
     dCtx.restore();
   }
 
+  // Same painters as the photo cockpit, drawn into the 3D display canvases (logical units)
+  paint3DScreen(name, ctx, w, h) {
+    const s = this._screenState;
+    if (!s) return;
+    if (name === 'cluster') {
+      this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.combo, s.comboTimer, s.odometerKm);
+    }
+  }
+
   setViewPreset(index) {
     this.viewPreset = index % 3;
   }
@@ -682,6 +729,11 @@ export class CarCockpit {
     this.renderer.setRenderTarget(this.mirrorRenderTarget);
     this.renderer.clear();
     this.renderer.render(scene, this.mirrorCamera);
+    if (this.is3D) {
+      // The 3D mirror glass samples the render target directly: no GPU->CPU readback
+      this.renderer.setRenderTarget(prevTarget);
+      return;
+    }
     this.renderer.readRenderTargetPixels(
       this.mirrorRenderTarget,
       0,
@@ -749,6 +801,26 @@ export class CarCockpit {
 
     if (this.makasFlashIntensity > 0) {
       this.makasFlashIntensity = Math.max(0, this.makasFlashIntensity - dt * 2.5);
+    }
+
+    if (this.is3D) {
+      this._screenState = { ...state, nearbyCars };
+      this.interior3d.update({
+        steerAngle: this.currentSteerVisual,
+        night: Boolean(state.cabinNight),
+        aspect: window.innerWidth / window.innerHeight,
+        ambientHex: AMBIENT_COLORS[this.ambientKey]?.hex ?? 0x00f0ff,
+        flash: this.makasFlashIntensity,
+        wiperSweep: Math.sin(this.wiperPhase),
+        wipersVisible: this.wipersEnabled || this.wiperPhase > 0.01,
+      });
+      if (this.camera) this.wheelScreenBounds = this.interior3d.getWheelScreenBounds(this.camera);
+      // The overlay canvas stays in place (it receives wheel drags) but draws nothing
+      if (!this._overlayCleared && this.overlayCtx) {
+        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        this._overlayCleared = true;
+      }
+      return;
     }
 
     this.renderOverlayCanvas(

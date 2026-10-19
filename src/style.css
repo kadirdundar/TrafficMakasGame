@@ -857,6 +857,17 @@
     justify-content: center;
   }
 
+  .asset-credits {
+    margin: 10px 0 0;
+    text-align: center;
+    font-size: 0.68rem;
+    opacity: 0.55;
+  }
+
+  .asset-credits a {
+    color: inherit;
+  }
+
   .cta-btn {
     flex: 1;
     max-inline-size: 360px;

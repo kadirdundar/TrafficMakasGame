@@ -1,16 +1,12 @@
 import * as THREE from 'three';
-import { LANE_CENTERS } from './world.js';
-
-const VEHICLE_PALETTE = [
-  0xe2e8f0, // Pearl White
-  0x1e293b, // Metallic Anthracite
-  0x0f172a, // Obsidian Black
-  0xdc2626, // Crimson Red
-  0x2563eb, // Electric Blue
-  0x94a3b8, // Silver Metallic
-  0xf59e0b, // Taxi / Sport Yellow
-  0x10b981, // Emerald Green
-];
+import { LANE_CENTERS, WEATHER_PRESETS } from './world.js';
+import {
+  createTrafficVehicle,
+  applyPaint,
+  paintForIndex,
+  pickRandomPaint,
+  setVehicleLightsNightMode,
+} from './vehicleModels.js';
 
 const VEHICLE_TYPES = [
   { type: 'sedan', width: 1.86, height: 1.42, length: 4.5, baseSpeedKmh: 105 },
@@ -27,12 +23,19 @@ export class TrafficManager {
     this.densityMode = 'heavy'; // 'normal' | 'heavy' | 'extreme'
     this.maxVehicles = 18;
     this.isRemoteControlled = false;
+    this.nightLights = null; // Synced from world.weatherKey in update()
 
     // Track recent makas timestamp to detect "ÇİFT MAKAS / İĞNE DELİĞİ" (threading the needle between 2 cars)
     this.lastMakasTime = 0;
     this.lastMakasCarId = -1;
 
     this.initPool(24);
+  }
+
+  setNightLights(night) {
+    this.nightLights = night;
+    setVehicleLightsNightMode(night);
+    for (const car of this.vehicles) car.visual.setNight(night);
   }
 
   setDensity(mode) {
@@ -42,338 +45,18 @@ export class TrafficManager {
     else this.maxVehicles = 24;
   }
 
-  createLicensePlateTexture() {
-    if (this._plateTex) return this._plateTex;
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, 256, 64);
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, 252, 60);
-
-    // Turkish EU Blue Strip on Left ("TR")
-    ctx.fillStyle = '#1d4ed8';
-    ctx.fillRect(4, 4, 30, 56);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 14px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('TR', 19, 50);
-
-    // Plate Number
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '900 34px ui-monospace, monospace';
-    ctx.fillText('34 IST 34', 142, 45);
-
-    this._plateTex = new THREE.CanvasTexture(canvas);
-    this._plateTex.colorSpace = THREE.SRGBColorSpace;
-    return this._plateTex;
-  }
-
-  createVehicleMesh(spec, paintHex) {
-    const group = new THREE.Group();
-
-    // High-gloss metallic automotive clearcoat-like paint
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: paintHex,
-      roughness: 0.16,
-      metalness: 0.82,
-    });
-
-    // Tinted automotive glass
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x070b14,
-      roughness: 0.06,
-      metalness: 0.94,
-    });
-
-    // Dark carbon/diffuser trim
-    const darkTrimMat = new THREE.MeshStandardMaterial({
-      color: 0x11141c,
-      roughness: 0.65,
-      metalness: 0.25,
-    });
-
-    // Chrome / Alloy wheel material
-    const alloyMat = new THREE.MeshStandardMaterial({
-      color: 0xdce4f0,
-      roughness: 0.18,
-      metalness: 0.92,
-    });
-
-    const lowerH = spec.type === 'truck' ? 1.05 : spec.height * 0.48;
-
-    // 1. Main Sculpted Lower Body Beltline
-    const lowerGeo = new THREE.BoxGeometry(spec.width * 0.96, lowerH, spec.length * 0.94);
-    const lowerMesh = new THREE.Mesh(lowerGeo, bodyMat);
-    lowerMesh.position.y = lowerH / 2 + 0.24;
-    group.add(lowerMesh);
-
-    // Wide Fender Flares / Side Shoulder Bulges (Gives cars an aggressive wide stance)
-    const flareGeo = new THREE.BoxGeometry(spec.width * 1.01, lowerH * 0.62, spec.length * 0.86);
-    const flareMesh = new THREE.Mesh(flareGeo, bodyMat);
-    flareMesh.position.y = lowerH * 0.36 + 0.23;
-    group.add(flareMesh);
-
-    // Lower Black Side Skirts & Front/Rear Bumpers
-    const skirtGeo = new THREE.BoxGeometry(spec.width * 0.99, 0.1, spec.length * 0.97);
-    const skirtMesh = new THREE.Mesh(skirtGeo, darkTrimMat);
-    skirtMesh.position.y = 0.23;
-    group.add(skirtMesh);
-
-    // 2. Cabin / Greenhouse (Aerodynamic Sloped Windshield & Fastback Rear Window)
-    if (spec.type === 'truck') {
-      const boxMat = new THREE.MeshStandardMaterial({
-        color: 0xf1f5f9,
-        roughness: 0.45,
-        metalness: 0.25,
-      });
-      const cargoGeo = new THREE.BoxGeometry(spec.width, spec.height - 0.8, spec.length * 0.74);
-      const cargoMesh = new THREE.Mesh(cargoGeo, boxMat);
-      cargoMesh.position.set(0, (spec.height - 0.8) / 2 + 0.78, spec.length * 0.11);
-      group.add(cargoMesh);
-
-      // Aerodynamic Wind Deflector on Truck Cab Roof
-      const cabGeo = new THREE.BoxGeometry(spec.width * 0.94, spec.height * 0.64, spec.length * 0.22);
-      const cabMesh = new THREE.Mesh(cabGeo, bodyMat);
-      cabMesh.position.set(0, spec.height * 0.34 + 0.52, -spec.length * 0.38);
-      group.add(cabMesh);
-
-      const windGlass = new THREE.Mesh(
-        new THREE.BoxGeometry(spec.width * 0.88, 0.72, 0.08),
-        glassMat
-      );
-      windGlass.position.set(0, 1.9, -spec.length * 0.49);
-      windGlass.rotation.x = 0.15;
-      group.add(windGlass);
-    } else {
-      const cabinH = spec.height * 0.44;
-      const cabinW = spec.width * 0.82;
-      const cabinL = spec.type === 'van' || spec.type === 'suv' ? spec.length * 0.62 : spec.length * 0.46;
-      const cabinZ = spec.type === 'sport' ? 0.14 : 0.06;
-      const cabinBaseY = lowerH + 0.2;
-
-      // Central Tinted Glass Cabin Core
-      const cabinCore = new THREE.Mesh(
-        new THREE.BoxGeometry(cabinW, cabinH * 0.94, cabinL * 0.76),
-        glassMat
-      );
-      cabinCore.position.set(0, cabinBaseY + cabinH * 0.47, cabinZ);
-      group.add(cabinCore);
-
-      // Sloped Front Windshield (Angled back at ~32 degrees)
-      const frontWindshield = new THREE.Mesh(
-        new THREE.BoxGeometry(cabinW * 0.96, cabinH * 1.05, 0.08),
-        glassMat
-      );
-      frontWindshield.position.set(0, cabinBaseY + cabinH * 0.44, cabinZ - cabinL * 0.44);
-      frontWindshield.rotation.x = 0.56;
-      group.add(frontWindshield);
-
-      // Sloped Rear Fastback Window (Angled forward)
-      const rearSlopeAngle = spec.type === 'suv' || spec.type === 'van' ? -0.32 : -0.64;
-      const rearWindow = new THREE.Mesh(
-        new THREE.BoxGeometry(cabinW * 0.95, cabinH * 1.08, 0.08),
-        glassMat
-      );
-      rearWindow.position.set(0, cabinBaseY + cabinH * 0.44, cabinZ + cabinL * 0.44);
-      rearWindow.rotation.x = rearSlopeAngle;
-      group.add(rearWindow);
-
-      // Sloped Front Hood Nose Wedge
-      const hoodWedge = new THREE.Mesh(
-        new THREE.BoxGeometry(spec.width * 0.92, 0.14, spec.length * 0.32),
-        bodyMat
-      );
-      hoodWedge.position.set(0, lowerH + 0.16, -spec.length * 0.31);
-      hoodWedge.rotation.x = 0.09;
-      group.add(hoodWedge);
-
-      // Painted Roof Panel with Panoramic Black Glass Center & Shark-Fin Antenna
-      const roofPanel = new THREE.Mesh(
-        new THREE.BoxGeometry(cabinW * 0.94, 0.055, cabinL * 0.74),
-        bodyMat
-      );
-      roofPanel.position.set(0, cabinBaseY + cabinH - 0.01, cabinZ);
-      group.add(roofPanel);
-
-      const sunroof = new THREE.Mesh(
-        new THREE.BoxGeometry(cabinW * 0.72, 0.06, cabinL * 0.42),
-        glassMat
-      );
-      sunroof.position.set(0, cabinBaseY + cabinH - 0.005, cabinZ - 0.05);
-      group.add(sunroof);
-
-      // Shark-Fin Roof Antenna
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 0.18), bodyMat);
-      fin.position.set(0, cabinBaseY + cabinH + 0.04, cabinZ + cabinL * 0.28);
-      fin.rotation.x = -0.25;
-      group.add(fin);
-
-      // Side Wing Mirrors (Left & Right)
-      [-1, 1].forEach((side) => {
-        const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.11), bodyMat);
-        mirror.position.set(side * (spec.width * 0.53), cabinBaseY + 0.08, cabinZ - cabinL * 0.34);
-        group.add(mirror);
-      });
-
-      // Sport Rear Lip Spoiler (for Sport & Sedan)
-      if (spec.type === 'sport' || spec.type === 'sedan') {
-        const spoiler = new THREE.Mesh(
-          new THREE.BoxGeometry(spec.width * 0.84, 0.045, 0.14),
-          spec.type === 'sport' ? darkTrimMat : bodyMat
-        );
-        spoiler.position.set(0, lowerH + 0.25, spec.length * 0.44);
-        spoiler.rotation.x = 0.18;
-        group.add(spoiler);
-      }
-    }
-
-    // 3. Detailed 5-Spoke Alloy Wheels & Tires
-    const tireRadius = spec.type === 'truck' ? 0.44 : 0.35;
-    const tireWidth = spec.type === 'truck' ? 0.28 : 0.25;
-    const tireGeo = new THREE.CylinderGeometry(tireRadius, tireRadius, tireWidth, 20);
-    tireGeo.rotateZ(Math.PI / 2);
-
-    const rimGeo = new THREE.CylinderGeometry(tireRadius * 0.68, tireRadius * 0.68, tireWidth + 0.015, 16);
-    rimGeo.rotateZ(Math.PI / 2);
-
-    const hubCapGeo = new THREE.CylinderGeometry(tireRadius * 0.22, tireRadius * 0.22, tireWidth + 0.025, 12);
-    hubCapGeo.rotateZ(Math.PI / 2);
-
-    const wheelX = spec.width / 2 - 0.06;
-    const wheelZ = spec.length * 0.32;
-    [
-      [-wheelX, wheelZ],
-      [wheelX, wheelZ],
-      [-wheelX, -wheelZ],
-      [wheelX, -wheelZ],
-    ].forEach(([wx, wz]) => {
-      const wheelGroup = new THREE.Group();
-      wheelGroup.position.set(wx, tireRadius, wz);
-
-      const tire = new THREE.Mesh(tireGeo, darkTrimMat);
-      wheelGroup.add(tire);
-
-      const rim = new THREE.Mesh(rimGeo, alloyMat);
-      wheelGroup.add(rim);
-
-      const cap = new THREE.Mesh(hubCapGeo, darkTrimMat);
-      wheelGroup.add(cap);
-
-      group.add(wheelGroup);
-    });
-
-    // 4. MODERN MATRIX LED TAIL LIGHTS & FULL-WIDTH LIGHTBAR (Rear face at +Z)
-    const rearZ = spec.length * 0.47;
-    const tailLightMat = new THREE.MeshBasicMaterial({ color: 0xff112b });
-
-    // Left & Right Sculpted LED Tail Light Clusters
-    const tailClusterGeo = new THREE.BoxGeometry(spec.width * 0.28, 0.13, 0.06);
-    const leftTail = new THREE.Mesh(tailClusterGeo, tailLightMat);
-    leftTail.position.set(-spec.width * 0.31, lowerH * 0.8 + 0.22, rearZ);
-    group.add(leftTail);
-
-    const rightTail = new THREE.Mesh(tailClusterGeo, tailLightMat);
-    rightTail.position.set(spec.width * 0.31, lowerH * 0.8 + 0.22, rearZ);
-    group.add(rightTail);
-
-    // Continuous Full-Width LED Lightbar connecting left & right tail lights (Audi/Porsche style!)
-    const lightBar = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width * 0.86, 0.036, 0.055),
-      tailLightMat
-    );
-    lightBar.position.set(0, lowerH * 0.84 + 0.22, rearZ + 0.004);
-    group.add(lightBar);
-
-    // High-Mount Third Brake Strip at top of rear window
-    const highBrake = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width * 0.44, 0.028, 0.04),
-      tailLightMat
-    );
-    highBrake.position.set(0, spec.height * 0.86, spec.length * 0.25);
-    group.add(highBrake);
-
-    // Rear Diffuser & Dual Chrome Exhaust Pipes
-    const exhaustGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.12, 12);
-    exhaustGeo.rotateX(Math.PI / 2);
-    [-spec.width * 0.3, spec.width * 0.3].forEach((ex) => {
-      const pipe = new THREE.Mesh(exhaustGeo, alloyMat);
-      pipe.position.set(ex, 0.24, rearZ + 0.02);
-      group.add(pipe);
-    });
-
-    // Turkish License Plate ("34 IST 34")
-    const plateMat = new THREE.MeshBasicMaterial({ map: this.createLicensePlateTexture() });
-    const plateMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.13), plateMat);
-    plateMesh.position.set(0, 0.46, rearZ + 0.032);
-    group.add(plateMesh);
-
-    // 5. FRONT SINGLEFRAME GRILLE & MATRIX LED HEADLIGHTS (At -Z, visible in Rear-View Mirror!)
-    const frontZ = -spec.length * 0.47;
-    const grille = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width * 0.48, lowerH * 0.56, 0.05),
-      darkTrimMat
-    );
-    grille.position.set(0, lowerH * 0.48 + 0.2, frontZ);
-    group.add(grille);
-
-    const grilleChrome = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width * 0.51, lowerH * 0.6, 0.04),
-      alloyMat
-    );
-    grilleChrome.position.set(0, lowerH * 0.48 + 0.2, frontZ + 0.005);
-    group.add(grilleChrome);
-
-    const headLightMat = new THREE.MeshBasicMaterial({ color: 0xe8f4ff });
-    const headGeo = new THREE.BoxGeometry(spec.width * 0.22, 0.11, 0.06);
-    const leftHead = new THREE.Mesh(headGeo, headLightMat);
-    leftHead.position.set(-spec.width * 0.34, lowerH * 0.72 + 0.2, frontZ);
-    group.add(leftHead);
-
-    const rightHead = new THREE.Mesh(headGeo, headLightMat);
-    rightHead.position.set(spec.width * 0.34, lowerH * 0.72 + 0.2, frontZ);
-    group.add(rightHead);
-
-    // 6. Left & Right Amber Turn Signal Indicators (Blinkers)
-    const leftBlinkerMat = new THREE.MeshBasicMaterial({ color: 0xff9900 });
-    const rightBlinkerMat = new THREE.MeshBasicMaterial({ color: 0xff9900 });
-    const blinkerGeo = new THREE.BoxGeometry(0.18, 0.065, 0.068);
-
-    const leftBlinker = new THREE.Mesh(blinkerGeo, leftBlinkerMat);
-    leftBlinker.position.set(-spec.width * 0.36, lowerH * 0.7 + 0.22, rearZ + 0.01);
-    leftBlinker.visible = false;
-    group.add(leftBlinker);
-
-    const rightBlinker = new THREE.Mesh(blinkerGeo, rightBlinkerMat);
-    rightBlinker.position.set(spec.width * 0.36, lowerH * 0.7 + 0.22, rearZ + 0.01);
-    rightBlinker.visible = false;
-    group.add(rightBlinker);
-
-    return {
-      group,
-      bodyMat,
-      tailLightMat,
-      leftBlinker,
-      rightBlinker,
-    };
-  }
-
   initPool(count) {
     for (let i = 0; i < count; i++) {
       const spec = VEHICLE_TYPES[i % VEHICLE_TYPES.length];
-      const paint = VEHICLE_PALETTE[i % VEHICLE_PALETTE.length];
-      const built = this.createVehicleMesh(spec, paint);
+      const variant = Math.floor(i / VEHICLE_TYPES.length);
+      const built = createTrafficVehicle(spec, i, variant, paintForIndex(i));
 
       const car = {
         id: i + 1,
         spec,
         mesh: built.group,
         bodyMat: built.bodyMat,
-        tailLightMat: built.tailLightMat,
+        visual: built,
         leftBlinker: built.leftBlinker,
         rightBlinker: built.rightBlinker,
         lane: i % 4,
@@ -478,8 +161,7 @@ export class TrafficManager {
     car.overtaken = false;
 
     // Fresh random paint color for variety
-    const paint = VEHICLE_PALETTE[Math.floor(Math.random() * VEHICLE_PALETTE.length)];
-    car.bodyMat.color.setHex(paint);
+    applyPaint(car.bodyMat, pickRandomPaint());
 
     car.mesh.position.set(car.x, 0, car.z);
     car.mesh.rotation.y = 0;
@@ -555,6 +237,12 @@ export class TrafficManager {
       ? Math.min(this.vehicles.length, this.maxVehicles + 4)
       : this.maxVehicles;
 
+    // Night / dusk / rain: brighter LEDs + glow halos on every traffic car
+    if (world) {
+      const night = Boolean(WEATHER_PRESETS[world.weatherKey]?.streetlightsOn);
+      if (night !== this.nightLights) this.setNightLights(night);
+    }
+
     const frontMostZ = isConnected ? Math.min(0, mpContext.peerRelZ || 0) : 0;
     const rearMostZ = isConnected ? Math.max(0, mpContext.peerRelZ || 0) : 0;
 
@@ -584,7 +272,7 @@ export class TrafficManager {
 
         // Smoothly interpolate speed toward targetSpeedKmh between packets
         car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, car.targetSpeedKmh, dt * 1.5);
-        car.tailLightMat.color.setHex(car.isBraking ? 0xff4455 : 0xd90429);
+        car.visual.setBraking(car.isBraking);
       } else {
         // HOST / SINGLE-PLAYER AUTHORITATIVE SIMULATION:
         // 1. Check if there is a slower AI car directly ahead in the same lane
@@ -647,7 +335,7 @@ export class TrafficManager {
         }
 
         car.isBraking = isBraking;
-        car.tailLightMat.color.setHex(isBraking ? 0xff4455 : 0xd90429);
+        car.visual.setBraking(isBraking);
 
         // Relative longitudinal movement along Z (Host is at Z = 0)
         const relSpeedMs = (playerSpeedKmh - car.speedKmh) / 3.6;
@@ -795,7 +483,7 @@ export class TrafficManager {
         car.changingLaneTimer = 1.0;
       }
       if (typeof s.colorHex === 'number') {
-        car.bodyMat.color.setHex(s.colorHex);
+        applyPaint(car.bodyMat, s.colorHex);
       }
 
       car.syncWorldDistM = s.worldDistM;
