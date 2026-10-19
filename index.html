@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#080b12" />
   <title>OTOBAN MAKAS 3D — Kokpit Sürüş Simülasyonu</title>
-  <script type="module" crossorigin src="./assets/index-CpomYzXv.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-D9dUrewW.css">
+  <script type="module" crossorigin src="./assets/index-CDHLLMxz.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-KsA_BofL.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -114,6 +114,7 @@
     <span><kbd>L</kbd> Ambiyans</span>
     <span><kbd>T</kbd> Hava</span>
     <span><kbd>C</kbd> Açı</span>
+    <span><kbd>K</kbd> Kokpit</span>
   </div>
 
   <!-- Mobile & Touch Controls Overlay -->
@@ -240,6 +241,14 @@
           </div>
 
           <div class="setting-row">
+            <label>Kokpit Görünümü</label>
+            <div class="segmented-control" id="cockpit-mode-group">
+              <button type="button" class="seg-btn active" data-cockpit="photo">Fotoğraf</button>
+              <button type="button" class="seg-btn" data-cockpit="3d">3D (Beta)</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
             <label>Mobil / Dokunmatik Kontrol Tipi</label>
             <div class="segmented-control" id="steer-mode-group">
               <button type="button" class="seg-btn active" data-steermode="wheel">Direksiyon</button>
@@ -284,6 +293,11 @@
           Yolu Sıfırla &amp; Tamir Et
         </button>
       </div>
+
+      <p class="asset-credits">
+        Online oyuncu aracı ve 3D kokpit: <a href="https://sketchfab.com/3d-models/audi-a8-custom-2018-cd094d03f7684809900a929a9c88c8db" target="_blank" rel="noopener">"Audi A8 Custom 2018"</a>
+        — everhard, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> (iç mekân çıkarıldı, sadeleştirildi)
+      </p>
     </div>
   </div>
 
