@@ -18,6 +18,210 @@ const WHEEL_CX = 174.5;
 const WHEEL_CY = 154.5;
 const WHEEL_R = 63.0;
 
+// Window frame edges fitted to the reference photo (x as a function of y, 600x338 space)
+const leftPillarInnerX = (y) => 46.53 + 1.01785 * y - 0.00051149 * y * y;
+const rightPillarInnerX = (y) => 549.507 - 1.02696 * y + 0.000588647 * y * y;
+const leftSealX = (y) => -46.017 + 2.05038 * y - 0.00534236 * y * y;
+const rightSealX = (y) => 639.832 - 2.00603 * y + 0.00495744 * y * y;
+
+// Overhead console, mirror stem and rear-view mirror housing (slightly inset from the measured edge)
+const REAR_MIRROR_OUTLINE = [
+  [244.5, -4], [355.5, -4], [354.9, 0], [353.2, 3], [351, 5.5], [348.8, 7.2], [337.5, 8.2],
+  [331, 9.8], [329.4, 11.8], [328.2, 13.8], [325, 16], [321, 18.2], [317.6, 20.2], [322, 22.4],
+  [334, 23], [341, 24.3], [343, 26.5], [342.6, 31], [341.4, 36], [340.4, 40], [338.5, 42.2],
+  [335.5, 43.3], [328, 44], [300, 44.9], [272, 44.6], [264, 44.2], [259.5, 45.6], [257.8, 44],
+  [257.6, 40], [256.4, 34], [255.6, 28], [256.5, 23.2], [262, 22.6], [276, 22], [280.5, 20.2],
+  [278.5, 18.2], [274.8, 16], [272.2, 13.8], [270.6, 11.5], [268.5, 9.6], [264.5, 8.2],
+  [250.5, 7.2], [248.4, 5.5], [246.2, 3], [244.8, 0],
+];
+
+// Wing-mirror housing tops (light silver, almost the studio background color), closed through
+// the opaque housing interior
+const LEFT_WING_MIRROR_OUTLINE = [
+  [-4, 80.4], [0, 80], [4, 79.3], [8, 78.6], [12, 77.8], [16, 76.9], [20, 76.3], [28, 76],
+  [36, 76.1], [42, 76.7], [48, 77.6], [53, 78.6], [57, 79.8], [59.5, 81.2], [62, 84.2], [64, 96],
+  [-4, 96],
+];
+const RIGHT_WING_MIRROR_OUTLINE = [
+  [604, 77.6], [598, 76.6], [592, 75.4], [586, 74.4], [580, 73.6], [574, 72.9], [568, 72.4],
+  [562, 72.2], [557, 73.2], [552, 74.4], [547, 74.9], [543, 75.8], [540, 77.2], [537, 79],
+  [534, 80.4], [530, 82.8], [526, 85.6], [524, 87.3], [526, 100], [604, 100],
+];
+
+// Studio-background matte thresholds (max channel difference from the local background)
+const MATTE_LO = 9;
+const MATTE_HI = 22;
+// Light fringe pixels next to the opaque frame below this difference become glass
+const MATTE_FRAME_CUT = 48;
+
+// Parts of the photo that must stay opaque even where their color matches the studio
+// background: both A-pillars (bright inner faces), the rear-view mirror housing and the
+// wing-mirror glass (live mirror views are composited there).
+function fillOpaqueFrame(ctx) {
+  // Each shape is filled on its own so overlapping outlines never cancel by winding
+  const fillShape = (trace) => {
+    ctx.beginPath();
+    trace();
+    ctx.fill();
+  };
+  const fillOutline = (outline) =>
+    fillShape(() => outline.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y))));
+
+  fillShape(() => {
+    ctx.moveTo(-4, -4);
+    for (let y = -4; y <= 104; y += 2) ctx.lineTo(leftPillarInnerX(y), y);
+    for (let y = 104; y >= 22; y -= 2) ctx.lineTo(Math.max(-4, leftSealX(y)), y);
+    ctx.lineTo(-4, 22);
+  });
+  fillShape(() => {
+    ctx.moveTo(SRC_W + 4, -4);
+    for (let y = -4; y <= 100; y += 2) ctx.lineTo(rightPillarInnerX(y), y);
+    for (let y = 100; y >= 18; y -= 2) ctx.lineTo(Math.min(SRC_W + 4, rightSealX(y)), y);
+    ctx.lineTo(SRC_W + 4, 18);
+  });
+  fillOutline(REAR_MIRROR_OUTLINE);
+  fillOutline(LEFT_WING_MIRROR_OUTLINE);
+  fillOutline(RIGHT_WING_MIRROR_OUTLINE);
+  fillShape(() => ctx.roundRect(-4, 81.5, 44.5, 33, 4));
+  fillShape(() => ctx.roundRect(559.5, 81.5, 44.5, 33, 4));
+}
+
+// Rasterizes the opaque frame at `scale` and returns per-pixel coverage (0..255)
+function rasterizeOpaqueFrame(scale) {
+  const canvas = document.createElement('canvas');
+  canvas.width = SRC_W * scale;
+  canvas.height = SRC_H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#fff';
+  fillOpaqueFrame(ctx);
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const coverage = new Uint8Array(canvas.width * canvas.height);
+  for (let i = 0; i < coverage.length; i++) coverage[i] = data[i * 4 + 3];
+  return coverage;
+}
+
+// Supersampling factor for the processed cockpit layers (reference px -> canvas px),
+// sized so the photo is never stretched much beyond its upscaled resolution on screen.
+function pickTextureScale() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const screenPx =
+    Math.max(
+      window.screen?.width || 0,
+      window.screen?.height || 0,
+      window.innerWidth,
+      window.innerHeight
+    ) * dpr;
+  return Math.max(2, Math.min(4, Math.ceil(screenPx / SRC_W)));
+}
+
+// Catmull-Rom weights for fractional offset t, taps at -1, 0, +1, +2
+function catmullRomWeights(t, out, o) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  out[o] = (-t3 + 2 * t2 - t) * 0.5;
+  out[o + 1] = (3 * t3 - 5 * t2 + 2) * 0.5;
+  out[o + 2] = (-3 * t3 + 4 * t2 + t) * 0.5;
+  out[o + 3] = (t3 - t2) * 0.5;
+}
+
+function buildUpscaleTaps(srcN, dstN) {
+  const idx = new Int32Array(dstN * 4);
+  const w = new Float32Array(dstN * 4);
+  const ratio = srcN / dstN;
+  for (let i = 0; i < dstN; i++) {
+    const c = (i + 0.5) * ratio - 0.5;
+    const i0 = Math.floor(c);
+    catmullRomWeights(c - i0, w, i * 4);
+    for (let k = 0; k < 4; k++) {
+      idx[i * 4 + k] = Math.min(srcN - 1, Math.max(0, i0 - 1 + k));
+    }
+  }
+  return { idx, w };
+}
+
+// Separable Catmull-Rom upscale of a 4-channel float image
+function upscaleRGBA(src, sw, sh, dw, dh) {
+  const xt = buildUpscaleTaps(sw, dw);
+  const yt = buildUpscaleTaps(sh, dh);
+  const tmp = new Float32Array(dw * sh * 4);
+  for (let y = 0; y < sh; y++) {
+    const srow = y * sw;
+    const trow = y * dw;
+    for (let x = 0; x < dw; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let k = 0; k < 4; k++) {
+        const wk = xt.w[x * 4 + k];
+        const si = (srow + xt.idx[x * 4 + k]) * 4;
+        r += src[si] * wk;
+        g += src[si + 1] * wk;
+        b += src[si + 2] * wk;
+        a += src[si + 3] * wk;
+      }
+      const ti = (trow + x) * 4;
+      tmp[ti] = r;
+      tmp[ti + 1] = g;
+      tmp[ti + 2] = b;
+      tmp[ti + 3] = a;
+    }
+  }
+  const dst = new Float32Array(dw * dh * 4);
+  for (let y = 0; y < dh; y++) {
+    const i0 = yt.idx[y * 4], i1 = yt.idx[y * 4 + 1], i2 = yt.idx[y * 4 + 2], i3 = yt.idx[y * 4 + 3];
+    const w0 = yt.w[y * 4], w1 = yt.w[y * 4 + 1], w2 = yt.w[y * 4 + 2], w3 = yt.w[y * 4 + 3];
+    const r0 = i0 * dw * 4, r1 = i1 * dw * 4, r2 = i2 * dw * 4, r3 = i3 * dw * 4;
+    const drow = y * dw * 4;
+    for (let x = 0; x < dw * 4; x++) {
+      dst[drow + x] = tmp[r0 + x] * w0 + tmp[r1 + x] * w1 + tmp[r2 + x] * w2 + tmp[r3 + x] * w3;
+    }
+  }
+  return dst;
+}
+
+// Catmull-Rom sample of an 8-bit RGBA buffer at fractional pixel-index coords
+const cubicWx = new Float32Array(4);
+const cubicWy = new Float32Array(4);
+function sampleCubicRGB(px, w, h, x, y, out) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const wx = cubicWx;
+  const wy = cubicWy;
+  catmullRomWeights(x - x0, wx, 0);
+  catmullRomWeights(y - y0, wy, 0);
+  let r = 0, g = 0, b = 0;
+  for (let j = 0; j < 4; j++) {
+    const sy = Math.min(h - 1, Math.max(0, y0 - 1 + j));
+    for (let i = 0; i < 4; i++) {
+      const sx = Math.min(w - 1, Math.max(0, x0 - 1 + i));
+      const wgt = wx[i] * wy[j];
+      const si = (sy * w + sx) * 4;
+      r += px[si] * wgt;
+      g += px[si + 1] * wgt;
+      b += px[si + 2] * wgt;
+    }
+  }
+  out[0] = r;
+  out[1] = g;
+  out[2] = b;
+}
+
+// 0..1 coverage of the solid steering wheel (rim, 4-ring hub, spokes) at offset (dx, dy) from its center
+function wheelShapeWeight(dx, dy) {
+  const r = Math.hypot(dx, dy);
+  if (r > WHEEL_R) return 0;
+  const isOuterRim = r >= 48.0;
+  const isCenterHub = Math.abs(dx) <= 26 && dy >= -15 && dy <= 28 && r <= 31;
+  const isHorizSpoke = dy >= -13 && dy <= 14 && r < 49.5;
+  const isLowerVSpoke =
+    dy > 10 &&
+    r < 49.5 &&
+    Math.abs(dx) <= 29 - (dy - 10) * 0.18 &&
+    !(Math.abs(dx) <= 6 && dy > 29 && dy < 44);
+  if (!(isOuterRim || isCenterHub || isHorizSpoke || isLowerVSpoke)) return 0;
+  // Soft outer edge hides the studio-background halo around the rim
+  return r > WHEEL_R - 1.5 ? (WHEEL_R - r) / 1.5 : 1;
+}
+
 export class CarCockpit {
   constructor(renderer) {
     this.renderer = renderer;
@@ -42,36 +246,37 @@ export class CarCockpit {
     // Last rendered screen-space steering wheel bounds for direct mouse/touch dragging
     this.wheelScreenBounds = { cx: 300, cy: 500, r: 120 };
 
-    // Rear-view mirror 3D render target & camera (160x80 fast readback for real-time 2D mirror compositing)
-    this.mirrorW = 160;
-    this.mirrorH = 80;
-    this.mirrorRenderTarget = new THREE.WebGLRenderTarget(this.mirrorW, this.mirrorH, {
+    // Rear-view mirror 3D render target & camera (MSAA, sized to the mirror's on-screen
+    // footprint, fast readback for real-time 2D mirror compositing)
+    this.mirrorW = 0;
+    this.mirrorH = 0;
+    this.mirrorRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
+      samples: 4,
     });
-    this.mirrorPixels = new Uint8Array(this.mirrorW * this.mirrorH * 4);
     this.mirrorCanvas = document.createElement('canvas');
-    this.mirrorCanvas.width = this.mirrorW;
-    this.mirrorCanvas.height = this.mirrorH;
     this.mirrorCtx = this.mirrorCanvas.getContext('2d');
-    this.mirrorImgData = this.mirrorCtx.createImageData(this.mirrorW, this.mirrorH);
+    this.resizeMirror();
 
     this.mirrorCamera = new THREE.PerspectiveCamera(52, 2.0, 0.5, 220);
     this.group.add(this.mirrorCamera);
     this.mirrorCamera.position.set(0, 1.35, 1.8);
     this.mirrorCamera.rotation.set(0, Math.PI, 0);
 
-    // Processed Photorealistic Layers from /audi_cockpit.png
+    // Processed Photorealistic Layers from /audi_cockpit.png, supersampled by texScale
     this.imageLoaded = false;
+    this.texScale = pickTextureScale();
     this.dashCanvas = document.createElement('canvas');
-    this.dashCanvas.width = SRC_W;
-    this.dashCanvas.height = SRC_H;
+    this.dashCanvas.width = SRC_W * this.texScale;
+    this.dashCanvas.height = SRC_H * this.texScale;
 
+    // wheelSize is in reference (600x338) units; the canvas holds it at texScale
     this.wheelCanvas = document.createElement('canvas');
     this.wheelSize = Math.ceil(WHEEL_R * 2 + 8);
-    this.wheelCanvas.width = this.wheelSize;
-    this.wheelCanvas.height = this.wheelSize;
+    this.wheelCanvas.width = this.wheelSize * this.texScale;
+    this.wheelCanvas.height = this.wheelSize * this.texScale;
 
     this.loadPhotorealisticCockpit();
   }
@@ -87,6 +292,9 @@ export class CarCockpit {
   }
 
   processCockpitImage(img) {
+    const S = this.texScale;
+    const N = SRC_W * SRC_H;
+
     // 1. Read raw 600x338 pixels
     const rawCanvas = document.createElement('canvas');
     rawCanvas.width = SRC_W;
@@ -96,8 +304,11 @@ export class CarCockpit {
     const rawData = rawCtx.getImageData(0, 0, SRC_W, SRC_H);
     const px = rawData.data;
 
-    // 2. Flood-fill studio background in Windshield & Left/Right Side Windows
-    const windowMask = new Uint8Array(SRC_W * SRC_H);
+    // 2. Flood-fill studio background in Windshield & Left/Right Side Windows.
+    //    The opaque frame (A-pillars, mirrors) blocks the fill so it can't leak into the
+    //    bright pillar faces, which are nearly the same color as the studio background.
+    const frameRef = rasterizeOpaqueFrame(1);
+    const windowMask = new Uint8Array(N);
     const seeds = [
       [180, 40],
       [420, 40],
@@ -132,13 +343,8 @@ export class CarCockpit {
       ];
       for (const [nx, ny] of neighbors) {
         if (nx < 0 || nx >= SRC_W || ny < 0 || ny >= 135) continue;
-        // Protect Center Rear-View Mirror Glass (x: 256..344, y: 19..46)
-        if (nx >= 256 && nx <= 344 && ny >= 19 && ny <= 46) continue;
-        // Protect Left & Right Exterior Mirror Glass (x: 0..41, y: 80..115 and x: 559..600, y: 80..115)
-        if ((nx <= 41 || nx >= 559) && ny >= 80 && ny <= 115) continue;
-
         const npos = ny * SRC_W + nx;
-        if (windowMask[npos]) continue;
+        if (windowMask[npos] || frameRef[npos] >= 128) continue;
         const ni = npos * 4;
         const nr = px[ni];
         const ng = px[ni + 1];
@@ -153,84 +359,235 @@ export class CarCockpit {
       }
     }
 
-    // 3. Extract Photorealistic Rotating Audi Steering Wheel into this.wheelCanvas
-    const wCtx = this.wheelCanvas.getContext('2d');
-    const wImgData = wCtx.createImageData(this.wheelSize, this.wheelSize);
-    const wPx = wImgData.data;
-    const halfW = this.wheelSize / 2;
-
-    for (let wy = 0; wy < this.wheelSize; wy++) {
-      for (let wx = 0; wx < this.wheelSize; wx++) {
-        const dx = wx - halfW;
-        const dy = wy - halfW;
-        const r = Math.hypot(dx, dy);
-        if (r > WHEEL_R) continue;
-
-        const sx = Math.round(WHEEL_CX + dx);
-        const sy = Math.round(WHEEL_CY + dy);
-        if (sx < 0 || sx >= SRC_W || sy < 0 || sy >= SRC_H) continue;
-
-        // Determine if pixel belongs to the solid Steering Wheel (rim, center 4-ring hub, horizontal spokes, or lower V-spokes)
-        const isOuterRim = r >= 48.0 && r <= WHEEL_R;
-        const isCenterHub = Math.abs(dx) <= 26 && dy >= -15 && dy <= 28 && r <= 31;
-        const isHorizSpoke = dy >= -13 && dy <= 14 && r < 49.5;
-        const isLowerVSpoke =
-          dy > 10 &&
-          r < 49.5 &&
-          Math.abs(dx) <= 29 - (dy - 10) * 0.18 &&
-          !(Math.abs(dx) <= 6 && dy > 29 && dy < 44);
-
-        if (isOuterRim || isCenterHub || isHorizSpoke || isLowerVSpoke) {
-          const si = (sy * SRC_W + sx) * 4;
-          const di = (wy * this.wheelSize + wx) * 4;
-          wPx[di] = px[si];
-          wPx[di + 1] = px[si + 1];
-          wPx[di + 2] = px[si + 2];
-          // Smooth anti-aliased outer edge
-          let alpha = 255;
-          if (r > WHEEL_R - 1.5) {
-            alpha = Math.round(Math.max(0, (WHEEL_R - r) / 1.5) * 255);
+    // 3. Soft matte: pixels near the filled glass are compared with the local studio
+    //    background, so anti-aliased fringes get fractional alpha (no leftover speckles)
+    //    and their color is decontaminated toward the neighbouring solid foreground.
+    const W1 = SRC_W + 1;
+    const bgSum = new Float64Array(W1 * (SRC_H + 1) * 4);
+    const fgSum = new Float64Array(W1 * (SRC_H + 1) * 4);
+    // Solid foreground = not glass and not touching glass (skips the blended fringe row)
+    const solidFg = new Uint8Array(N);
+    for (let y = 0; y < SRC_H; y++) {
+      for (let x = 0; x < SRC_W; x++) {
+        let touches = false;
+        for (let j = Math.max(0, y - 1); j <= Math.min(SRC_H - 1, y + 1) && !touches; j++) {
+          for (let i = Math.max(0, x - 1); i <= Math.min(SRC_W - 1, x + 1); i++) {
+            if (windowMask[j * SRC_W + i]) {
+              touches = true;
+              break;
+            }
           }
-          wPx[di + 3] = alpha;
+        }
+        solidFg[y * SRC_W + x] = touches ? 0 : 1;
+      }
+    }
+    // Summed-area tables of (r, g, b, count) for the glass background and the solid foreground
+    for (let y = 0; y < SRC_H; y++) {
+      for (let c = 0; c < 4; c++) {
+        let rowBg = 0;
+        let rowFg = 0;
+        for (let x = 0; x < SRC_W; x++) {
+          const pos = y * SRC_W + x;
+          const v = c < 3 ? px[pos * 4 + c] : 1;
+          if (windowMask[pos]) rowBg += v;
+          if (solidFg[pos]) rowFg += v;
+          const o = ((y + 1) * W1 + x + 1) * 4 + c;
+          const above = (y * W1 + x + 1) * 4 + c;
+          bgSum[o] = bgSum[above] + rowBg;
+          fgSum[o] = fgSum[above] + rowFg;
         }
       }
     }
-    wCtx.putImageData(wImgData, 0, 0);
+    const boxMean = (sum, x, y, r, out) => {
+      const x0 = Math.max(0, x - r);
+      const y0 = Math.max(0, y - r);
+      const x1 = Math.min(SRC_W, x + r + 1);
+      const y1 = Math.min(SRC_H, y + r + 1);
+      const a = (y0 * W1 + x0) * 4;
+      const b = (y0 * W1 + x1) * 4;
+      const c = (y1 * W1 + x0) * 4;
+      const d = (y1 * W1 + x1) * 4;
+      const n = sum[d + 3] - sum[b + 3] - sum[c + 3] + sum[a + 3];
+      if (n <= 0) return 0;
+      for (let k = 0; k < 3; k++) out[k] = (sum[d + k] - sum[b + k] - sum[c + k] + sum[a + k]) / n;
+      return n;
+    };
 
-    // 4. Build Stationary Dashboard Canvas (with transparent windows & clean dashboard behind the rotating wheel)
-    const dCtx = this.dashCanvas.getContext('2d');
-    const dashData = dCtx.createImageData(SRC_W, SRC_H);
-    const dPx = dashData.data;
+    // Glass pixels within 2px of the opaque frame: light fringes there are cut so the
+    // vector-rasterized frame edge alone defines the silhouette
+    const nearFrame = new Uint8Array(N);
+    for (let y = 0; y < SRC_H; y++) {
+      for (let x = 0; x < SRC_W; x++) {
+        if (frameRef[y * SRC_W + x] < 128) continue;
+        for (let j = Math.max(0, y - 2); j <= Math.min(SRC_H - 1, y + 2); j++) {
+          for (let i = Math.max(0, x - 2); i <= Math.min(SRC_W - 1, x + 2); i++) {
+            nearFrame[j * SRC_W + i] = 1;
+          }
+        }
+      }
+    }
 
+    // Float RGBA layer (rgb 0..255, alpha 0..255) at reference resolution
+    const layer = new Float32Array(N * 4);
+    const bg = [0, 0, 0];
+    const fg = [0, 0, 0];
     for (let y = 0; y < SRC_H; y++) {
       for (let x = 0; x < SRC_W; x++) {
         const pos = y * SRC_W + x;
         const i = pos * 4;
+        const cr = px[i];
+        const cg = px[i + 1];
+        const cb = px[i + 2];
+        layer[i] = cr;
+        layer[i + 1] = cg;
+        layer[i + 2] = cb;
+        layer[i + 3] = 255;
 
         if (windowMask[pos]) {
-          // Transparent windshield & side windows!
-          dPx[i + 3] = 0;
+          layer[i + 3] = 0;
+          continue;
+        }
+        if (frameRef[pos] >= 128 || boxMean(bgSum, x, y, 3, bg) === 0) continue;
+
+        const dr = cr - bg[0];
+        const dg = cg - bg[1];
+        const db = cb - bg[2];
+        const dMax = Math.max(Math.abs(dr), Math.abs(dg), Math.abs(db));
+        if (dMax <= MATTE_LO || (nearFrame[pos] && dMax < MATTE_FRAME_CUT)) {
+          layer[i + 3] = 0;
           continue;
         }
 
-        // Feather 1px border next to transparent window for smooth anti-aliasing
-        let neighborWindowCount = 0;
-        if (x > 0 && windowMask[pos - 1]) neighborWindowCount++;
-        if (x < SRC_W - 1 && windowMask[pos + 1]) neighborWindowCount++;
-        if (y > 0 && windowMask[pos - SRC_W]) neighborWindowCount++;
-        if (y < SRC_H - 1 && windowMask[pos + SRC_W]) neighborWindowCount++;
-
-        dPx[i] = px[i];
-        dPx[i + 1] = px[i + 1];
-        dPx[i + 2] = px[i + 2];
-        dPx[i + 3] = neighborWindowCount > 0 ? 205 : 255;
+        let alpha;
+        if (boxMean(fgSum, x, y, 2, fg) > 0) {
+          const fr = fg[0] - bg[0];
+          const fgG = fg[1] - bg[1];
+          const fb = fg[2] - bg[2];
+          const span = fr * fr + fgG * fgG + fb * fb;
+          if (Math.max(Math.abs(fr), Math.abs(fgG), Math.abs(fb)) > MATTE_HI * 2) {
+            alpha = Math.min(1, Math.max(0, (dr * fr + dg * fgG + db * fb) / span));
+            if (alpha < 0.98) {
+              layer[i] = fg[0];
+              layer[i + 1] = fg[1];
+              layer[i + 2] = fg[2];
+            }
+          }
+        }
+        if (alpha === undefined) {
+          const t = Math.min(1, (dMax - MATTE_LO) / (MATTE_HI - MATTE_LO));
+          alpha = t * t * (3 - 2 * t);
+        }
+        layer[i + 3] = alpha * 255;
       }
+    }
+
+    // Drop isolated weak specks in the glass (photo noise with no solid neighbour)
+    const matteAlpha = new Float32Array(N);
+    for (let p = 0; p < N; p++) matteAlpha[p] = layer[p * 4 + 3];
+    for (let y = 0; y < 135; y++) {
+      for (let x = 0; x < SRC_W; x++) {
+        const pos = y * SRC_W + x;
+        const a = matteAlpha[pos];
+        if (a === 0 || a >= 230 || frameRef[pos] >= 128) continue;
+        let support = 0;
+        for (let j = Math.max(0, y - 2); j <= Math.min(SRC_H - 1, y + 2); j++) {
+          for (let i = Math.max(0, x - 2); i <= Math.min(SRC_W - 1, x + 2); i++) {
+            if (i !== x || j !== y) support = Math.max(support, matteAlpha[j * SRC_W + i]);
+          }
+        }
+        if (support < 190) layer[pos * 4 + 3] = 0;
+      }
+    }
+
+    // 4. Pad colors into the transparent glass so upscaling doesn't pull in studio white
+    const assigned = new Uint8Array(N);
+    for (let p = 0; p < N; p++) assigned[p] = layer[p * 4 + 3] > 0 ? 1 : 0;
+    for (let iter = 0; iter < 4; iter++) {
+      const newly = [];
+      for (let y = 0; y < SRC_H; y++) {
+        for (let x = 0; x < SRC_W; x++) {
+          const pos = y * SRC_W + x;
+          if (assigned[pos]) continue;
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let j = Math.max(0, y - 1); j <= Math.min(SRC_H - 1, y + 1); j++) {
+            for (let k = Math.max(0, x - 1); k <= Math.min(SRC_W - 1, x + 1); k++) {
+              const q = j * SRC_W + k;
+              if (!assigned[q]) continue;
+              r += layer[q * 4];
+              g += layer[q * 4 + 1];
+              b += layer[q * 4 + 2];
+              n++;
+            }
+          }
+          if (n > 0) {
+            layer[pos * 4] = r / n;
+            layer[pos * 4 + 1] = g / n;
+            layer[pos * 4 + 2] = b / n;
+            newly.push(pos);
+          }
+        }
+      }
+      for (const pos of newly) assigned[pos] = 1;
+    }
+
+    // 5. Upscale the dashboard layer by S with Catmull-Rom, then sharpen the frame edges
+    //    with the vector-rasterized opaque frame at the same resolution.
+    const DW = SRC_W * S;
+    const DH = SRC_H * S;
+    const up = upscaleRGBA(layer, SRC_W, SRC_H, DW, DH);
+    const frameHi = rasterizeOpaqueFrame(S);
+    const dCtx = this.dashCanvas.getContext('2d');
+    const dashData = dCtx.createImageData(DW, DH);
+    const dPx = dashData.data;
+    for (let p = 0, i = 0; p < DW * DH; p++, i += 4) {
+      dPx[i] = up[i];
+      dPx[i + 1] = up[i + 1];
+      dPx[i + 2] = up[i + 2];
+      dPx[i + 3] = Math.max(up[i + 3], frameHi[p]);
     }
     dCtx.putImageData(dashData, 0, 0);
 
-    // Cleanly reconstruct the stationary dashboard behind the steering wheel rim (r <= WHEEL_R)
+    // 6. Extract Photorealistic Rotating Audi Steering Wheel into this.wheelCanvas at S,
+    //    with bicubic color sampling and 3x3 supersampled anti-aliased edges
+    const wSizePx = this.wheelSize * S;
+    const wCtx = this.wheelCanvas.getContext('2d');
+    const wImgData = wCtx.createImageData(wSizePx, wSizePx);
+    const wPx = wImgData.data;
+    const halfW = this.wheelSize / 2;
+    const rgb = [0, 0, 0];
+    const SS = 3;
+
+    for (let wy = 0; wy < wSizePx; wy++) {
+      for (let wx = 0; wx < wSizePx; wx++) {
+        const dx = (wx + 0.5) / S - halfW;
+        const dy = (wy + 0.5) / S - halfW;
+        if (Math.hypot(dx, dy) > WHEEL_R + 1) continue;
+
+        let cover = 0;
+        for (let sj = 0; sj < SS; sj++) {
+          for (let si = 0; si < SS; si++) {
+            cover += wheelShapeWeight(
+              (wx + (si + 0.5) / SS) / S - halfW,
+              (wy + (sj + 0.5) / SS) / S - halfW
+            );
+          }
+        }
+        if (cover <= 0) continue;
+
+        sampleCubicRGB(px, SRC_W, SRC_H, WHEEL_CX + dx - 0.5, WHEEL_CY + dy - 0.5, rgb);
+        const di = (wy * wSizePx + wx) * 4;
+        wPx[di] = rgb[0];
+        wPx[di + 1] = rgb[1];
+        wPx[di + 2] = rgb[2];
+        wPx[di + 3] = (cover / (SS * SS)) * 255;
+      }
+    }
+    wCtx.putImageData(wImgData, 0, 0);
+
+    // 7. Cleanly reconstruct the stationary dashboard behind the steering wheel rim (r <= WHEEL_R)
     // so when the wheel turns left/right, no static wheel rim ghost appears behind it!
     dCtx.save();
+    dCtx.scale(S, S);
     dCtx.beginPath();
     dCtx.arc(WHEEL_CX, WHEEL_CY, WHEEL_R + 1, 0, Math.PI * 2);
     dCtx.clip();
@@ -302,8 +659,25 @@ export class CarCockpit {
     return this.wipersEnabled;
   }
 
+  // The rear-view mirror covers ~14% of the screen width; match that in device pixels
+  resizeMirror() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(160, Math.min(512, Math.round((window.innerWidth * dpr * 0.15) / 16) * 16));
+    if (w === this.mirrorW) return;
+    this.mirrorW = w;
+    this.mirrorH = w / 2;
+    this.mirrorRenderTarget.setSize(this.mirrorW, this.mirrorH);
+    this.mirrorPixels = new Uint8Array(this.mirrorW * this.mirrorH * 4);
+    this.mirrorPixels32 = new Uint32Array(this.mirrorPixels.buffer);
+    this.mirrorCanvas.width = this.mirrorW;
+    this.mirrorCanvas.height = this.mirrorH;
+    this.mirrorImgData = this.mirrorCtx.createImageData(this.mirrorW, this.mirrorH);
+    this.mirrorImgData32 = new Uint32Array(this.mirrorImgData.data.buffer);
+  }
+
   renderRearMirror(scene) {
     if (!this.renderer) return;
+    this.resizeMirror();
     const prevTarget = this.renderer.getRenderTarget();
     this.renderer.setRenderTarget(this.mirrorRenderTarget);
     this.renderer.clear();
@@ -319,19 +693,16 @@ export class CarCockpit {
     this.renderer.setRenderTarget(prevTarget);
 
     // Flip horizontally (mirror reflection) and vertically (WebGL bottom-up to Canvas top-down)
-    const dst = this.mirrorImgData.data;
+    // (32-bit copies; alpha is the high byte on little-endian platforms)
+    const src = this.mirrorPixels32;
+    const dst = this.mirrorImgData32;
     const w = this.mirrorW;
     const h = this.mirrorH;
     for (let y = 0; y < h; y++) {
-      const srcRow = (h - 1 - y) * w;
+      const srcRow = (h - 1 - y) * w + (w - 1);
       const dstRow = y * w;
       for (let x = 0; x < w; x++) {
-        const si = (srcRow + (w - 1 - x)) * 4;
-        const di = (dstRow + x) * 4;
-        dst[di] = this.mirrorPixels[si];
-        dst[di + 1] = this.mirrorPixels[si + 1];
-        dst[di + 2] = this.mirrorPixels[si + 2];
-        dst[di + 3] = 255;
+        dst[dstRow + x] = src[srcRow - x] | 0xff000000;
       }
     }
     this.mirrorCtx.putImageData(this.mirrorImgData, 0, 0);
@@ -427,6 +798,8 @@ export class CarCockpit {
 
     const ctx = this.overlayCtx;
     ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, cssW, cssH);
 
@@ -474,12 +847,13 @@ export class CarCockpit {
 
     // 2. Draw Stationary Photorealistic Audi A8 Cockpit (Top Zone: A-pillars & Roof; Bottom Zone: Dash, Doors, Console, Seats)
     // Top Zone (srcY: 0..DASH_SPLIT_Y -> dstY: 0..splitScreenY)
+    const T = this.texScale;
     ctx.drawImage(
       this.dashCanvas,
-      cropX,
+      cropX * T,
       0,
-      cropW,
-      DASH_SPLIT_Y,
+      cropW * T,
+      DASH_SPLIT_Y * T,
       0,
       0,
       cssW,
@@ -489,10 +863,10 @@ export class CarCockpit {
     // Bottom Zone (srcY: DASH_SPLIT_Y..SRC_H -> dstY: splitScreenY..cssH)
     ctx.drawImage(
       this.dashCanvas,
-      cropX,
-      DASH_SPLIT_Y,
-      cropW,
-      SRC_H - DASH_SPLIT_Y,
+      cropX * T,
+      DASH_SPLIT_Y * T,
+      cropW * T,
+      (SRC_H - DASH_SPLIT_Y) * T,
       0,
       splitScreenY,
       cssW,
