@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+// Objects on this layer are drawn by the main camera but skipped by the rear-view mirror
+export const MIRROR_SKIP_LAYER = 1;
 
 export const WEATHER_PRESETS = {
   night: {
@@ -440,57 +444,81 @@ export class HighwayWorld {
       ['FSM KÖPRÜSÜ  •  LEVENT', 'HIZ SINIRI 120 KM/S  •  RADAR KONTROL'],
     ];
 
+    // Every building shares one material (they were identical per-building copies)
+    const buildingMat = new THREE.MeshStandardMaterial({
+      color: 0x0d1320,
+      roughness: 0.85,
+    });
+
+    // Static pieces of a segment are baked into one geometry per material, so each segment
+    // costs ~5 draw calls instead of ~10 (x18 segments, and again for the rear-view mirror)
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _e = new THREE.Euler();
+    const _p = new THREE.Vector3();
+    const _s = new THREE.Vector3(1, 1, 1);
+    const placed = (geo, x, y, z, rotZ = 0) => {
+      _q.setFromEuler(_e.set(0, 0, rotZ));
+      return geo.applyMatrix4(_m.compose(_p.set(x, y, z), _q, _s));
+    };
+
     for (let i = 0; i < numSegments; i++) {
       const z = 40 - i * spacing;
       const segGroup = new THREE.Group();
       segGroup.position.z = z;
 
+      const poleParts = [];
+      const bulbParts = [];
+      const buildingParts = [];
+
       // 1. Reflective Cat-Eye Posts on top of Jersey Barriers (Every 20m)
       const leftRef = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12, 0.22, 0.08),
+        placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), -ROAD_HALF_WIDTH - 0.55, 1.05, 0),
         redReflectorMat
       );
-      leftRef.position.set(-ROAD_HALF_WIDTH - 0.55, 1.05, 0);
       segGroup.add(leftRef);
 
       const rightRef = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12, 0.22, 0.08),
+        placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), ROAD_HALF_WIDTH + 0.55, 1.05, 0),
         whiteReflectorMat
       );
-      rightRef.position.set(ROAD_HALF_WIDTH + 0.55, 1.05, 0);
       segGroup.add(rightRef);
 
       // 2. Highway Streetlights (Left & Right tall curved poles)
       [-1, 1].forEach((side) => {
         const poleX = side * (ROAD_HALF_WIDTH + 1.35);
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 8.8, 8), poleMat);
-        pole.position.set(poleX, 4.4, 0);
-        segGroup.add(pole);
+        poleParts.push(placed(new THREE.CylinderGeometry(0.1, 0.14, 8.8, 8), poleX, 4.4, 0));
 
         // Overhanging arm toward road
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 0.1), poleMat);
-        arm.position.set(poleX - side * 1.2, 8.6, 0);
-        arm.rotation.z = side * 0.12;
-        segGroup.add(arm);
+        poleParts.push(
+          placed(new THREE.BoxGeometry(2.6, 0.1, 0.1), poleX - side * 1.2, 8.6, 0, side * 0.12)
+        );
 
         // Glowing LED/Sodium fixture
-        const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.08, 0.32), lampGlowMat);
-        bulb.position.set(poleX - side * 2.2, 8.45, 0);
-        segGroup.add(bulb);
+        bulbParts.push(placed(new THREE.BoxGeometry(0.75, 0.08, 0.32), poleX - side * 2.2, 8.45, 0));
       });
 
       // 3. Distant City Buildings / Towers Silhouette on both sides
       [-1, 1].forEach((side) => {
         const bHeight = 14 + ((i * 7 + (side > 0 ? 3 : 0)) % 28);
         const bWidth = 8 + (i % 5) * 2;
-        const bMat = new THREE.MeshStandardMaterial({
-          color: 0x0d1320,
-          roughness: 0.85,
-        });
-        const building = new THREE.Mesh(new THREE.BoxGeometry(bWidth, bHeight, 10), bMat);
-        building.position.set(side * (26 + (i % 4) * 7), bHeight / 2 - 0.5, 0);
-        segGroup.add(building);
+        buildingParts.push(
+          placed(
+            new THREE.BoxGeometry(bWidth, bHeight, 10),
+            side * (26 + (i % 4) * 7),
+            bHeight / 2 - 0.5,
+            0
+          )
+        );
       });
+
+      segGroup.add(new THREE.Mesh(mergeGeometries(poleParts), poleMat));
+      segGroup.add(new THREE.Mesh(mergeGeometries(bulbParts), lampGlowMat));
+      const buildings = new THREE.Mesh(mergeGeometries(buildingParts), buildingMat);
+      // Far-off silhouettes are left out of the rear-view mirror render (see CarCockpit)
+      buildings.layers.set(MIRROR_SKIP_LAYER);
+      segGroup.add(buildings);
+      [...poleParts, ...bulbParts, ...buildingParts].forEach((g) => g.dispose());
 
       // 4. Overhead Highway Gantry Sign every 6 segments
       if (i % 6 === 2) {

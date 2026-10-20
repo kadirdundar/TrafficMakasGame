@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
-import { HighwayWorld, ROAD_HALF_WIDTH, WEATHER_PRESETS } from './world.js';
+import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
 import { MultiplayerManager } from './multiplayer.js';
 
@@ -25,7 +25,13 @@ class OtobanMakasGame {
       antialias: true,
       powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Adaptive render scale: starts at the device pixel ratio (max 2), steps down while the
+    // frame rate is too low and back up once there is headroom again (see adaptRenderScale)
+    this.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.minPixelRatio = Math.min(1, this.maxPixelRatio);
+    this.pixelRatio = this.maxPixelRatio;
+    this.renderer.setPixelRatio(this.pixelRatio);
+    this.renderer.info.autoReset = false; // count draw calls of both passes (mirror + main)
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
@@ -38,6 +44,7 @@ class OtobanMakasGame {
       0.05,
       360
     );
+    this.camera.layers.enable(MIRROR_SKIP_LAYER);
 
     // Subsystems
     this.world = new HighwayWorld(this.scene);
@@ -121,6 +128,9 @@ class OtobanMakasGame {
     this.steerInput = 0;
 
     this.lastTime = performance.now();
+    this.perf = { frames: 0, elapsed: 0, calls: 0, window: 0, goodWindows: 0, lastRaise: -10, settle: 0 };
+    this.fpsMeter = null;
+    if (new URLSearchParams(window.location.search).has('fps')) this.toggleFpsMeter();
 
     this.bindEvents();
     this.updateHUD();
@@ -198,6 +208,9 @@ class OtobanMakasGame {
       }
       if (code === 'KeyM') {
         this.toggleSound();
+      }
+      if (code === 'KeyP') {
+        this.toggleFpsMeter();
       }
       if (code === 'Escape') {
         this.togglePauseMenu();
@@ -1135,56 +1148,138 @@ class OtobanMakasGame {
     this.updateHUD();
   }
 
+  // Writes to the DOM only when a value actually changed: the HUD is refreshed every frame,
+  // and redundant textContent/style writes still force style recalculation
+  setHudText(id, value) {
+    const el = this.hudEls[id] ?? (this.hudEls[id] = document.getElementById(id));
+    if (el && this.hudCache[id] !== value) {
+      this.hudCache[id] = value;
+      el.textContent = value;
+    }
+  }
+
+  setHudStyle(id, prop, value) {
+    const el = this.hudEls[id] ?? (this.hudEls[id] = document.getElementById(id));
+    const key = `${id}.${prop}`;
+    if (el && this.hudCache[key] !== value) {
+      this.hudCache[key] = value;
+      el.style[prop] = value;
+    }
+  }
+
   updateHUD() {
-    const scoreEl = document.getElementById('hud-score');
-    const bestEl = document.getElementById('hud-best');
-    const comboEl = document.getElementById('hud-combo');
-    const comboBar = document.getElementById('hud-combo-bar');
-    const comboCard = document.getElementById('combo-card');
-    const healthBar = document.getElementById('hud-health-bar');
-    const miniSpeed = document.getElementById('mini-speed');
-    const miniGear = document.getElementById('mini-gear');
+    this.hudEls ??= {};
+    this.hudCache ??= {};
 
-    if (scoreEl) scoreEl.textContent = Math.floor(this.score).toLocaleString('tr-TR');
-    if (bestEl) bestEl.textContent = Math.floor(this.bestScore).toLocaleString('tr-TR');
-    if (comboEl) comboEl.textContent = `${this.combo.toFixed(1)}x`;
-    if (comboBar) comboBar.style.width = `${Math.max(0, Math.min(100, this.comboTimer * 100))}%`;
-    if (comboCard) comboCard.classList.toggle('hot', this.combo >= 4.0);
-
-    if (healthBar) {
-      healthBar.style.width = `${this.health}%`;
-      healthBar.style.background =
-        this.health > 50
-          ? 'linear-gradient(90deg, #00ff88, #00d4ff)'
-          : 'linear-gradient(90deg, #ff2a4b, #ffae00)';
+    this.setHudText('hud-score', Math.floor(this.score).toLocaleString('tr-TR'));
+    this.setHudText('hud-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
+    this.setHudText('hud-combo', `${this.combo.toFixed(1)}x`);
+    this.setHudStyle(
+      'hud-combo-bar',
+      'width',
+      `${Math.round(Math.max(0, Math.min(100, this.comboTimer * 100)))}%`
+    );
+    const hot = this.combo >= 4.0;
+    if (this.hudCache.comboHot !== hot) {
+      this.hudCache.comboHot = hot;
+      document.getElementById('combo-card')?.classList.toggle('hot', hot);
     }
 
-    if (miniSpeed) miniSpeed.textContent = String(Math.round(this.speedKmh));
-    if (miniGear) miniGear.textContent = `S${this.gear}`;
+    this.setHudStyle('hud-health-bar', 'width', `${Math.round(this.health)}%`);
+    this.setHudStyle(
+      'hud-health-bar',
+      'background',
+      this.health > 50
+        ? 'linear-gradient(90deg, #00ff88, #00d4ff)'
+        : 'linear-gradient(90deg, #ff2a4b, #ffae00)'
+    );
+
+    this.setHudText('mini-speed', String(Math.round(this.speedKmh)));
+    this.setHudText('mini-gear', `S${this.gear}`);
 
     // Update Live 2-Player HUD Card
     if (this.multiplayer && this.multiplayer.connected) {
       const peer = this.multiplayer.remote;
-      const peerNameEl = document.getElementById('mp-peer-name');
-      const peerDistEl = document.getElementById('mp-peer-dist');
-      const peerStatsEl = document.getElementById('mp-peer-stats');
+      this.setHudText('mp-peer-name', `🟢 ${peer.name.toUpperCase()}`);
 
-      if (peerNameEl) {
-        peerNameEl.textContent = `🟢 ${peer.name.toUpperCase()}`;
+      const distM = Math.round(Math.abs(peer.relZ));
+      if (distM <= 4) {
+        this.setHudText('mp-peer-dist', '🔥 YAN YANA!');
+      } else if (peer.relZ < 0) {
+        this.setHudText('mp-peer-dist', `ÖNÜNDE ${distM}m`);
+      } else {
+        this.setHudText('mp-peer-dist', `🪞 ARKANDA ${distM}m`);
       }
-      if (peerDistEl) {
-        const distM = Math.round(Math.abs(peer.relZ));
-        if (distM <= 4) {
-          peerDistEl.textContent = '🔥 YAN YANA!';
-        } else if (peer.relZ < 0) {
-          peerDistEl.textContent = `ÖNÜNDE ${distM}m`;
-        } else {
-          peerDistEl.textContent = `🪞 ARKANDA ${distM}m`;
-        }
+      this.setHudText(
+        'mp-peer-stats',
+        `${Math.round(peer.speedKmh)} KM/S • ${peer.combo.toFixed(1)}x • ${Math.floor(peer.score).toLocaleString('tr-TR')} P`
+      );
+    }
+  }
+
+  // Small on-screen FPS / render scale / draw-call readout (P key, or ?fps in the URL)
+  toggleFpsMeter() {
+    if (this.fpsMeter) {
+      this.fpsMeter.remove();
+      this.fpsMeter = null;
+      return;
+    }
+    this.fpsMeter = document.createElement('div');
+    this.fpsMeter.className = 'fps-meter';
+    this.fpsMeter.textContent = '… FPS';
+    document.body.appendChild(this.fpsMeter);
+  }
+
+  // Evaluated once per second of frames. Below ~48 FPS the render scale drops a step; after
+  // 5 smooth seconds it climbs back a step. If a climb immediately causes a drop again, the
+  // lower scale becomes the new ceiling so the resolution does not keep oscillating.
+  adaptRenderScale(frameSec) {
+    const p = this.perf;
+    if (frameSec > 1) return; // tab was in the background: not a representative frame
+    p.frames += 1;
+    p.elapsed += frameSec;
+    p.calls += this.renderer.info.render.calls;
+    if (p.elapsed < 1) return;
+
+    const fps = p.frames / p.elapsed;
+    const calls = Math.round(p.calls / p.frames);
+    p.window += 1;
+    p.frames = 0;
+    p.elapsed = 0;
+    p.calls = 0;
+
+    if (this.fpsMeter) {
+      this.fpsMeter.textContent = `${Math.round(fps)} FPS · ${this.pixelRatio.toFixed(2)}x · ${calls} çizim`;
+    }
+
+    if (p.settle > 0) {
+      p.settle -= 1; // let the resize hitch pass before judging the new scale
+      return;
+    }
+
+    const STEP = 0.25;
+    let next = this.pixelRatio;
+    if (fps < 48 && this.pixelRatio > this.minPixelRatio) {
+      if (p.window - p.lastRaise <= 3) {
+        this.maxPixelRatio = Math.max(this.minPixelRatio, this.pixelRatio - STEP);
       }
-      if (peerStatsEl) {
-        peerStatsEl.textContent = `${Math.round(peer.speedKmh)} KM/S • ${peer.combo.toFixed(1)}x • ${Math.floor(peer.score).toLocaleString('tr-TR')} P`;
+      next = Math.max(this.minPixelRatio, this.pixelRatio - STEP);
+      p.goodWindows = 0;
+    } else if (fps >= 57) {
+      p.goodWindows += 1;
+      if (p.goodWindows >= 5 && this.pixelRatio < this.maxPixelRatio) {
+        next = Math.min(this.maxPixelRatio, this.pixelRatio + STEP);
+        p.lastRaise = p.window;
+        p.goodWindows = 0;
       }
+    } else {
+      p.goodWindows = 0;
+    }
+
+    if (next !== this.pixelRatio) {
+      this.pixelRatio = next;
+      this.renderer.setPixelRatio(next);
+      p.settle = 1;
     }
   }
 
@@ -1192,8 +1287,11 @@ class OtobanMakasGame {
     requestAnimationFrame(() => this.animate());
 
     const now = performance.now();
-    const dt = Math.min(0.05, (now - this.lastTime) / 1000);
+    const frameSec = (now - this.lastTime) / 1000;
+    const dt = Math.min(0.05, frameSec);
     this.lastTime = now;
+    this.adaptRenderScale(frameSec);
+    this.renderer.info.reset();
 
     if (!this.paused) {
       this.updatePhysics(dt);
