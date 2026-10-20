@@ -674,7 +674,7 @@ export class CarCockpit {
     const s = this._screenState;
     if (!s) return;
     if (name === 'cluster') {
-      this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.combo, s.comboTimer, s.odometerKm);
+      this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
     }
   }
 
@@ -965,8 +965,6 @@ export class CarCockpit {
       rpm,
       gear,
       highBeam,
-      combo,
-      comboTimer,
       odometerKm
     );
 
@@ -1143,108 +1141,179 @@ export class CarCockpit {
     ctx.restore();
   }
 
-  drawVirtualCockpitScreen(
-    ctx,
-    x,
-    y,
-    w,
-    h,
-    speedKmh,
-    rpm,
-    gear,
-    highBeam,
-    combo,
-    comboTimer,
-    odometerKm
-  ) {
+  // Audi Virtual Cockpit: tachometer (left), speedometer (right), digital speed in the middle.
+  // Faces, ticks and numbers never change, so they are drawn once into a cached canvas; each
+  // repaint only adds the arcs, needles and readouts.
+  drawVirtualCockpitScreen(ctx, x, y, w, h, speedKmh, rpm, gear, highBeam, odometerKm) {
     const accent = AMBIENT_COLORS[this.ambientKey]?.css || '#00f0ff';
+    const scale = Math.max(1, ctx.getTransform().a);
+    const layout = {
+      r: h * 0.43,
+      tach: { cx: x + w * 0.2, cy: y + h * 0.52 },
+      speedo: { cx: x + w * 0.8, cy: y + h * 0.52 },
+      centerX: x + w * 0.5,
+    };
 
     ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, h * 0.18);
-    ctx.clip();
+    ctx.drawImage(this.getClusterFace(w, h, scale), x, y, w, h);
 
-    // Deep Audi Virtual Cockpit Background
-    ctx.fillStyle = '#090d16';
-    ctx.fillRect(x, y, w, h);
+    const { r, tach, speedo, centerX } = layout;
+    this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), rpm > 6500 ? '#ff3b4f' : accent);
+    this.drawClusterNeedle(ctx, speedo.cx, speedo.cy, r, Math.min(1, speedKmh / 260), accent);
 
-    const dialR = h * 0.42;
-    const leftDialX = x + w * 0.22;
-    const rightDialX = x + w * 0.78;
-    const dialY = y + h * 0.52;
-
-    // Left Tachometer Dial (0 - 8000 RPM)
-    this.drawMiniAudiDial(ctx, leftDialX, dialY, dialR, Math.min(1, rpm / 8000), accent, true);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.max(8, h * 0.2)}px ui-monospace, monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(`S${gear}`, leftDialX, dialY + dialR * 0.45);
+    ctx.textBaseline = 'middle';
 
-    // Right Speedometer Dial (0 - 240 KM/H)
-    this.drawMiniAudiDial(ctx, rightDialX, dialY, dialR, Math.min(1, speedKmh / 240), accent, false);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.max(8, h * 0.2)}px ui-monospace, monospace`;
-    ctx.fillText(`${Math.round(speedKmh)}`, rightDialX, dialY + dialR * 0.45);
+    // Gear inside the tachometer (tiptronic D1..D8)
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `800 ${h * 0.17}px system-ui, sans-serif`;
+    ctx.fillText(`D${gear}`, tach.cx, tach.cy + r * 0.5);
 
-    // Center Area: Audi 4 Rings + Digital Speed + Makas Combo
-    const centerX = x + w * 0.5;
-    const ringR = Math.max(2.5, h * 0.075);
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = Math.max(1, h * 0.025);
-    for (let i = 0; i < 4; i++) {
-      ctx.beginPath();
-      ctx.arc(centerX + (i - 1.5) * ringR * 1.4, y + h * 0.26, ringR, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.max(10, h * 0.34)}px ui-monospace, monospace`;
-    ctx.fillText(`${Math.round(speedKmh)}`, centerX, y + h * 0.64);
+    // Speed in the middle, between the dials
+    ctx.font = `800 ${h * 0.3}px system-ui, sans-serif`;
+    ctx.fillText(String(Math.round(speedKmh)), centerX, y + h * 0.52);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `600 ${h * 0.09}px system-ui, sans-serif`;
+    ctx.fillText('km/h', centerX, y + h * 0.7);
+    ctx.fillText(`${Math.floor(odometerKm)} km`, centerX, y + h * 0.88);
 
     if (highBeam) {
       ctx.fillStyle = '#3b82f6';
-      ctx.font = `800 ${Math.max(7, h * 0.16)}px system-ui, sans-serif`;
-      ctx.fillText('≡O UZUN FAR', centerX, y + h * 0.86);
-    } else if (combo > 1.0) {
-      ctx.fillStyle = combo >= 4 ? '#ffae00' : accent;
-      ctx.font = `900 ${Math.max(7, h * 0.17)}px system-ui, sans-serif`;
-      ctx.fillText(`MAKAS ${combo.toFixed(1)}x`, centerX, y + h * 0.86);
-    } else {
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = `700 ${Math.max(6, h * 0.14)}px ui-monospace, monospace`;
-      ctx.fillText(`${odometerKm.toFixed(0)} km`, centerX, y + h * 0.86);
+      ctx.font = `800 ${h * 0.11}px system-ui, sans-serif`;
+      ctx.fillText('≡D', centerX, y + h * 0.13);
     }
-
     ctx.restore();
   }
 
-  drawMiniAudiDial(ctx, cx, cy, r, norm, accent, hasRedline) {
-    const startAngle = Math.PI * 0.75;
-    const endAngle = Math.PI * 2.25;
-    const sweep = endAngle - startAngle;
+  // Dial geometry shared by the cached faces and the live needles: 270° sweep from bottom-left
+  static DIAL_START = Math.PI * 0.75;
+  static DIAL_SWEEP = Math.PI * 1.5;
 
-    // Silver outer ring
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = Math.max(1.5, r * 0.08);
+  getClusterFace(w, h, scale) {
+    const key = `${w}x${h}@${scale.toFixed(2)}`;
+    if (this._clusterFace?.key === key) return this._clusterFace.canvas;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(w * scale);
+    canvas.height = Math.ceil(h * scale);
+    const c = canvas.getContext('2d');
+    c.scale(scale, scale);
+
+    // Rounded glass panel with a soft vignette
+    c.beginPath();
+    c.roundRect(0, 0, w, h, h * 0.18);
+    c.clip();
+    const bg = c.createRadialGradient(w / 2, h * 0.45, h * 0.1, w / 2, h * 0.5, w * 0.6);
+    bg.addColorStop(0, '#111a2b');
+    bg.addColorStop(1, '#05070c');
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+
+    const r = h * 0.43;
+    this.drawDialFace(c, w * 0.2, h * 0.52, r, { max: 8, major: 1, minor: 0.5, label: 1, redFrom: 6.5, unit: 'x1000/min' });
+    this.drawDialFace(c, w * 0.8, h * 0.52, r, { max: 260, major: 20, minor: 10, label: 40, unit: 'km/h' });
+
+    // Audi rings above the digital speed
+    const ringR = h * 0.045;
+    c.strokeStyle = '#cbd5e1';
+    c.lineWidth = h * 0.012;
+    for (let i = 0; i < 4; i++) {
+      c.beginPath();
+      c.arc(w / 2 + (i - 1.5) * ringR * 1.45, h * 0.27, ringR, 0, Math.PI * 2);
+      c.stroke();
+    }
+
+    this._clusterFace = { key, canvas };
+    return canvas;
+  }
+
+  drawDialFace(c, cx, cy, r, { max, major, minor, label, redFrom = null, unit }) {
+    const { DIAL_START, DIAL_SWEEP } = CarCockpit;
+    const angleOf = (v) => DIAL_START + DIAL_SWEEP * (v / max);
+
+    const face = c.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+    face.addColorStop(0, '#0d1422');
+    face.addColorStop(1, '#070a12');
+    c.fillStyle = face;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+
+    c.strokeStyle = '#334155';
+    c.lineWidth = r * 0.03;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.stroke();
+
+    if (redFrom !== null) {
+      c.strokeStyle = 'rgba(255, 59, 79, 0.85)';
+      c.lineWidth = r * 0.06;
+      c.beginPath();
+      c.arc(cx, cy, r * 0.9, angleOf(redFrom), angleOf(max));
+      c.stroke();
+    }
+
+    c.lineCap = 'round';
+    for (let v = 0; v <= max + 1e-6; v += minor) {
+      const isMajor = Math.abs(v / major - Math.round(v / major)) < 1e-6;
+      const a = angleOf(v);
+      const r0 = r * (isMajor ? 0.76 : 0.82);
+      c.strokeStyle = redFrom !== null && v >= redFrom ? '#ff3b4f' : isMajor ? '#e2e8f0' : '#64748b';
+      c.lineWidth = r * (isMajor ? 0.035 : 0.022);
+      c.beginPath();
+      c.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      c.lineTo(cx + Math.cos(a) * r * 0.88, cy + Math.sin(a) * r * 0.88);
+      c.stroke();
+    }
+
+    c.fillStyle = '#cbd5e1';
+    c.font = `600 ${r * 0.16}px system-ui, sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (let v = 0; v <= max + 1e-6; v += label) {
+      const a = angleOf(v);
+      c.fillText(String(v), cx + Math.cos(a) * r * 0.6, cy + Math.sin(a) * r * 0.6);
+    }
+    c.fillStyle = '#64748b';
+    c.font = `500 ${r * 0.11}px system-ui, sans-serif`;
+    c.fillText(unit, cx, cy + r * 0.78);
+  }
+
+  // Live part of a dial: a lit arc up to the value and a needle with a soft halo
+  drawClusterNeedle(ctx, cx, cy, r, norm, color) {
+    const { DIAL_START, DIAL_SWEEP } = CarCockpit;
+    const a = DIAL_START + DIAL_SWEEP * Math.max(0.005, norm);
+
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = r * 0.05;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r * 0.94, DIAL_START, a);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    const x0 = cx + Math.cos(a) * r * 0.22;
+    const y0 = cy + Math.sin(a) * r * 0.22;
+    const x1 = cx + Math.cos(a) * r * 0.9;
+    const y1 = cy + Math.sin(a) * r * 0.9;
+    ctx.strokeStyle = 'rgba(255, 70, 50, 0.3)';
+    ctx.lineWidth = r * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    ctx.strokeStyle = '#ff5a3c';
+    ctx.lineWidth = r * 0.045;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
     ctx.stroke();
 
-    // Active progress arc
-    ctx.strokeStyle = hasRedline && norm > 0.8 ? '#ff2a4b' : accent;
-    ctx.lineWidth = Math.max(2, r * 0.14);
+    ctx.fillStyle = '#1e293b';
     ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.82, startAngle, startAngle + sweep * Math.max(0.02, norm));
-    ctx.stroke();
-
-    // Red needle
-    const ang = startAngle + sweep * Math.max(0.01, norm);
-    ctx.strokeStyle = '#ff2a4b';
-    ctx.lineWidth = Math.max(1.5, r * 0.1);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(ang) * (r * 0.85), cy + Math.sin(ang) * (r * 0.85));
-    ctx.stroke();
+    ctx.arc(cx, cy, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   drawUpperMmiScreen(ctx, x, y, w, h, nearbyCars, speedKmh, combo, score, lateralG) {
@@ -1344,7 +1413,7 @@ export class CarCockpit {
     ctx.textAlign = 'center';
     ctx.fillStyle = accent;
     ctx.font = `800 ${Math.max(6, h * 0.17)}px system-ui, sans-serif`;
-    ctx.fillText(`AUTO • S${gear}`, x + w / 2, y + h * 0.36);
+    ctx.fillText(`AUTO • D${gear}`, x + w / 2, y + h * 0.36);
 
     // Bottom drive select bar
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
