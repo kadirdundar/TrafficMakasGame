@@ -697,22 +697,56 @@ class OtobanMakasGame {
     const feed = document.getElementById('makas-feed');
     if (!feed) return;
 
-    const item = document.createElement('div');
-    item.className = `makas-popup ${style}`;
-    item.innerHTML = `
-      <span class="makas-title">${title}</span>
-      <span class="makas-pts">+${Math.round(points)}</span>
-    `;
-    feed.appendChild(item);
+    const LIFETIME_MS = 1600;
+    const pts = Math.round(points);
+    const scheduleExit = (el) => {
+      clearTimeout(el._exitTimer);
+      el._exitTimer = setTimeout(() => {
+        el.classList.add('leaving');
+        setTimeout(() => el.remove(), 260);
+      }, LIFETIME_MS);
+    };
 
-    // Keep max 3 popups on screen
-    while (feed.children.length > 3) {
-      feed.removeChild(feed.firstChild);
+    // Same event back-to-back (e.g. a chain of MAKAS!) → merge into the newest chip
+    // instead of stacking a new one: bump a ×N counter and sum the points.
+    const key = title.replace(/\s*\(.*?\)/g, '');
+    const newest = feed.firstElementChild;
+    if (newest && !newest.classList.contains('leaving') && newest.dataset.key === key) {
+      newest._count += 1;
+      newest._pts += pts;
+      newest.querySelector('.makas-title').textContent = title;
+      newest.querySelector('.makas-count').textContent = `×${newest._count}`;
+      newest.querySelector('.makas-pts').textContent = newest._pts > 0 ? `+${newest._pts}` : '';
+      newest.classList.remove('bump');
+      void newest.offsetWidth;
+      newest.classList.add('bump');
+      scheduleExit(newest);
+      return;
     }
 
-    setTimeout(() => {
-      item.remove();
-    }, 1350);
+    const item = document.createElement('div');
+    item.className = `makas-popup ${style}`;
+    item.dataset.key = key;
+    item._count = 1;
+    item._pts = pts;
+
+    // textContent (not innerHTML): titles can contain the remote peer's name
+    const titleEl = document.createElement('span');
+    titleEl.className = 'makas-title';
+    titleEl.textContent = title;
+    const countEl = document.createElement('span');
+    countEl.className = 'makas-count';
+    const ptsEl = document.createElement('span');
+    ptsEl.className = 'makas-pts';
+    ptsEl.textContent = pts > 0 ? `+${pts}` : '';
+    item.append(titleEl, countEl, ptsEl);
+
+    // Newest on top, older chips fade/shrink via CSS
+    feed.prepend(item);
+    while (feed.children.length > 3) {
+      feed.lastElementChild.remove();
+    }
+    scheduleExit(item);
   }
 
   handleMakas({ lateralGap, speedKmh, isRazorClose, isDoubleMakas }) {
