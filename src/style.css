@@ -234,60 +234,114 @@
     box-shadow: 0 0 8px var(--accent-cyan);
   }
 
-  /* Center Makas Feed */
+  /* Makas Feed: compact side ticker under the score HUD, kept off the road */
   .makas-feed {
     position: fixed;
-    inset-block-start: 16%;
-    inset-inline-start: 50%;
-    transform: translateX(-50%);
+    inset-block-start: calc(max(12px, env(safe-area-inset-top)) + 72px);
+    inset-inline-start: max(16px, env(safe-area-inset-left));
     z-index: 9;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 5px;
+    max-inline-size: min(300px, 30vw);
     pointer-events: none;
   }
 
   .makas-popup {
-    background: linear-gradient(135deg, rgba(10, 16, 30, 0.88), rgba(18, 28, 52, 0.75));
-    border: 1px solid rgba(0, 240, 255, 0.55);
-    border-radius: 999px;
-    padding-block: 6px;
-    padding-inline: 18px;
+    --chip-accent: var(--accent-cyan);
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
-    box-shadow: 0 8px 25px rgba(0, 240, 255, 0.25);
-    animation: popupSlide 1.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    gap: 8px;
+    max-inline-size: 100%;
+    padding-block: 5px;
+    padding-inline: 12px 10px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(8, 12, 22, 0.78), rgba(8, 12, 22, 0.42));
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    transform-origin: left center;
+    animation: chipIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Accent rail on the left edge */
+  .makas-popup::before {
+    content: '';
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-start: 0;
+    inline-size: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--chip-accent);
+    box-shadow: 0 0 8px var(--chip-accent);
   }
 
   .makas-popup.gold {
-    border-color: rgba(255, 174, 0, 0.85);
-    box-shadow: 0 8px 30px rgba(255, 174, 0, 0.4);
+    --chip-accent: var(--accent-amber);
   }
 
   .makas-popup.danger {
-    border-color: rgba(255, 42, 75, 0.85);
-    box-shadow: 0 8px 30px rgba(255, 42, 75, 0.4);
+    --chip-accent: var(--accent-red);
+  }
+
+  /* Older chips recede so the newest one reads first */
+  .makas-popup:nth-child(2) {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+
+  .makas-popup:nth-child(3) {
+    opacity: 0.32;
+    transform: scale(0.85);
+  }
+
+  .makas-popup.bump {
+    animation: chipBump 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .makas-popup.leaving {
+    animation: chipOut 0.26s ease-in forwards;
   }
 
   .makas-title {
-    font-weight: 900;
-    font-size: 0.95rem;
-    letter-spacing: 0.06em;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 800;
+    font-size: 0.74rem;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #fff;
+    color: var(--text-main);
   }
 
   .makas-popup.gold .makas-title {
     color: var(--accent-amber);
   }
 
-  .makas-pts {
+  .makas-count {
     font-family: var(--font-mono);
     font-weight: 800;
-    font-size: 0.9rem;
-    color: var(--accent-cyan);
+    font-size: 0.7rem;
+    color: var(--chip-accent);
+  }
+
+  .makas-count:empty,
+  .makas-pts:empty {
+    display: none;
+  }
+
+  .makas-pts {
+    margin-inline-start: auto;
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 0.8rem;
+    color: var(--chip-accent);
+    font-variant-numeric: tabular-nums;
   }
 
   /* Mini HUD Pill */
@@ -1120,25 +1174,35 @@
 }
 
 @layer animations {
-  @keyframes popupSlide {
-    0% {
+  @keyframes chipIn {
+    from {
       opacity: 0;
-      transform: translateY(18px) scale(0.85);
+      translate: -24px 0;
     }
-    18% {
+    to {
       opacity: 1;
-      transform: translateY(0) scale(1.04);
+      translate: 0 0;
     }
-    30% {
-      transform: translateY(0) scale(1);
+  }
+
+  @keyframes chipBump {
+    40% {
+      scale: 1.08;
     }
-    80% {
-      opacity: 1;
-      transform: translateY(-6px);
-    }
-    100% {
+  }
+
+  @keyframes chipOut {
+    to {
       opacity: 0;
-      transform: translateY(-22px) scale(0.95);
+      translate: -18px 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .makas-popup,
+    .makas-popup.bump,
+    .makas-popup.leaving {
+      animation-duration: 0.01s;
     }
   }
 }
@@ -1240,23 +1304,34 @@
     justify-content: center;
   }
 
+  /* Landscape phones: tuck under the compact top bar on the left; the touch
+     controls live at the bottom, so this strip stays clear of road and thumbs */
   .makas-feed {
-    inset-block-start: 40px !important;
+    inset-block-start: calc(max(4px, env(safe-area-inset-top)) + 38px) !important;
+    inset-inline-start: max(8px, env(safe-area-inset-left)) !important;
+    max-inline-size: min(220px, 34vw) !important;
     gap: 3px !important;
   }
 
   .makas-popup {
     padding-block: 3px !important;
-    padding-inline: 10px !important;
-    gap: 6px !important;
+    padding-inline: 9px 7px !important;
+    gap: 5px !important;
+    border-radius: 6px !important;
+  }
+
+  /* Only the newest two chips on small screens */
+  .makas-popup:nth-child(n + 3) {
+    display: none !important;
   }
 
   .makas-title {
-    font-size: 0.7rem !important;
+    font-size: 0.6rem !important;
   }
 
+  .makas-count,
   .makas-pts {
-    font-size: 0.7rem !important;
+    font-size: 0.62rem !important;
   }
 
   /* Compact Mobile Pedals & Aux Controls */
