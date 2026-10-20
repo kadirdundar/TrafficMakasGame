@@ -65,6 +65,9 @@ export class TrafficManager {
         z: -45 - i * 22,
         syncWorldDistM: 45 + i * 22,
         hasSynced: false,
+        noCollideUntil: 0,
+        pushRemainingZ: 0,
+        localOverrideUntil: 0,
         isBraking: false,
         speedKmh: spec.baseSpeedKmh,
         targetSpeedKmh: spec.baseSpeedKmh,
@@ -227,8 +230,10 @@ export class TrafficManager {
   applyPeerCarHit(carId, hostWorldDistM, newCarWorldDistM, newSpeedKmh) {
     const car = this.vehicles.find((c) => c.id === carId);
     if (!car) return;
-    car.z = hostWorldDistM - newCarWorldDistM;
+    // Slide it to where the guest shoved it instead of jumping there
+    car.pushRemainingZ = hostWorldDistM - newCarWorldDistM - car.z;
     car.speedKmh = newSpeedKmh;
+    car.noCollideUntil = performance.now() / 1000 + 1.2;
   }
 
   update(dt, playerSpeedKmh, playerX, callbacks, world = null, mpContext = null) {
@@ -253,7 +258,11 @@ export class TrafficManager {
     for (let i = 0; i < this.vehicles.length; i++) {
       const car = this.vehicles[i];
       if (!this.isRemoteControlled) {
-        car.active = i < activeTargetCount;
+        const shouldBeActive = i < activeTargetCount;
+        // A car brought back into play (someone joined, density raised) starts far ahead of
+        // the pack instead of reappearing wherever it was parked
+        if (shouldBeActive && !car.active) this.respawnVehicle(car, null, frontMostZ);
+        car.active = shouldBeActive;
         car.mesh.visible = car.active;
       }
       if (!car.active) continue;
@@ -376,6 +385,14 @@ export class TrafficManager {
         }
       }
 
+      // Collision shove: slide the remaining distance in ~0.25 s
+      if (car.pushRemainingZ) {
+        const step = car.pushRemainingZ * Math.min(1, dt * 12);
+        car.pushRemainingZ = Math.abs(car.pushRemainingZ - step) < 0.05 ? 0 : car.pushRemainingZ - step;
+        car.z += step;
+        if (this.isRemoteControlled) car.syncWorldDistM -= step;
+      }
+
       // Follow 3D highway curve offset & tangent angle
       const curveX = world ? world.getCurveOffsetAtZ(car.z) : 0;
       const curveYaw = world ? world.getCurveYawAtZ(car.z) : 0;
@@ -387,13 +404,13 @@ export class TrafficManager {
       const absX = Math.abs(car.x - playerX);
 
       // Check collision overlap (Only if car was ahead of or beside player, never from behind!)
-      if (prevZ < 1.2 && absZ < halfL - 0.4 && absX < halfW - 0.16) {
-        // Collision! Push traffic car ahead and trigger crash callback
-        car.z = -halfL - 1.2;
+      if (nowSec > car.noCollideUntil && prevZ < 1.2 && absZ < halfL - 0.4 && absX < halfW - 0.16) {
+        // Collision! The hit car is shoved ahead over a few frames (not teleported), can't count as
+        // a new crash right away, and on a guest keeps its local position until the host has it too
+        car.noCollideUntil = nowSec + 1.2;
+        car.pushRemainingZ = -halfL - 1.2 - car.z;
         car.speedKmh = Math.max(50, playerSpeedKmh * 0.7);
-        if (this.isRemoteControlled && mpContext) {
-          car.syncWorldDistM = mpContext.localWorldDistM - car.z;
-        }
+        if (this.isRemoteControlled) car.localOverrideUntil = nowSec + 0.8;
         callbacks?.onCollision?.(car);
         car.overtaken = true;
       }
@@ -458,6 +475,7 @@ export class TrafficManager {
 
   applySyncState(snapshot, guestWorldDistM) {
     if (!snapshot || !Array.isArray(snapshot.cars)) return;
+    const nowSec = performance.now() / 1000;
     this.isRemoteControlled = true;
     if (snapshot.densityMode && snapshot.densityMode !== this.densityMode) {
       this.setDensity(snapshot.densityMode);
@@ -471,6 +489,8 @@ export class TrafficManager {
         car.mesh.visible = false;
         continue;
       }
+      // Just shoved by our own crash: keep our position until the host's state includes it
+      if (nowSec < car.localOverrideUntil) continue;
 
       car.active = true;
       car.mesh.visible = true;

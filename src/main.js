@@ -1484,7 +1484,17 @@ class OtobanMakasGame {
     this.adaptRenderScale(frameSec);
     this.renderer.info.reset();
 
-    if (!this.paused) {
+    if (!this.paused && this.multiplayer.connected) {
+      // Online everyone shares the host's clock: a hitch frame (notification, GC, ...) is caught up
+      // in 50 ms steps. Dropping that time would put this car behind the synced traffic, and the
+      // cars it had just passed would then jump back in front of it.
+      let remaining = Math.min(0.5, frameSec);
+      while (remaining > 0.001) {
+        const step = Math.min(0.05, remaining);
+        this.updatePhysics(step);
+        remaining -= step;
+      }
+    } else if (!this.paused) {
       this.updatePhysics(dt);
     } else {
       // Even when paused on the start menu, keep multiplayer synced and render an idle preview!
