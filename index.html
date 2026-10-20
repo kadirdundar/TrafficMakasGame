@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#080b12" />
   <title>OTOBAN MAKAS 3D — Kokpit Sürüş Simülasyonu</title>
-  <script type="module" crossorigin src="./assets/index-mjT4GDCO.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BeWc7QXs.css">
+  <script type="module" crossorigin src="./assets/index-B8qFFsrF.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CzXPjz5x.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -44,24 +44,18 @@
           <div id="hud-health-bar" class="health-bar-fill"></div>
         </div>
       </div>
-      <!-- Live 2-Player Opponent Status Card (Visible when connected) -->
+      <!-- Live Friends Card (Visible when connected): one row per friend, filled in by main.js -->
       <div id="mp-hud-card" class="stat-card mp-hud-card hidden">
-        <div class="mp-hud-top-row">
-          <span id="mp-peer-name" class="mp-peer-name">🟢 OYUNCU 2</span>
-          <span id="mp-peer-dist" class="mp-peer-dist">ÖNÜNDE 12m</span>
-        </div>
-        <div class="mp-hud-bottom-row">
-          <span id="mp-peer-stats" class="mp-peer-stats">140 KM/S • 2.5x • 4,200 P</span>
-          <button id="btn-mp-catchup" type="button" class="mp-catchup-btn" title="Arkadaşının yanına yetiş (R)">🚀 Yakala</button>
-        </div>
+        <div id="mp-peer-list" class="mp-peer-list"></div>
+        <button id="btn-mp-catchup" type="button" class="mp-catchup-btn" title="En yakın arkadaşının yanına yetiş (R)">🚀 Yakala</button>
       </div>
     </div>
 
     <!-- Quick Toolbar (Multiplayer, Weather, Ambient LED, Camera, Audio, Pause) -->
     <div class="hud-toolbar">
-      <button id="btn-mp-quick" class="QuickBtn mp-quick-btn" title="2 Kişilik Oda Kur / Katıl">
+      <button id="btn-mp-quick" class="QuickBtn mp-quick-btn" title="4 Kişiye Kadar Oda Kur / Katıl">
         <span>👥</span>
-        <span id="mp-quick-label" class="btn-text">2 Kişilik</span>
+        <span id="mp-quick-label" class="btn-text">4 Kişilik</span>
       </button>
       <button id="btn-weather" class="QuickBtn" title="Hava Durumu / Zaman (T)">
         <span id="weather-icon">🌙</span>
@@ -156,15 +150,15 @@
       <div class="menu-header">
         <div class="badge-pill">NO HESI • İSTANBUL OTOBAN EDITION</div>
         <h1>OTOBAN <span>MAKAS</span> 3D</h1>
-        <p class="subtitle">Gerçekçi Kokpit • Dinamik Trafik • 2 Kişilik Online &amp; Yakın Geçiş Simülasyonu</p>
+        <p class="subtitle">Gerçekçi Kokpit • Dinamik Trafik • 4 Kişiye Kadar Online &amp; Yakın Geçiş Simülasyonu</p>
       </div>
 
-      <!-- 2-Player WebRTC P2P Multiplayer Lobby Banner -->
+      <!-- WebRTC P2P Multiplayer Lobby Banner (host-centred room, up to 4 players) -->
       <div class="mp-lobby-box">
         <div class="mp-lobby-header">
           <div>
-            <h3>👥 2 Kişilik Beraber Sürüş (Ücretsiz P2P Oda Kodu)</h3>
-            <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşına gönder, aynı trafikte beraber makas atın!</p>
+            <h3>👥 4 Kişiye Kadar Beraber Sürüş (Ücretsiz P2P Oda Kodu)</h3>
+            <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşlarına gönder, 4 kişiye kadar aynı trafikte beraber makas atın!</p>
           </div>
           <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
             <span>ODA KODU:</span>
@@ -271,7 +265,7 @@
       <div class="features-banner">
         <div class="feat-item">⚡ <strong>Yakın Makas:</strong> 100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div>
         <div class="feat-item">🔦 <strong>Selektör Tepkisi:</strong> Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div>
-        <div class="feat-item">👥 <strong>2 Kişilik P2P Mod:</strong> Arkadaşınla aynı trafikte makas at, dikiz aynasından selektörünü gör!</div>
+        <div class="feat-item">👥 <strong>4 Kişilik P2P Mod:</strong> Arkadaşlarınla aynı trafikte makas at, dikiz aynasından selektörlerini gör!</div>
       </div>
 
       <div class="menu-actions">
