@@ -811,16 +811,25 @@ class OtobanMakasGame {
     const maxSpeed = 240;
     const minSpeed = 48;
 
+    // Resistance grows with the square of speed (aero drag) plus a small rolling term,
+    // so the car pulls hard in town but has to fight the air past ~200 km/h.
+    const AERO_DRAG = 0.00036; // km/h/s per (km/h)^2
+    const ROLLING_DRAG = 1.5;
+    const resistance = AERO_DRAG * this.speedKmh * this.speedKmh + ROLLING_DRAG;
+
     let accelKmhPerSec = 0;
     if (throttle > 0) {
-      // Strong turbo acceleration that tapers near 240 km/h electronic limiter
-      const powerCurve = 1.0 - (this.speedKmh / (maxSpeed + 30)) * 0.62;
-      accelKmhPerSec = 52 * powerCurve;
+      // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
+      // ~1.3 s 48→100, ~4 s 100→200, ~8 s 200→240 (power meets drag just above the limiter)
+      const ENGINE_POWER = 5600;
+      const TRACTION_LIMIT = 44;
+      const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
+      accelKmhPerSec = thrust - resistance;
     } else if (brake > 0) {
       accelKmhPerSec = -115; // Strong Brembo sport brakes
     } else {
-      // Engine braking / aerodynamic drag toward 85 km/h cruise
-      accelKmhPerSec = this.speedKmh > 85 ? -16 : 12;
+      // Off throttle: engine braking + drag (bleeds speed faster at 200+), gentle creep up to 85 km/h cruise
+      accelKmhPerSec = this.speedKmh > 85 ? -(6 + resistance) : 12;
     }
 
     // Slight cornering scrub when carving aggressively at high G
