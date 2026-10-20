@@ -141,6 +141,7 @@ class OtobanMakasGame {
       horn: false,
     };
     this.touchSteerValue = 0; // -1 to +1 from steering wheel drag or tilt
+    this.touchThrottle = 0; // 0 to 1 from the analog gas pedal (keyboard gas is always full)
     this.steerMode = 'wheel'; // 'wheel' | 'buttons' | 'tilt'
     this.tiltBaseline = null;
     this.steerInput = 0;
@@ -465,11 +466,7 @@ class OtobanMakasGame {
       el.addEventListener('touchend', preventSafariZoom, { passive: false });
     };
 
-    bindHoldButton(
-      'touch-gas',
-      () => { this.keys.gas = true; },
-      () => { this.keys.gas = false; }
-    );
+    this.bindAnalogGasPedal(preventSafariZoom);
     bindHoldButton(
       'touch-brake',
       () => { this.keys.brake = true; },
@@ -646,6 +643,55 @@ class OtobanMakasGame {
       return;
     }
     el.requestFullscreen({ navigationUI: 'hide' }).then(lockLandscape).catch(() => {});
+  }
+
+  // Analog gas pedal: the higher the finger on the pedal, the more gas (bottom edge ~15%, top
+  // quarter 100%). Sliding up or down while holding changes the level, like a real pedal.
+  bindAnalogGasPedal(preventSafariZoom) {
+    const el = document.getElementById('touch-gas');
+    if (!el) return;
+    const label = el.querySelector('.pedal-label');
+    let activePid = null;
+
+    const setLevel = (clientY) => {
+      const rect = el.getBoundingClientRect();
+      const level = Math.max(0.15, Math.min(1, (rect.bottom - clientY) / (rect.height * 0.75)));
+      this.touchThrottle = level;
+      el.style.setProperty('--gas-level', level.toFixed(2));
+      if (label) label.textContent = `%${Math.round(level * 100)}`;
+    };
+    const end = (e) => {
+      if (activePid === null || e.pointerId !== activePid) return;
+      e.preventDefault();
+      activePid = null;
+      this.touchThrottle = 0;
+      el.classList.remove('active');
+      el.style.setProperty('--gas-level', '0');
+      if (label) label.textContent = 'GAZ';
+    };
+
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.sound.init();
+      activePid = e.pointerId;
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      el.classList.add('active');
+      setLevel(e.clientY);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== activePid) return;
+      e.preventDefault();
+      setLevel(e.clientY);
+    });
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('lostpointercapture', end);
+    // Prevent Safari native double-tap / pinch gestures on the pedal
+    el.addEventListener('touchstart', preventSafariZoom, { passive: false });
+    el.addEventListener('touchmove', preventSafariZoom, { passive: false });
+    el.addEventListener('touchend', preventSafariZoom, { passive: false });
   }
 
   updateSteerModeUI() {
@@ -918,7 +964,7 @@ class OtobanMakasGame {
 
   updatePhysics(dt) {
     // 1. Determine throttle & brake input
-    const throttle = this.keys.gas ? 1.0 : 0.0;
+    const throttle = this.keys.gas ? 1.0 : this.touchThrottle;
     const brake = this.keys.brake ? 1.0 : 0.0;
 
     // Determine steering input (-1 left, +1 right)
@@ -964,7 +1010,8 @@ class OtobanMakasGame {
       const ENGINE_POWER = 5600;
       const TRACTION_LIMIT = 44;
       const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
-      accelKmhPerSec = thrust - resistance;
+      // Part throttle settles at a cruising speed: ~120 km/h at 15%, ~185 km/h at 50%
+      accelKmhPerSec = thrust * throttle - resistance;
     } else if (brake > 0) {
       accelKmhPerSec = -115; // Strong Brembo sport brakes
     } else {
