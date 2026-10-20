@@ -76,6 +76,13 @@ class OtobanMakasGame {
       onPlayerLeft: ({ name }) => {
         this.showMakasNotification(`👋 ${name} ODADAN AYRILDI`, 0, 'normal');
       },
+      onHostChanged: ({ name, isMe }) => {
+        this.showMakasNotification(
+          isMe ? '👑 ODA KURUCUSU ARTIK SENSİN' : `👑 YENİ ODA KURUCUSU: ${name}`,
+          0,
+          'gold'
+        );
+      },
       onPeerHorn: ({ name }) => {
         this.showMakasNotification(`📯 ${name} KORNA ÇALDI!`, 50, 'normal');
       },

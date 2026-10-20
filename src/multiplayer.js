@@ -7,17 +7,26 @@ const PEER_PREFIX = 'otoban-makas-v1-room-';
 
 // Host-centred room: every guest connects only to the host. The host owns the traffic, relays
 // everyone's car state to everyone else in one 'states' packet, and admits up to 3 guests.
+// If the host goes away, the guest with the lowest slot takes over (see startMigration).
 export const MAX_PLAYERS = 4;
-const HOST_ID = 'host';
 
 // Heartbeat timeouts. A closed tab or killed app often never fires a WebRTC 'close' (and
 // BroadcastChannel has none), so silence is what removes a player: the host drops a guest after
 // 10 s (it is re-admitted automatically on its next packet, e.g. after returning to the app),
-// and a guest leaves a host that has been silent for 20 s instead of driving in frozen traffic.
+// and guests hand the room to a new host once the host has been silent for 8 s.
 const GUEST_TIMEOUT_MS = 10000;
-const HOST_TIMEOUT_MS = 20000;
-// A frame gap this long means this tab itself was suspended: don't blame the others for it
+const MIGRATE_SILENCE_MS = 8000;
+// A frame gap this long means this tab itself stalled or was suspended: restart the heartbeat
+// clocks instead of blaming the others for the silence (never used to decide anything else)
 const SUSPEND_GAP_MS = 5000;
+
+// Host hand-over: give up on an elected host that has not answered after 12 s and elect the
+// next one; guests get 6 s on top of the heartbeat timeout to reconnect to a new host
+const MIGRATION_TIMEOUT_MS = 12000;
+const HANDOVER_GRACE_MS = 6000;
+// Joining by code tries host ids for epochs 0..5 (each host hand-over bumps the epoch)
+const MAX_EPOCH_SCAN = 5;
+const CONNECT_TIMEOUT_MS = 4000;
 
 // Per-slot paint & nameplate colour so every friend is recognisable (slot 0 = host)
 export const SLOT_STYLES = [
@@ -44,6 +53,7 @@ const PEER_CONFIG = {
 
 const cleanName = (name, fallback) => String(name || '').trim().slice(0, 14) || fallback;
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+const newPlayerId = () => `p-${Math.random().toString(36).slice(2, 10)}`;
 
 export class MultiplayerManager {
   constructor(scene, traffic, callbacks = {}) {
@@ -57,6 +67,8 @@ export class MultiplayerManager {
     this.playerName = localStorage.getItem('otoban_player_name') || 'OYUNCU';
     this.localId = null;
     this.localSlot = 0;
+    this.hostId = null; // who hosts the room right now (changes on a hand-over)
+    this.epoch = 0; // bumped on every host hand-over; packets from an older epoch are ignored
 
     this.peer = null;
     this.hostConn = null; // guest's link to the host (host keeps one conn per player)
@@ -69,6 +81,38 @@ export class MultiplayerManager {
     this.localWorldDistM = 0;
     this.sendAccum = 0;
     this.trafficSyncAccum = 0;
+
+    // Page lifecycle: a hidden or frozen tab (app in the background) neither sends nor checks
+    // timeouts, so the room may have changed hosts in the meantime (see onWake)
+    this._asleepSince = null;
+    this._lastWake = null;
+    const sleep = () => {
+      if (this._asleepSince !== null) return;
+      this._asleepSince = performance.now();
+      // Remembered now: on waking, link-closed events may empty the room before we look
+      this._guestsAtSleep = this.role === 'host' ? this.players.size : 0;
+    };
+    const wake = () => {
+      if (this._asleepSince === null) return;
+      const sleptMs = performance.now() - this._asleepSince;
+      this._asleepSince = null;
+      this._lastWake = { at: performance.now(), sleptMs };
+      this.onWake(sleptMs);
+    };
+    document.addEventListener('visibilitychange', () => (document.hidden ? sleep() : wake()));
+    document.addEventListener('freeze', sleep);
+    document.addEventListener('resume', wake);
+  }
+
+  // Back from the background after longer than the guests wait before handing the room over:
+  // a host most likely lost its room, so it joins it again (as a guest of the new host)
+  onWake(sleptMs) {
+    if (sleptMs > MIGRATE_SILENCE_MS && this.role === 'host' && this._guestsAtSleep > 0) this.rejoinRoom();
+  }
+
+  justWokeFromLongSleep() {
+    const w = this._lastWake;
+    return Boolean(w) && performance.now() - w.at < 3000 && w.sleptMs > MIGRATE_SILENCE_MS;
   }
 
   setPlayerName(name) {
@@ -226,7 +270,7 @@ export class MultiplayerManager {
 
   // Host: every guest link (+ BroadcastChannel). Guest: the host link (+ BroadcastChannel).
   broadcast(payload) {
-    const packet = { ...payload, from: this.localId, senderRole: this.role };
+    const packet = { ...payload, from: this.localId, senderRole: this.role, epoch: this.epoch };
     const conns = this.role === 'host' ? this.getRemotePlayers().map((p) => p.conn) : [this.hostConn];
     for (const conn of conns) {
       if (conn && conn.open) {
@@ -244,7 +288,7 @@ export class MultiplayerManager {
 
   // Host -> one guest: over its WebRTC link if known, and over BroadcastChannel addressed by `to`
   sendTo(conn, toId, payload) {
-    const packet = { ...payload, to: toId, from: this.localId, senderRole: this.role };
+    const packet = { ...payload, to: toId, from: this.localId, senderRole: this.role, epoch: this.epoch };
     if (conn && conn.open) {
       try {
         conn.send(packet);
@@ -276,20 +320,32 @@ export class MultiplayerManager {
     this.bc.onmessage = (ev) => this.handlePacket(ev.data, null);
   }
 
-  disconnect({ silent = false } = {}) {
-    // Tell the others first: a closing WebRTC link is noticed anyway, BroadcastChannel tabs are not
-    if (this.role === 'host' && this.players.size > 0) this.broadcast({ type: 'room_closed' });
-    if (this.role === 'guest' && this.connected) this.broadcast({ type: 'leave' });
+  // The host's PeerJS id. Every host hand-over bumps the epoch, so a new host never has to wait
+  // for the old (possibly still registered) id to be released. Epoch 0 is the plain room code.
+  hostPeerId(code, epoch) {
+    return `${PEER_PREFIX}${code}${epoch > 0 ? `-e${epoch}` : ''}`;
+  }
 
-    if (this._helloInterval) {
-      clearInterval(this._helloInterval);
-      this._helloInterval = null;
-    }
-    for (const conn of [this.hostConn, ...this.getRemotePlayers().map((p) => p.conn)]) {
-      try {
-        conn?.close();
-      } catch (_) {}
-    }
+  closeLink(conn) {
+    try {
+      conn?.close();
+    } catch (_) {}
+  }
+
+  stopTimers() {
+    clearInterval(this._helloInterval);
+    clearTimeout(this._connectTimer);
+    this._helloInterval = null;
+    this._connectTimer = null;
+  }
+
+  disconnect({ silent = false, notifyOthers = true } = {}) {
+    // Tell the others first: a closing WebRTC link is noticed anyway, BroadcastChannel tabs are not
+    if (notifyOthers && this.role === 'host' && this.players.size > 0) this.broadcast({ type: 'host_left' });
+    if (notifyOthers && this.role === 'guest' && this.connected) this.broadcast({ type: 'leave' });
+
+    this.stopTimers();
+    for (const conn of [this.hostConn, ...this.getRemotePlayers().map((p) => p.conn)]) this.closeLink(conn);
     this.hostConn = null;
     if (this.peer) {
       try {
@@ -308,6 +364,10 @@ export class MultiplayerManager {
     this.role = null;
     this.roomCode = null;
     this.localId = null;
+    this.hostId = null;
+    this.epoch = 0;
+    this._migrating = false;
+    this._welcomeReceived = false;
     this.traffic.isRemoteControlled = false;
     if (!silent) this.emitStatus('Bağlantı kesildi.');
   }
@@ -316,8 +376,10 @@ export class MultiplayerManager {
     this.disconnect({ silent: true });
     this.setPlayerName(playerName);
     this.role = 'host';
-    this.localId = HOST_ID;
+    this.localId = newPlayerId();
+    this.hostId = this.localId;
     this.localSlot = 0;
+    this.epoch = 0;
     this.roomCode = String(Math.floor(1000 + Math.random() * 9000));
     this.localWorldDistM = 0;
     this._matchStarted = false;
@@ -330,19 +392,26 @@ export class MultiplayerManager {
     );
 
     // 2. PeerJS WebRTC P2P for cross-device / mobile-to-PC / internet play
-    try {
-      this.peer = new Peer(`${PEER_PREFIX}${this.roomCode}`, PEER_CONFIG);
+    this.openHostPeer({
+      readyMessage: `✅ Oda Hazır! Kod: ${this.roomCode} — ${MAX_PLAYERS} kişiye kadar arkadaşın katılabilir.`,
+      onTaken: () => this.hostRoom(this.playerName), // code in use: retry with a fresh one
+    });
 
-      this.peer.on('open', () => {
-        if (!this.connected) {
-          this.emitStatus(
-            `✅ Oda Hazır! Kod: ${this.roomCode} — ${MAX_PLAYERS} kişiye kadar arkadaşın katılabilir.`
-          );
-        }
+    return this.roomCode;
+  }
+
+  // Registers this device on the PeerJS server as the room's host for the current epoch
+  openHostPeer({ readyMessage = null, onTaken }) {
+    try {
+      const peer = new Peer(this.hostPeerId(this.roomCode, this.epoch), PEER_CONFIG);
+      this.peer = peer;
+
+      peer.on('open', () => {
+        if (readyMessage && this.peer === peer && !this.connected) this.emitStatus(readyMessage);
       });
 
       // The guest identifies itself with join_hello over this link; until then it is anonymous
-      this.peer.on('connection', (conn) => {
+      peer.on('connection', (conn) => {
         conn.on('data', (data) => this.handlePacket(data, conn));
         conn.on('close', () => {
           const player = this.getRemotePlayers().find((p) => p.conn === conn);
@@ -350,21 +419,16 @@ export class MultiplayerManager {
         });
       });
 
-      this.peer.on('error', (err) => {
+      peer.on('error', (err) => {
         console.warn('PeerJS Host Uyarısı:', err);
-        if (err.type === 'unavailable-id') {
-          // Retry with a fresh 4-digit code
-          this.hostRoom(this.playerName);
-        }
+        if (err.type === 'unavailable-id' && this.peer === peer) onTaken();
       });
     } catch (e) {
       console.warn('PeerJS başlatılamadı, yerel kanal aktif:', e);
     }
-
-    return this.roomCode;
   }
 
-  joinRoom(codeInput, playerName) {
+  joinRoom(codeInput, playerName, { scanRounds = 1 } = {}) {
     const cleanCode = String(codeInput || '').replace(/\D/g, '').slice(0, 4);
     if (cleanCode.length !== 4) {
       this.emitStatus('⚠️ Lütfen 4 haneli oda kodunu girin (Örn: 4829).');
@@ -374,18 +438,38 @@ export class MultiplayerManager {
     this.disconnect({ silent: true });
     this.setPlayerName(playerName);
     this.role = 'guest';
-    this.localId = `g-${Math.random().toString(36).slice(2, 10)}`;
+    this.localId = newPlayerId();
+    this.hostId = null;
+    this.epoch = 0;
     this.roomCode = cleanCode;
     this.localWorldDistM = 0;
     this._matchStarted = false;
     this._welcomeReceived = false;
+    this._scanEpoch = 0;
+    this._scanRoundsLeft = scanRounds;
 
     this.emitStatus(`⏳ ${cleanCode} numaralı odaya bağlanılıyor, lütfen bekleyin...`);
 
     // 1. BroadcastChannel (instant if the host is another tab on this device)
     this.setupBroadcastChannel(cleanCode);
+    this.startHello();
 
-    // Say hello every 450 ms over whatever is up until the host welcomes us
+    // 2. PeerJS WebRTC connection (cross-device / internet / Wi-Fi). The room may have changed
+    //    hosts since the code was shared, so its host id is looked up epoch by epoch.
+    try {
+      this.peer = new Peer(PEER_CONFIG);
+      this.peer.on('open', () => this.connectToHost(this.hostPeerId(cleanCode, 0)));
+      this.peer.on('error', (err) => this.onGuestPeerError(err));
+    } catch (e) {
+      console.warn('PeerJS bağlantı hatası:', e);
+    }
+
+    return true;
+  }
+
+  // Say hello every 450 ms over whatever is up until the host welcomes us
+  startHello() {
+    clearInterval(this._helloInterval);
     const sayHello = () => {
       if (this._welcomeReceived || this.role !== 'guest') {
         clearInterval(this._helloInterval);
@@ -396,33 +480,152 @@ export class MultiplayerManager {
     };
     sayHello();
     this._helloInterval = setInterval(sayHello, 450);
+  }
 
-    // 2. PeerJS WebRTC connection (cross-device / internet / Wi-Fi)
-    try {
-      this.peer = new Peer(PEER_CONFIG);
-      this.peer.on('open', () => {
-        const conn = this.peer.connect(`${PEER_PREFIX}${cleanCode}`, { serialization: 'json' });
-        this.hostConn = conn;
-        conn.on('data', (data) => this.handlePacket(data, conn));
-        conn.on('open', sayHello);
-        conn.on('close', () => {
-          if (this.hostConn === conn) this.onHostGone('⚠️ Oda kurucusu ayrıldı, bağlantı kapandı.');
-        });
-      });
+  // Opens the WebRTC link to a host id. A link that has not opened after CONNECT_TIMEOUT_MS
+  // (e.g. a host that is gone but still registered never answers) counts as a failed attempt.
+  connectToHost(peerId) {
+    if (!this.peer || this.role !== 'guest') return;
+    this.closeLink(this.hostConn);
+    clearTimeout(this._connectTimer);
+    const conn = this.peer.connect(peerId, { serialization: 'json' });
+    this.hostConn = conn;
+    conn.on('data', (data) => this.handlePacket(data, conn));
+    conn.on('open', () => {
+      clearTimeout(this._connectTimer);
+      this.broadcast({ type: 'join_hello', name: this.playerName });
+    });
+    conn.on('close', () => {
+      if (this.hostConn !== conn) return;
+      this.hostConn = null;
+      if (this._welcomeReceived) this.startMigration();
+    });
+    this._connectTimer = setTimeout(() => {
+      if (this.hostConn === conn && !conn.open) this.onConnectFailed();
+    }, CONNECT_TIMEOUT_MS);
+  }
 
-      this.peer.on('error', (err) => {
-        console.warn('PeerJS Join Uyarısı:', err);
-        if (!this.connected && this.role === 'guest') {
-          this.emitStatus(`❌ Oda (${cleanCode}) bulunamadı veya bağlantı hatası. Kodu kontrol edin.`, {
-            connecting: false,
-          });
-        }
-      });
-    } catch (e) {
-      console.warn('PeerJS bağlantı hatası:', e);
+  onGuestPeerError(err) {
+    console.warn('PeerJS Join Uyarısı:', err);
+    if (this.role !== 'guest') return;
+    if (err.type === 'peer-unavailable') {
+      this.onConnectFailed();
+    } else if (!this.connected) {
+      this.emitStatus(`❌ Oda (${this.roomCode}) bağlantı hatası. Tekrar deneyin.`, { connecting: false });
     }
+  }
 
-    return true;
+  onConnectFailed() {
+    clearTimeout(this._connectTimer);
+    if (this.role !== 'guest' || this.hostConn?.open) return;
+
+    if (this._migrating) {
+      // The new host may still be registering: keep knocking until the hand-over deadline
+      this._connectTimer = setTimeout(() => {
+        if (this._migrating && this.role === 'guest') {
+          this.connectToHost(this.hostPeerId(this.roomCode, this.epoch));
+        }
+      }, 1000);
+      return;
+    }
+    if (this._welcomeReceived) return; // already in (welcomed over BroadcastChannel)
+
+    // Joining: try the next epoch; after the last one, start another round or give up
+    let delay = 0;
+    this._scanEpoch += 1;
+    if (this._scanEpoch > MAX_EPOCH_SCAN) {
+      this._scanEpoch = 0;
+      this._scanRoundsLeft -= 1;
+      delay = 1500;
+      if (this._scanRoundsLeft <= 0) {
+        this.emitStatus(`❌ Oda (${this.roomCode}) bulunamadı veya bağlantı hatası. Kodu kontrol edin.`, {
+          connecting: false,
+        });
+        return;
+      }
+    }
+    this._connectTimer = setTimeout(() => {
+      if (this.role === 'guest' && !this._welcomeReceived) {
+        this.connectToHost(this.hostPeerId(this.roomCode, this._scanEpoch));
+      }
+    }, delay);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Host hand-over
+  // ---------------------------------------------------------------------------------------------
+
+  // The host is gone (left, link closed or silent): the remaining player with the lowest slot
+  // takes the room over under the next epoch and everyone else reconnects to it. Positions,
+  // scores and the traffic field carry over, so the drive simply continues.
+  startMigration() {
+    if (this.role !== 'guest' || !this._welcomeReceived || this._migrating) return;
+    // If this device itself was asleep, the room may have moved on without us: find it again
+    if (this.justWokeFromLongSleep()) {
+      this.rejoinRoom();
+      return;
+    }
+    this.removeRemotePlayer(this.hostId);
+    this._migrating = true;
+    this._welcomeReceived = false;
+    this.closeLink(this.hostConn);
+    this.hostConn = null;
+    this.electNextHost();
+  }
+
+  electNextHost() {
+    this.epoch += 1;
+    this._migrationDeadline = performance.now() + MIGRATION_TIMEOUT_MS;
+    let next = { id: this.localId, slot: this.localSlot, name: this.playerName };
+    for (const p of this.players.values()) if (p.slot < next.slot) next = p;
+    this.hostId = next.id;
+
+    if (next.id === this.localId) {
+      this.becomeHost();
+    } else {
+      this.emitStatus(`🔁 Oda kurucusu ayrıldı, yeni kurucu ${next.name} — bağlanılıyor...`);
+      this.startHello();
+      this.connectToHost(this.hostPeerId(this.roomCode, this.epoch));
+    }
+  }
+
+  becomeHost() {
+    const guestPeer = this.peer;
+    this.stopTimers();
+    this.closeLink(this.hostConn);
+    this.hostConn = null;
+    this._migrating = false;
+    this.role = 'host';
+    this.hostId = this.localId;
+    this._matchStarted = true;
+    this.traffic.isRemoteControlled = false; // this device now drives the traffic it was mirroring
+
+    // Everyone gets a few extra seconds to reconnect before the heartbeat timeout applies
+    const graceUntil = performance.now() + HANDOVER_GRACE_MS;
+    for (const p of this.players.values()) {
+      p.conn = null;
+      p.lastRecvTime = graceUntil;
+    }
+    this.connected = this.players.size > 0;
+
+    try {
+      guestPeer?.destroy();
+    } catch (_) {}
+    this.peer = null;
+    // Someone else already hosts this epoch (they elected differently): join them instead
+    this.openHostPeer({ onTaken: () => this.rejoinRoom() });
+
+    this.broadcast({ type: 'roster', players: this.roster() });
+    this.emitStatus(`👑 Oda kurucusu ayrıldı, artık oda kurucusu sensin — Kod: ${this.roomCode}`);
+    this.callbacks.onHostChanged?.({ name: this.playerName, isMe: true });
+  }
+
+  // Quietly leave and join the same room again by code (its host changed while we were away)
+  rejoinRoom() {
+    const code = this.roomCode;
+    const name = this.playerName;
+    this.disconnect({ silent: true, notifyOthers: false });
+    this.joinRoom(code, name, { scanRounds: 3 });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -442,14 +645,14 @@ export class MultiplayerManager {
   }
 
   nextFreeSlot() {
-    const used = new Set(this.getRemotePlayers().map((p) => p.slot));
-    for (let s = 1; s < MAX_PLAYERS; s++) if (!used.has(s)) return s;
+    const used = new Set([this.localSlot, ...this.getRemotePlayers().map((p) => p.slot)]);
+    for (let s = 0; s < MAX_PLAYERS; s++) if (!used.has(s)) return s;
     return -1;
   }
 
   roster() {
     return [
-      { id: HOST_ID, name: this.playerName, slot: 0 },
+      { id: this.localId, name: this.playerName, slot: this.localSlot },
       ...this.getRemotePlayers().map((p) => ({ id: p.id, name: p.name, slot: p.slot })),
     ];
   }
@@ -479,7 +682,7 @@ export class MultiplayerManager {
         player = this.addRemotePlayer(data.from, data.name, slot);
       }
       if (conn) player.conn = conn;
-      player.lastRecvTime = performance.now();
+      player.lastRecvTime = Math.max(player.lastRecvTime, performance.now());
 
       this.sendTo(player.conn, player.id, {
         type: 'host_welcome',
@@ -496,7 +699,7 @@ export class MultiplayerManager {
         this.emitStatus(`🟢 Odada ${this.playerCount}/${MAX_PLAYERS} oyuncu — Kod: ${this.roomCode}`);
         if (!this._matchStarted) {
           this._matchStarted = true;
-          this.callbacks.onMatchReady?.({ role: 'host', remoteName: player.name, slot: 0 });
+          this.callbacks.onMatchReady?.({ role: 'host', remoteName: player.name, slot: this.localSlot });
         } else {
           this.callbacks.onPlayerJoined?.({ name: player.name });
         }
@@ -505,7 +708,7 @@ export class MultiplayerManager {
     }
 
     if (!player) return;
-    player.lastRecvTime = performance.now();
+    player.lastRecvTime = Math.max(player.lastRecvTime, performance.now());
     if (conn && !player.conn) player.conn = conn;
 
     if (data.type === 'state') {
@@ -550,12 +753,20 @@ export class MultiplayerManager {
   // ---- Guest side ----
 
   handleHostPacket(data) {
-    this.hostLastRecv = performance.now();
+    const epoch = num(data.epoch);
+
     if (data.type === 'host_welcome') {
       if (this._welcomeReceived) return; // duplicate (same welcome over WebRTC + BroadcastChannel)
+      if (epoch < this.epoch) return; // from a host this room has already left behind
       this._welcomeReceived = true;
-      this.localSlot = num(data.slot, 1);
-      this.localWorldDistM = num(data.hostDistM); // Start side-by-side with the host at the exact same meter
+      this.hostId = data.from;
+      this.epoch = epoch;
+      this.hostLastRecv = performance.now();
+      const handover = this._migrating;
+      if (!handover) {
+        this.localSlot = num(data.slot, 1);
+        this.localWorldDistM = num(data.hostDistM); // Start side-by-side with the host at the exact same meter
+      }
       this.syncRoster(data.roster, { announce: false });
       if (data.trafficSnapshot) {
         this.traffic.applySyncState(data.trafficSnapshot, this.localWorldDistM);
@@ -564,6 +775,16 @@ export class MultiplayerManager {
         }
       }
       this.connected = true;
+
+      if (handover) {
+        // Hand-over: same highway, same meters, same slot; only the host changed
+        this._migrating = false;
+        const hostName = cleanName(data.name, 'ODA KURUCUSU');
+        this.emitStatus(`🟢 Yeni oda kurucusu: ${hostName} — Odada ${this.playerCount}/${MAX_PLAYERS} oyuncu`);
+        this.callbacks.onHostChanged?.({ name: hostName, isMe: false });
+        return;
+      }
+
       this.emitStatus(`🟢 Bağlandı! Odada ${this.playerCount}/${MAX_PLAYERS} oyuncu — Oda: ${this.roomCode}`);
       if (!this._matchStarted) {
         this._matchStarted = true;
@@ -584,6 +805,8 @@ export class MultiplayerManager {
     }
 
     if (!this._welcomeReceived) return;
+    if (data.from !== this.hostId || epoch !== this.epoch) return; // a host the room has left behind
+    this.hostLastRecv = performance.now();
 
     if (data.type === 'roster') {
       this.syncRoster(data.players, { announce: true });
@@ -599,8 +822,8 @@ export class MultiplayerManager {
       if (data.snapshot?.weatherKey) {
         this.callbacks.onWeatherSync?.(data.snapshot.weatherKey);
       }
-    } else if (data.type === 'room_closed') {
-      this.onHostGone('⚠️ Oda kurucusu odayı kapattı.');
+    } else if (data.type === 'host_left') {
+      this.startMigration();
     }
   }
 
@@ -621,14 +844,6 @@ export class MultiplayerManager {
     for (const id of [...this.players.keys()]) {
       if (!ids.has(id)) this.removeRemotePlayer(id, { notify: announce });
     }
-  }
-
-  // End the whole guest session: 'room_closed' over one transport can overtake a packet still
-  // in flight on the other, so nothing from this room may be processed afterwards
-  onHostGone(message) {
-    if (this.role !== 'guest') return;
-    this.disconnect({ silent: true });
-    this.emitStatus(message);
   }
 
   // ---- Shared ----
@@ -711,21 +926,27 @@ export class MultiplayerManager {
 
     if (!this.role) return;
 
-    // Heartbeat timeouts (see GUEST_TIMEOUT_MS / HOST_TIMEOUT_MS)
+    // Heartbeat timeouts (see GUEST_TIMEOUT_MS / MIGRATE_SILENCE_MS)
     const nowMs = performance.now();
-    const wasSuspended = this._lastUpdateAt && nowMs - this._lastUpdateAt > SUSPEND_GAP_MS;
+    const frameGapMs = this._lastUpdateAt ? nowMs - this._lastUpdateAt : 0;
+    const wasSuspended = frameGapMs > SUSPEND_GAP_MS;
     this._lastUpdateAt = nowMs;
     if (this.role === 'host') {
       for (const p of this.getRemotePlayers()) {
         if (wasSuspended) p.lastRecvTime = nowMs;
         else if (nowMs - p.lastRecvTime > GUEST_TIMEOUT_MS) this.onGuestGone(p.id);
       }
-    } else if (this.connected) {
-      if (wasSuspended) this.hostLastRecv = nowMs;
-      else if (nowMs - this.hostLastRecv > HOST_TIMEOUT_MS) {
-        this.onHostGone(`⚠️ Oda kurucusundan (${this.roomCode}) 20 sn'dir veri gelmiyor, bağlantı kapandı.`);
-        return;
+    } else if (this._migrating) {
+      if (wasSuspended) {
+        this._migrationDeadline = nowMs + MIGRATION_TIMEOUT_MS;
+      } else if (nowMs > this._migrationDeadline) {
+        // The elected host never showed up: count it as gone and elect the next one
+        this.removeRemotePlayer(this.hostId);
+        this.electNextHost();
       }
+    } else if (this._welcomeReceived) {
+      if (wasSuspended) this.hostLastRecv = nowMs;
+      else if (nowMs - this.hostLastRecv > MIGRATE_SILENCE_MS) this.startMigration();
     }
 
     if (!this.connected) return;
@@ -738,7 +959,7 @@ export class MultiplayerManager {
       if (this.role === 'guest') {
         this.broadcast({ type: 'state', ...this.localStatePacket(localState) });
       } else {
-        const players = [{ id: HOST_ID, slot: 0, ...this.localStatePacket(localState) }];
+        const players = [{ id: this.localId, slot: this.localSlot, ...this.localStatePacket(localState) }];
         for (const p of this.players.values()) {
           players.push({
             id: p.id,
