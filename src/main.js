@@ -144,6 +144,7 @@ class OtobanMakasGame {
     if (new URLSearchParams(window.location.search).has('fps')) this.toggleFpsMeter();
 
     this.bindEvents();
+    this.setupAppMode();
     this.updateHUD();
     this.animate();
   }
@@ -253,11 +254,13 @@ class OtobanMakasGame {
     }
 
     document.getElementById('btn-mp-host')?.addEventListener('click', () => {
+      this.enterAppFullscreen();
       const playerName = nameInput?.value || 'OYUNCU 1';
       this.multiplayer.hostRoom(playerName);
     });
 
     document.getElementById('btn-mp-join')?.addEventListener('click', () => {
+      this.enterAppFullscreen();
       const playerName = nameInput?.value || 'OYUNCU 2';
       const codeVal = document.getElementById('mp-join-code')?.value || '';
       this.multiplayer.joinRoom(codeVal, playerName);
@@ -296,6 +299,7 @@ class OtobanMakasGame {
 
     // Start / Resume & Reset Buttons in Modal
     document.getElementById('btn-start-game')?.addEventListener('click', () => {
+      this.enterAppFullscreen();
       if (nameInput?.value) {
         this.multiplayer.setPlayerName(nameInput.value);
       }
@@ -567,6 +571,74 @@ class OtobanMakasGame {
       const rawTilt = isLandscape ? (e.beta || 0) * landscapeSign : (e.gamma || 0);
       this.touchSteerValue = Math.max(-1, Math.min(1, rawTilt / 26));
     });
+  }
+
+  // App mode: installable to the home screen (fullscreen + landscape via the manifest),
+  // fullscreen + landscape lock in the browser where allowed, and a paused game while the
+  // phone is held upright (the rotate screen covers it then)
+  setupAppMode() {
+    // Installability needs a service worker; ours caches nothing (see public/sw.js)
+    if ('serviceWorker' in navigator && import.meta.env.PROD) {
+      navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+    }
+
+    // Chrome / Android: keep the browser's install offer for our own button
+    const installBtn = document.getElementById('btn-install-app');
+    let installPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      installPrompt = e;
+      installBtn?.classList.remove('hidden');
+    });
+    installBtn?.addEventListener('click', async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice.catch(() => null);
+      installPrompt = null;
+      installBtn.classList.add('hidden');
+    });
+    window.addEventListener('appinstalled', () => installBtn?.classList.add('hidden'));
+
+    // iPhone / iPad Safari has no install prompt: tell how to add it to the home screen
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS && !this.isInstalledApp()) {
+      document.getElementById('ios-install-hint')?.classList.remove('hidden');
+    }
+
+    const portrait = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
+    portrait.addEventListener('change', () => {
+      if (portrait.matches && !this.paused) this.togglePauseMenu();
+    });
+
+    // Where the browser can lock the orientation (Android Chrome), one tap on the rotate
+    // screen switches straight to landscape fullscreen
+    const rotateBtn = document.getElementById('btn-rotate-landscape');
+    if (document.documentElement.requestFullscreen && screen.orientation?.lock) {
+      rotateBtn?.classList.remove('hidden');
+    }
+    rotateBtn?.addEventListener('click', () => this.enterAppFullscreen());
+  }
+
+  isInstalledApp() {
+    return (
+      window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches ||
+      window.navigator.standalone === true
+    );
+  }
+
+  // Browsers allow fullscreen and orientation lock only from a tap, so this runs from the
+  // start / room buttons. iPhone Safari supports neither; there the home-screen app is the way.
+  enterAppFullscreen() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    const lockLandscape = () => screen.orientation?.lock?.('landscape').catch(() => {});
+    const el = document.documentElement;
+    if (this.isInstalledApp() || document.fullscreenElement || !el.requestFullscreen) {
+      lockLandscape();
+      return;
+    }
+    el.requestFullscreen({ navigationUI: 'hide' }).then(lockLandscape).catch(() => {});
   }
 
   updateSteerModeUI() {

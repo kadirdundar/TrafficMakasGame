@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#080b12" />
   <title>OTOBAN MAKAS 3D — Kokpit Sürüş Simülasyonu</title>
+  <!-- Installable as an app: fullscreen + landscape from the home screen (see manifest) -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+  <link rel="icon" type="image/png" sizes="64x64" href="/icons/favicon-64.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -275,13 +284,32 @@
         <button id="btn-reset-car" type="button" class="secondary-btn hidden">
           Yolu Sıfırla &amp; Tamir Et
         </button>
+        <!-- Android/desktop Chrome: shown once the browser offers installation -->
+        <button id="btn-install-app" type="button" class="secondary-btn install-btn hidden">
+          📲 Ana Ekrana Ekle
+        </button>
       </div>
+
+      <!-- iPhone/iPad Safari has no install prompt: explain the manual way -->
+      <p id="ios-install-hint" class="install-hint hidden">
+        📲 Uygulama gibi tam ekran oynamak için Safari'de <strong>Paylaş</strong> ⬆︎ → <strong>Ana Ekrana Ekle</strong>'ye dokun.
+      </p>
 
       <p class="asset-credits">
         Online oyuncu aracı ve 3D kokpit: <a href="https://sketchfab.com/3d-models/audi-a8-custom-2018-cd094d03f7684809900a929a9c88c8db" target="_blank" rel="noopener">"Audi A8 Custom 2018"</a>
         — everhard, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> (iç mekân çıkarıldı, sadeleştirildi)
       </p>
     </div>
+  </div>
+
+  <!-- Shown on phones held upright: the game is played in landscape -->
+  <div id="rotate-overlay" class="rotate-overlay" role="alert">
+    <div class="rotate-phone" aria-hidden="true"></div>
+    <strong>Telefonu yan çevir</strong>
+    <span>Otoban Makas yatay ekranda oynanır</span>
+    <button id="btn-rotate-landscape" type="button" class="cta-btn rotate-btn hidden">
+      <span>↻ YATAY TAM EKRANA GEÇ</span>
+    </button>
   </div>
 
   <script type="module" src="/src/main.js"></script>
