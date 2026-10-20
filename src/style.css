@@ -490,9 +490,52 @@
     gap: 10px;
   }
 
+  /* Selektör & horn stack beside the pedals so the left thumb has the whole left side to steer */
   .touch-aux-row {
     display: flex;
+    flex-direction: column;
     gap: 8px;
+    align-self: flex-end;
+  }
+
+  /* Floating thumb steering pad: appears where the thumb lands, knob shows the steer amount */
+  .steer-pad {
+    position: fixed;
+    z-index: 11;
+    inline-size: calc(var(--pad-w, 100px) + 44px);
+    block-size: 44px;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    background: rgba(8, 12, 22, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    pointer-events: none;
+  }
+
+  .steer-pad::before {
+    content: '';
+    position: absolute;
+    inset-block: 10px;
+    inset-inline-start: 50%;
+    inline-size: 2px;
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .steer-pad-knob {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    inline-size: 34px;
+    block-size: 34px;
+    margin-block-start: -17px;
+    margin-inline-start: -17px;
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.28);
+    border: 2px solid var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.45);
+  }
+
+  .steer-pad.hidden {
+    display: none;
   }
 
   .aux-action-btn {

@@ -117,8 +117,17 @@
 
   <!-- Mobile & Touch Controls Overlay -->
   <div id="touch-controls" class="touch-controls">
-    <!-- Left Side: Selektör, Horn & Optional Left/Right Buttons -->
+    <!-- Left Side: kept free for the thumb steering pad; shows ◀ ▶ only in button-steering mode -->
     <div class="touch-left">
+      <!-- Button Steering Mode (Hidden unless selected in settings; Wheel mode uses the real Audi steering wheel!) -->
+      <div id="button-steer-zone" class="button-steer-zone hidden">
+        <button id="touch-left-btn" class="steer-btn" type="button" aria-label="Sola Dön">◀</button>
+        <button id="touch-right-btn" class="steer-btn" type="button" aria-label="Sağa Dön">▶</button>
+      </div>
+    </div>
+
+    <!-- Right Side: Selektör & Horn next to the Brake & Gas Pedals -->
+    <div class="touch-right">
       <div class="touch-aux-row">
         <button id="touch-selektor" class="aux-action-btn selektor-btn" type="button">
           <span class="aux-icon">≡O</span>
@@ -129,16 +138,6 @@
           <span>KORNA</span>
         </button>
       </div>
-
-      <!-- Button Steering Mode (Hidden unless selected in settings; Wheel mode uses the real Audi steering wheel!) -->
-      <div id="button-steer-zone" class="button-steer-zone hidden">
-        <button id="touch-left-btn" class="steer-btn" type="button" aria-label="Sola Dön">◀</button>
-        <button id="touch-right-btn" class="steer-btn" type="button" aria-label="Sağa Dön">▶</button>
-      </div>
-    </div>
-
-    <!-- Right Side: Brake & Gas Pedals + Nitro/Boost -->
-    <div class="touch-right">
       <button id="touch-brake" class="pedal-btn brake-pedal" type="button">
         <span class="pedal-label">FREN</span>
         <div class="pedal-ribs"></div>

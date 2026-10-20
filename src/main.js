@@ -333,6 +333,11 @@ class OtobanMakasGame {
         btn.classList.add('active');
         this.steerMode = btn.getAttribute('data-steermode');
         this.updateSteerModeUI();
+        // iOS only delivers orientation events after an explicit permission prompt, which
+        // must be triggered from a user gesture like this click
+        if (this.steerMode === 'tilt' && typeof DeviceOrientationEvent?.requestPermission === 'function') {
+          DeviceOrientationEvent.requestPermission().catch(() => {});
+        }
       });
     });
 
@@ -479,52 +484,64 @@ class OtobanMakasGame {
       }
     );
 
-    // 3. Direct Interactive Drag on the Photorealistic Audi Steering Wheel (#cockpit-canvas)
+    // 3. Floating thumb steering pad on the cockpit canvas (anywhere not covered by a button)
+    // The anchor is wherever the thumb lands, so touching down never jerks the car; a short
+    // horizontal swipe gives full lock, and dragging past full lock drags the anchor along so
+    // swinging back counter-steers immediately (works in landscape with the left thumb).
     const cockpitCanvas = document.getElementById('cockpit-canvas');
     if (cockpitCanvas) {
       let activePointerId = null;
-      let startX = 0;
+      let anchorX = 0;
+      const padIndicator = document.createElement('div');
+      padIndicator.className = 'steer-pad hidden';
+      padIndicator.innerHTML = '<div class="steer-pad-knob"></div>';
+      document.body.appendChild(padIndicator);
+      const padKnob = padIndicator.firstElementChild;
+
+      // Thumb travel for full lock: ~11% of the screen width, 70-120 px
+      const fullLockPx = () => Math.max(70, Math.min(120, window.innerWidth * 0.11));
 
       // Prevent Safari from treating steering drag + pedal hold as a two-finger pinch zoom
       cockpitCanvas.addEventListener('touchstart', preventSafariZoom, { passive: false });
       cockpitCanvas.addEventListener('touchmove', preventSafariZoom, { passive: false });
       cockpitCanvas.addEventListener('touchend', preventSafariZoom, { passive: false });
 
-      const updateWheelFromPointer = (clientX) => {
-        const bounds = this.cockpit.wheelScreenBounds || { cx: window.innerWidth * 0.3, r: 120 };
-        const maxDrag = Math.max(85, bounds.r * 1.15);
-        const raw = (clientX - startX) / maxDrag;
-        this.touchSteerValue = Math.max(-1, Math.min(1, raw));
+      const updateSteerFromPointer = (clientX) => {
+        const range = fullLockPx();
+        if (clientX - anchorX > range) anchorX = clientX - range;
+        if (clientX - anchorX < -range) anchorX = clientX + range;
+        const value = (clientX - anchorX) / range;
+        this.touchSteerValue = Math.max(-1, Math.min(1, value));
+        padIndicator.style.left = `${anchorX}px`;
+        padKnob.style.transform = `translateX(${this.touchSteerValue * (range / 2)}px)`;
       };
 
       cockpitCanvas.addEventListener('pointerdown', (e) => {
-        if (this.paused) return;
+        if (this.paused || activePointerId !== null) return;
         e.preventDefault();
         this.sound.init();
         activePointerId = e.pointerId;
-        const bounds = this.cockpit.wheelScreenBounds;
-        // If clicked near the Audi steering wheel, anchor relative to wheel center; otherwise relative to touch down point
-        if (bounds && Math.hypot(e.clientX - bounds.cx, e.clientY - bounds.cy) < bounds.r * 1.45) {
-          startX = bounds.cx;
-        } else {
-          startX = e.clientX;
-        }
+        anchorX = e.clientX;
         try {
           cockpitCanvas.setPointerCapture(e.pointerId);
         } catch (_) {}
-        updateWheelFromPointer(e.clientX);
+        padIndicator.style.top = `${e.clientY}px`;
+        padIndicator.style.setProperty('--pad-w', `${fullLockPx()}px`);
+        padIndicator.classList.toggle('hidden', e.pointerType === 'mouse');
+        updateSteerFromPointer(e.clientX);
       });
 
       cockpitCanvas.addEventListener('pointermove', (e) => {
         if (e.pointerId !== activePointerId) return;
         e.preventDefault();
-        updateWheelFromPointer(e.clientX);
+        updateSteerFromPointer(e.clientX);
       });
 
       const releaseWheel = (e) => {
         if (e.pointerId !== activePointerId) return;
         activePointerId = null;
         this.touchSteerValue = 0;
+        padIndicator.classList.add('hidden');
       };
 
       cockpitCanvas.addEventListener('pointerup', releaseWheel);
@@ -535,8 +552,12 @@ class OtobanMakasGame {
     // 4. DeviceOrientation (Tilt / Gyroscope) Support for Mobile
     window.addEventListener('deviceorientation', (e) => {
       if (this.steerMode !== 'tilt' || this.paused) return;
+      // In landscape the steering tilt is beta, whose sign flips between the two landscape
+      // orientations (device top on the left at 90°, on the right at 270° / -90°)
+      const angle = screen.orientation?.angle ?? window.orientation ?? 0;
       const isLandscape = window.innerWidth > window.innerHeight;
-      const rawTilt = isLandscape ? (e.beta || 0) : (e.gamma || 0);
+      const landscapeSign = angle === 270 || angle === -90 ? -1 : 1;
+      const rawTilt = isLandscape ? (e.beta || 0) * landscapeSign : (e.gamma || 0);
       this.touchSteerValue = Math.max(-1, Math.min(1, rawTilt / 26));
     });
   }
@@ -835,7 +856,7 @@ class OtobanMakasGame {
     } else if (isCounterSteer) {
       steerRate = 13.5 - speedRatio * 2.5; // Quick counter-steer response during makas transitions
     } else {
-      steerRate = 7.8 - speedRatio * 2.4; // Heavier, more progressive rack feel at 200+ km/h
+      steerRate = 10.5 - speedRatio * 2.5; // Quick turn-in, still a little heavier at 200+ km/h
     }
     this.steerInput = THREE.MathUtils.lerp(this.steerInput, rawSteer, Math.min(1, dt * steerRate));
 
@@ -903,7 +924,7 @@ class OtobanMakasGame {
     const wetFactor = this.world.weatherKey === 'rain' ? 0.85 : 1.0;
 
     // Target chassis heading angle (narrows at high speed for stability)
-    const maxHeadingAngle = 0.14 - speedRatio * 0.05; // ~8 deg at low speed, ~5 deg at 240 km/h
+    const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 240 km/h
     const targetHeading = this.steerInput * maxHeadingAngle;
 
     // Critically damped yaw response (no oscillation/fishtailing when driving straight)
@@ -923,7 +944,7 @@ class OtobanMakasGame {
     const centrifugalDriftVel = -curveKappa * speedMs * 21.0;
 
     const steerLatVel =
-      Math.sin(this.headingAngle) * speedMs * 0.62 + this.steerInput * (3.4 + speedRatio * 1.6);
+      Math.sin(this.headingAngle) * speedMs * 0.62 + this.steerInput * (4.6 + speedRatio * 2.0);
     const desiredLatVel = steerLatVel + centrifugalDriftVel;
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
