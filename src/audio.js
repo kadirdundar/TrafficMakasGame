@@ -268,7 +268,7 @@ export class SoundEngine {
     this.roadFilter.frequency.setTargetAtTime(180 + speedNorm * 380, now, 0.2);
     this.roadGain.gain.setTargetAtTime(0.012 + Math.pow(speedNorm, 1.5) * 0.06, now, 0.2);
     this.windFilter.frequency.setTargetAtTime(650 + speedNorm * 1000, now, 0.2);
-    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.4) * 0.05, now, 0.2);
+    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.4) * 0.025, now, 0.2);
 
     // Tire cornering load / scrub sound when weaving hard at speed
     if (this.tireGain && this.tireFilter) {
