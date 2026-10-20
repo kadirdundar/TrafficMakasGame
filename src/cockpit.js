@@ -246,16 +246,18 @@ export class CarCockpit {
     // Last rendered screen-space steering wheel bounds for direct mouse/touch dragging
     this.wheelScreenBounds = { cx: 300, cy: 500, r: 120 };
 
-    // Rear-view mirror 3D render target & camera (MSAA, sized to the mirror's on-screen
-    // footprint, fast readback for real-time 2D mirror compositing)
+    // Rear-view mirror 3D render target & camera (2x MSAA, sized to the mirror's on-screen
+    // footprint, fast readback for real-time 2D mirror compositing). The mirror camera only
+    // sees layer 0, so objects on MIRROR_SKIP_LAYER (distant buildings) are not drawn in it.
     this.mirrorW = 0;
     this.mirrorH = 0;
     this.mirrorRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
-      samples: 4,
+      samples: 2,
     });
+    this.mirrorFrame = 0;
     this.mirrorCanvas = document.createElement('canvas');
     this.mirrorCtx = this.mirrorCanvas.getContext('2d');
     this.resizeMirror();
@@ -714,6 +716,7 @@ export class CarCockpit {
     this.mirrorW = w;
     this.mirrorH = w / 2;
     this.mirrorRenderTarget.setSize(this.mirrorW, this.mirrorH);
+    this.mirrorFrame = 0; // a resized target is blank: redraw it on this frame
     this.mirrorPixels = new Uint8Array(this.mirrorW * this.mirrorH * 4);
     this.mirrorPixels32 = new Uint32Array(this.mirrorPixels.buffer);
     this.mirrorCanvas.width = this.mirrorW;
@@ -722,9 +725,12 @@ export class CarCockpit {
     this.mirrorImgData32 = new Uint32Array(this.mirrorImgData.data.buffer);
   }
 
+  // Redrawn every other frame: a full second scene pass is the costliest part of a frame,
+  // and a 30 Hz rear view is indistinguishable in a mirror this small
   renderRearMirror(scene) {
     if (!this.renderer) return;
     this.resizeMirror();
+    if (this.mirrorFrame++ % 2 !== 0) return;
     const prevTarget = this.renderer.getRenderTarget();
     this.renderer.setRenderTarget(this.mirrorRenderTarget);
     this.renderer.clear();

@@ -27,6 +27,11 @@ export const PAINTS = [
   { hex: 0xdfa023, metalness: 0.45, roughness: 0.26, weight: 0.5 }, // Sport Yellow
   { hex: 0xd2541b, metalness: 0.5, roughness: 0.26, weight: 0.5 }, // Lava Orange
 ];
+// Touch devices skip the clear-coat layer on traffic paint: it is one of the most expensive
+// lighting terms and there can be 24 cars on screen (desktop keeps the full finish)
+const LIGHTWEIGHT_PAINT =
+  typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+
 const PAINT_FINISH = new Map(PAINTS.map((p) => [p.hex, p]));
 const PAINT_WEIGHT_SUM = PAINTS.reduce((sum, p) => sum + p.weight, 0);
 
@@ -845,11 +850,13 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
   const geo = getStyleGeometry(spec, style, blackRoof, rimDesign);
 
   // Per-car clear-coated paint (colour is synced in multiplayer)
-  const bodyMat = new THREE.MeshPhysicalMaterial({
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.06,
-    envMapIntensity: 1.15,
-  });
+  const bodyMat = LIGHTWEIGHT_PAINT
+    ? new THREE.MeshStandardMaterial({ envMapIntensity: 1.15 })
+    : new THREE.MeshPhysicalMaterial({
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.06,
+        envMapIntensity: 1.15,
+      });
   applyPaint(bodyMat, paintHex);
 
   const group = new THREE.Group();

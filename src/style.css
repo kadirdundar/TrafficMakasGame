@@ -344,6 +344,24 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Optional FPS / render-scale readout (P key or ?fps) */
+  .fps-meter {
+    position: fixed;
+    inset-block-start: max(6px, env(safe-area-inset-top));
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    padding-block: 2px;
+    padding-inline: 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--accent-emerald);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
   /* Mini HUD Pill */
   .hud-mini-cluster {
     position: fixed;
