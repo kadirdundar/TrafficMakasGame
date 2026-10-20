@@ -5,7 +5,8 @@ import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } fro
 import { TrafficManager } from './traffic.js';
 import { MultiplayerManager } from './multiplayer.js';
 
-const COCKPIT_MODE_KEY = 'otoban_cockpit_mode_v2';
+// v3: earlier versions could save the photo fallback after a failed 3D load; start everyone on 3D again
+const COCKPIT_MODE_KEY = 'otoban_cockpit_mode_v3';
 
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
@@ -595,8 +596,10 @@ class OtobanMakasGame {
     document.querySelectorAll('#cockpit-mode-group .seg-btn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-cockpit') === applied);
     });
+    // Persist what was asked for, not the fallback: a one-off 3D load failure (slow network,
+    // memory pressure) must not pin the player to the photo cockpit on every later visit
     try {
-      localStorage.setItem(COCKPIT_MODE_KEY, applied);
+      localStorage.setItem(COCKPIT_MODE_KEY, mode === '3d' ? '3d' : 'photo');
     } catch (_) {}
   }
 
