@@ -999,18 +999,18 @@ class OtobanMakasGame {
 
     // Resistance grows with the square of speed (aero drag) plus a small rolling term,
     // so the car pulls hard in town but has to fight the air past ~200 km/h.
-    const AERO_DRAG = 0.00036; // km/h/s per (km/h)^2
+    const AERO_DRAG = 0.00027; // km/h/s per (km/h)^2
     const ROLLING_DRAG = 1.5;
     const resistance = AERO_DRAG * this.speedKmh * this.speedKmh + ROLLING_DRAG;
 
     let accelKmhPerSec = 0;
     if (throttle > 0) {
       // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
-      // ~1.3 s 48→100, ~4 s 100→200, ~8 s 200→240 (power meets drag just above the limiter)
-      const ENGINE_POWER = 5600;
-      const TRACTION_LIMIT = 44;
+      // ~1.7 s 48→100, ~5.6 s 100→200, ~9 s 200→235 (power meets drag just above the limiter)
+      const ENGINE_POWER = 4200;
+      const TRACTION_LIMIT = 33;
       const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
-      // Part throttle settles at a cruising speed: ~120 km/h at 15%, ~185 km/h at 50%
+      // Part throttle settles at a cruising speed: ~125 km/h at 15%, ~185 km/h at 50%
       accelKmhPerSec = thrust * throttle - resistance;
     } else if (brake > 0) {
       accelKmhPerSec = -115; // Strong Brembo sport brakes
