@@ -787,7 +787,7 @@ export class CarCockpit {
     // On a real highway (90-240 km/h), lane changes & makas maneuvers use ~25° to 38° (0.45 - 0.66 rad),
     // not full parking-lot lock. Angle also tightens slightly as speed increases.
     const speedFactor = Math.min(1, Math.max(0, ((speedKmh || 90) - 60) / 180));
-    const maxWheelRad = 0.66 - speedFactor * 0.20; // ~38° at low speed, ~26° at 240 km/h
+    const maxWheelRad = 0.85 - speedFactor * 0.25; // ~49° at low speed, ~34° at 240 km/h
     const targetWheelAngle = steerInput * maxWheelRad;
     this.currentSteerVisual = THREE.MathUtils.lerp(
       this.currentSteerVisual,
