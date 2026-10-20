@@ -1355,7 +1355,7 @@ class OtobanMakasGame {
     );
 
     this.setHudText('mini-speed', String(Math.round(this.speedKmh)));
-    this.setHudText('mini-gear', `S${this.gear}`);
+    this.setHudText('mini-gear', `D${this.gear}`);
 
     this.updateMultiplayerHud();
   }
