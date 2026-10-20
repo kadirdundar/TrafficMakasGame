@@ -1180,19 +1180,33 @@
     gap: 3px;
   }
 
-  .mp-hud-top-row,
-  .mp-hud-bottom-row {
+  .mp-peer-list {
     display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .mp-peer-row {
+    display: grid;
+    grid-template-columns: auto auto;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    column-gap: 8px;
   }
 
   .mp-peer-name {
     font-size: 0.72rem;
     font-weight: 900;
-    color: #10b981;
+    color: var(--tag, #10b981);
     letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-inline-size: 10ch;
+  }
+
+  .mp-peer-name::before {
+    content: '● ';
   }
 
   .mp-peer-dist {
@@ -1203,13 +1217,16 @@
     background: rgba(255, 174, 0, 0.14);
     padding: 1px 6px;
     border-radius: 6px;
+    white-space: nowrap;
+    justify-self: end;
   }
 
   .mp-peer-stats {
+    grid-column: 1 / -1;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: 0.66rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: #cbd5e1;
   }
 
   .mp-catchup-btn {
@@ -1327,12 +1344,19 @@
     gap: 6px !important;
   }
 
-  .mp-hud-bottom-row {
-    gap: 4px !important;
+  /* Friends side by side in the compact top bar */
+  .mp-peer-list {
+    flex-direction: row !important;
+    gap: 7px !important;
+  }
+
+  .mp-peer-row {
+    column-gap: 3px !important;
   }
 
   .mp-peer-name {
     font-size: 0.62rem !important;
+    max-inline-size: 7ch !important;
   }
 
   .mp-peer-dist {

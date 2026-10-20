@@ -3,7 +3,7 @@ import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
-import { MultiplayerManager } from './multiplayer.js';
+import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
@@ -51,9 +51,9 @@ class OtobanMakasGame {
     this.traffic = new TrafficManager(this.scene);
     this.multiplayer = new MultiplayerManager(this.scene, this.traffic, {
       onStatusChange: (status) => this.syncMultiplayerUI(status),
-      onMatchReady: ({ role, remoteName }) => {
-        // Automatically launch both players onto the highway side-by-side!
-        this.playerX = role === 'host' ? -1.8 : 1.8;
+      onMatchReady: ({ remoteName, slot }) => {
+        // Automatically launch everyone onto the highway side-by-side, one lane per slot
+        this.playerX = SLOT_START_X[slot] ?? -1.8;
         this.speedKmh = 95;
         this.lateralVel = 0;
         this.headingAngle = 0;
@@ -70,8 +70,14 @@ class OtobanMakasGame {
           'gold'
         );
       },
-      onPeerHorn: () => {
-        this.showMakasNotification(`📯 ${this.multiplayer.remote.name} KORNA ÇALDI!`, 50, 'normal');
+      onPlayerJoined: ({ name }) => {
+        this.showMakasNotification(`🏁 ${name} ODAYA KATILDI!`, 0, 'gold');
+      },
+      onPlayerLeft: ({ name }) => {
+        this.showMakasNotification(`👋 ${name} ODADAN AYRILDI`, 0, 'normal');
+      },
+      onPeerHorn: ({ name }) => {
+        this.showMakasNotification(`📯 ${name} KORNA ÇALDI!`, 50, 'normal');
       },
       onWeatherSync: (weatherKey) => {
         if (weatherKey && weatherKey !== this.world.weatherKey) {
@@ -182,9 +188,7 @@ class OtobanMakasGame {
         this.sound.setHorn(true);
       }
       if (code === 'KeyR') {
-        if (this.multiplayer.catchUpToPeer()) {
-          this.showMakasNotification('🚀 ARKADAŞININ YANINA YETİŞTİN!', 0, 'normal');
-        }
+        this.catchUpToFriend();
       }
       if (code === 'KeyV') {
         this.cockpit.toggleWipers();
@@ -233,13 +237,9 @@ class OtobanMakasGame {
       document.getElementById('menu-overlay')?.classList.remove('hidden');
     });
 
-    document.getElementById('btn-mp-catchup')?.addEventListener('click', () => {
-      if (this.multiplayer.catchUpToPeer()) {
-        this.showMakasNotification('🚀 ARKADAŞININ YANINA YETİŞTİN!', 0, 'normal');
-      }
-    });
+    document.getElementById('btn-mp-catchup')?.addEventListener('click', () => this.catchUpToFriend());
 
-    // 2-Player Multiplayer Lobby Buttons
+    // Multiplayer Lobby Buttons (up to MAX_PLAYERS in one room)
     const nameInput = document.getElementById('mp-player-name');
     if (nameInput && localStorage.getItem('otoban_player_name')) {
       nameInput.value = localStorage.getItem('otoban_player_name');
@@ -618,7 +618,7 @@ class OtobanMakasGame {
     });
   }
 
-  syncMultiplayerUI({ connected, connecting, role, roomCode, message }) {
+  syncMultiplayerUI({ connected, connecting, role, roomCode, playerCount, message }) {
     const statusText = document.getElementById('mp-status-text');
     const codeBadge = document.getElementById('mp-active-code-badge');
     const codeVal = document.getElementById('mp-room-code-val');
@@ -666,7 +666,7 @@ class OtobanMakasGame {
       quickBtn.classList.toggle('connected', Boolean(connected));
     }
     if (quickLabel) {
-      quickLabel.textContent = connected ? `Oda: ${roomCode}` : '2 Kişilik';
+      quickLabel.textContent = connected ? `Oda ${roomCode} · ${playerCount}/${MAX_PLAYERS}` : `${MAX_PLAYERS} Kişilik`;
     }
   }
 
@@ -1091,17 +1091,18 @@ class OtobanMakasGame {
 
     const radarCars = this.traffic.getRadarSnapshot(this.playerX);
 
-    // If connected to a friend, add their car to the Audi MMI Radar & check for Tandem Makas!
-    if (this.multiplayer.connected) {
-      const peer = this.multiplayer.remote;
+    // Friends in the room show up on the Audi MMI Radar, and driving side by side with any of
+    // them at speed scores a Tandem Makas
+    const nowSec = performance.now() / 1000;
+    for (const peer of this.multiplayer.connected ? this.multiplayer.getRemotePlayers() : []) {
       radarCars.push({
         x: peer.x,
         relX: peer.x - this.playerX,
         relZ: peer.relZ,
         isPeer: true,
+        color: peer.style.tag,
       });
 
-      const nowSec = performance.now() / 1000;
       if (
         this.speedKmh >= 115 &&
         Math.abs(peer.relZ) < 2.8 &&
@@ -1155,6 +1156,60 @@ class OtobanMakasGame {
     this.updateHUD();
   }
 
+  // One row per friend in the room (name in their slot colour, gap, speed/combo/score).
+  // Rows are created/removed as players come and go; text is only rewritten when it changes.
+  updateMultiplayerHud() {
+    const list = document.getElementById('mp-peer-list');
+    if (!list) return;
+    this.mpRows ??= new Map();
+    const players = this.multiplayer.connected ? this.multiplayer.getRemotePlayers() : [];
+    const ids = new Set(players.map((p) => p.id));
+
+    for (const [id, row] of this.mpRows) {
+      if (!ids.has(id)) {
+        row.el.remove();
+        this.mpRows.delete(id);
+      }
+    }
+
+    for (const peer of players) {
+      let row = this.mpRows.get(peer.id);
+      if (!row) {
+        const el = document.createElement('div');
+        el.className = 'mp-peer-row';
+        el.style.setProperty('--tag', SLOT_STYLES[peer.slot % SLOT_STYLES.length].tag);
+        const name = document.createElement('span');
+        name.className = 'mp-peer-name';
+        const dist = document.createElement('span');
+        dist.className = 'mp-peer-dist';
+        const stats = document.createElement('span');
+        stats.className = 'mp-peer-stats';
+        el.append(name, dist, stats);
+        list.appendChild(el);
+        row = { el, name, dist, stats, text: {} };
+        this.mpRows.set(peer.id, row);
+      }
+
+      const distM = Math.round(Math.abs(peer.relZ));
+      const texts = {
+        name: peer.name.toUpperCase(),
+        dist: distM <= 4 ? '🔥 YAN YANA' : peer.relZ < 0 ? `▲ ${distM}m` : `▼ ${distM}m`,
+        stats: `${Math.round(peer.speedKmh)} KM/S • ${peer.combo.toFixed(1)}x • ${Math.floor(peer.score).toLocaleString('tr-TR')} P`,
+      };
+      for (const key of ['name', 'dist', 'stats']) {
+        if (row.text[key] !== texts[key]) {
+          row.text[key] = texts[key];
+          row[key].textContent = texts[key];
+        }
+      }
+    }
+  }
+
+  catchUpToFriend() {
+    const name = this.multiplayer.catchUpToPeer();
+    if (name) this.showMakasNotification(`🚀 ${name} YANINA YETİŞTİN!`, 0, 'normal');
+  }
+
   // Writes to the DOM only when a value actually changed: the HUD is refreshed every frame,
   // and redundant textContent/style writes still force style recalculation
   setHudText(id, value) {
@@ -1204,24 +1259,7 @@ class OtobanMakasGame {
     this.setHudText('mini-speed', String(Math.round(this.speedKmh)));
     this.setHudText('mini-gear', `S${this.gear}`);
 
-    // Update Live 2-Player HUD Card
-    if (this.multiplayer && this.multiplayer.connected) {
-      const peer = this.multiplayer.remote;
-      this.setHudText('mp-peer-name', `🟢 ${peer.name.toUpperCase()}`);
-
-      const distM = Math.round(Math.abs(peer.relZ));
-      if (distM <= 4) {
-        this.setHudText('mp-peer-dist', '🔥 YAN YANA!');
-      } else if (peer.relZ < 0) {
-        this.setHudText('mp-peer-dist', `ÖNÜNDE ${distM}m`);
-      } else {
-        this.setHudText('mp-peer-dist', `🪞 ARKANDA ${distM}m`);
-      }
-      this.setHudText(
-        'mp-peer-stats',
-        `${Math.round(peer.speedKmh)} KM/S • ${peer.combo.toFixed(1)}x • ${Math.floor(peer.score).toLocaleString('tr-TR')} P`
-      );
-    }
+    this.updateMultiplayerHud();
   }
 
   // Small on-screen FPS / render scale / draw-call readout (P key, or ?fps in the URL)
