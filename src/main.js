@@ -5,6 +5,12 @@ import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } fro
 import { TrafficManager } from './traffic.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 
+// Audi A8 drivetrain: ZF 8HP gear ratios, final drive and 20" wheel rolling circumference
+const A8_GEAR_RATIOS = [0, 5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64];
+const A8_FINAL_DRIVE = 2.85;
+const A8_WHEEL_CIRCUMFERENCE_M = 2.23;
+const A8_IDLE_RPM = 700;
+
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
   { name: 'Standart', offset: new THREE.Vector3(0.0, 1.25, 0.2), baseFov: 58, horizonShiftY: 0.24 },
@@ -120,6 +126,7 @@ class OtobanMakasGame {
     this.speedKmh = 90;
     this.rpm = 2200;
     this.gear = 3;
+    this.lastShiftAt = 0;
     this.lateralG = 0;
     this.longitudinalG = 0;
     this.shakeIntensity = 0;
@@ -977,26 +984,38 @@ class OtobanMakasGame {
       Math.min(1, dt * 12)
     );
 
-    // 3. 7-Speed Sport Automatic Transmission & RPM Calculation (Tuned for 240 km/h max)
-    const gearMaxSpeeds = [0, 50, 82, 114, 146, 178, 210, 242];
-    let targetGear = 1;
-    for (let g = 1; g <= 7; g++) {
-      if (this.speedKmh <= gearMaxSpeeds[g] || g === 7) {
-        targetGear = g;
-        break;
+    // 3. Audi A8 8-speed tiptronic (ZF 8HP) & RPM from the real drivetrain ratios.
+    //    Shift points follow the pedal: off the gas it short-shifts and cruises quietly
+    //    (~1,700 rpm at 120 km/h in 8th); holding the gas kicks down and revs to ~6,000.
+    const wheelRpm = (this.speedKmh / 3.6 / A8_WHEEL_CIRCUMFERENCE_M) * 60;
+    const rpmInGear = (g) => wheelRpm * A8_GEAR_RATIOS[g] * A8_FINAL_DRIVE;
+    const upshiftRpm = 2100 + throttle * 3900;
+    const downshiftRpm = 1150 + throttle * 2200;
+    const shiftClockSec = performance.now() / 1000;
+
+    if (shiftClockSec - this.lastShiftAt > 0.4) {
+      let targetGear = this.gear;
+      if (targetGear < 8 && rpmInGear(targetGear) > upshiftRpm) {
+        targetGear += 1;
+      } else {
+        // Kickdown may skip gears, as long as the lower gear is not past its own shift point
+        while (
+          targetGear > 1 &&
+          rpmInGear(targetGear) < downshiftRpm &&
+          rpmInGear(targetGear - 1) < upshiftRpm - 300
+        ) {
+          targetGear -= 1;
+        }
+      }
+      if (targetGear !== this.gear) {
+        this.sound.triggerGearShift(targetGear > this.gear);
+        this.gear = targetGear;
+        this.lastShiftAt = shiftClockSec;
       }
     }
 
-    if (targetGear !== this.gear) {
-      this.sound.triggerGearShift(targetGear > this.gear);
-      this.gear = targetGear;
-    }
-
-    const gearLow = gearMaxSpeeds[this.gear - 1] * 0.62;
-    const gearHigh = gearMaxSpeeds[this.gear];
-    const gearProgress = (this.speedKmh - gearLow) / Math.max(1, gearHigh - gearLow);
-    const targetRpm = 1850 + Math.max(0, Math.min(1.05, gearProgress)) * 5850 + throttle * 250;
-    this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 14));
+    const targetRpm = Math.max(A8_IDLE_RPM, rpmInGear(this.gear));
+    this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 10));
 
     // 4. Realistic Lateral Vehicle Dynamics (Smooth Yaw, Tire Grip & Rock-Solid Straight-Line Stability)
     const speedMs = this.speedKmh / 3.6;

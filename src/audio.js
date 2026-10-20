@@ -1,4 +1,14 @@
 // Procedural Web Audio Synthesizer for Engine, Turbo, Horn, Makas Whoosh & Rain
+//
+// The engine is an Audi A8 4.0 TFSI V8 (twin-turbo, cross-plane crank) as heard from inside its
+// insulated cabin: a firing-order tone that follows the real RPM, the V8's uneven "burble",
+// a little growl under load, and road & wind noise that take over at motorway speeds.
+
+const CYLINDERS = 8;
+const IDLE_RPM = 700;
+const MAX_RPM = 6500;
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 export class SoundEngine {
   constructor() {
@@ -6,13 +16,11 @@ export class SoundEngine {
     this.muted = false;
     this.running = false;
 
-    this.osc1 = null;
-    this.osc2 = null;
-    this.subOsc = null;
-    this.turboOsc = null;
+    this.master = null;
     this.engineGain = null;
     this.turboGain = null;
-    this.filter = null;
+    this.roadGain = null;
+    this.windGain = null;
 
     this.hornOsc1 = null;
     this.hornOsc2 = null;
@@ -20,6 +28,13 @@ export class SoundEngine {
 
     this.rainGain = null;
     this.isRaining = false;
+
+    // Smoothed engine load / turbo boost and gear-change envelope (see updateEngine)
+    this.load = 0;
+    this.boost = 0;
+    this.lastEngineUpdate = 0;
+    this.shiftDipUntil = 0;
+    this.shiftDipLevel = 1;
   }
 
   init() {
@@ -35,49 +50,29 @@ export class SoundEngine {
 
     this.ctx = new AudioCtx();
 
-    // Master filter & gain for engine
-    this.filter = this.ctx.createBiquadFilter();
-    this.filter.type = 'lowpass';
-    this.filter.frequency.value = 320;
-    this.filter.Q.value = 3.5;
+    // Everything goes through a gentle compressor so stacked sounds never clip on phone speakers
+    this.master = this.ctx.createDynamicsCompressor();
+    this.master.threshold.value = -14;
+    this.master.knee.value = 10;
+    this.master.ratio.value = 3;
+    this.master.attack.value = 0.005;
+    this.master.release.value = 0.2;
+    this.master.connect(this.ctx.destination);
 
-    this.engineGain = this.ctx.createGain();
-    this.engineGain.gain.value = 0.0;
+    // One looping noise source feeds rain, tyres, road, wind and the turbo
+    const bufferSize = this.ctx.sampleRate * 2;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    this.noise = this.ctx.createBufferSource();
+    this.noise.buffer = buffer;
+    this.noise.loop = true;
+    this.noise.start();
 
-    // 3 oscillators for a throaty inline-6 / V8 sport exhaust note
-    this.osc1 = this.ctx.createOscillator();
-    this.osc1.type = 'sawtooth';
-    this.osc1.frequency.value = 55;
-
-    this.osc2 = this.ctx.createOscillator();
-    this.osc2.type = 'triangle';
-    this.osc2.frequency.value = 110;
-
-    this.subOsc = this.ctx.createOscillator();
-    this.subOsc.type = 'sine';
-    this.subOsc.frequency.value = 27.5;
-
-    // Turbocharger high-pitched spool whine
-    this.turboOsc = this.ctx.createOscillator();
-    this.turboOsc.type = 'sine';
-    this.turboOsc.frequency.value = 1400;
-
-    this.turboGain = this.ctx.createGain();
-    this.turboGain.gain.value = 0.0;
-
-    this.osc1.connect(this.filter);
-    this.osc2.connect(this.filter);
-    this.subOsc.connect(this.filter);
-    this.filter.connect(this.engineGain);
-    this.engineGain.connect(this.ctx.destination);
-
-    this.turboOsc.connect(this.turboGain);
-    this.turboGain.connect(this.ctx.destination);
-
-    this.osc1.start();
-    this.osc2.start();
-    this.subOsc.start();
-    this.turboOsc.start();
+    this.setupEngine();
+    this.setupRoadNoise();
 
     // Setup Horn Oscillators (Dual-tone F4 + A4 automotive horn)
     this.hornGain = this.ctx.createGain();
@@ -97,55 +92,126 @@ export class SoundEngine {
     this.hornOsc1.connect(hornFilter);
     this.hornOsc2.connect(hornFilter);
     hornFilter.connect(this.hornGain);
-    this.hornGain.connect(this.ctx.destination);
+    this.hornGain.connect(this.master);
     this.hornOsc1.start();
     this.hornOsc2.start();
-
-    // Setup subtle rain ambience noise
-    this.setupRainNoise();
 
     this.running = true;
   }
 
-  setupRainNoise() {
-    if (!this.ctx) return;
-    const bufferSize = this.ctx.sampleRate * 2;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+  setupEngine() {
+    const ctx = this.ctx;
+
+    // Firing-order tone: warm low harmonics falling off smoothly (no raw sawtooth buzz), with
+    // the 2nd and 4th orders lifted the way a V8 exhaust note is
+    const N = 32;
+    const real = new Float32Array(N);
+    const imag = new Float32Array(N);
+    for (let n = 1; n < N; n++) {
+      imag[n] = (n === 2 ? 1.3 : n === 4 ? 0.9 : 1) / Math.pow(n, 1.35);
     }
+    const firingWave = ctx.createPeriodicWave(real, imag);
 
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
-    noise.loop = true;
+    const osc = (type, gain) => {
+      const o = ctx.createOscillator();
+      if (type === 'firing') o.setPeriodicWave(firingWave);
+      else o.type = type;
+      const g = ctx.createGain();
+      g.gain.value = gain;
+      o.connect(g);
+      o.start();
+      return { o, g };
+    };
+    // Two banks, very slightly apart, plus the cross-plane half-order burble and crank boom
+    this.firingA = osc('firing', 0.55);
+    this.firingB = osc('firing', 0.35);
+    this.firingB.o.detune.value = 7;
+    this.halfOrder = osc('triangle', 0.32);
+    this.crankOrder = osc('sine', 0.28);
 
-    const rainFilter = this.ctx.createBiquadFilter();
-    rainFilter.type = 'bandpass';
-    rainFilter.frequency.value = 1100;
-    rainFilter.Q.value = 0.7;
+    // V8 lope: the level swells and dips once per engine cycle (two crank turns); strongest
+    // at low revs, smoothing out as the revs rise
+    this.lopeGain = ctx.createGain();
+    this.lopeGain.gain.value = 1;
+    this.lopeLfo = ctx.createOscillator();
+    this.lopeLfo.type = 'sine';
+    this.lopeDepth = ctx.createGain();
+    this.lopeDepth.gain.value = 0.2;
+    this.lopeLfo.connect(this.lopeDepth);
+    this.lopeDepth.connect(this.lopeGain.gain);
+    this.lopeLfo.start();
+    for (const v of [this.firingA, this.firingB, this.halfOrder, this.crankOrder]) v.g.connect(this.lopeGain);
 
-    this.rainGain = this.ctx.createGain();
-    this.rainGain.gain.value = 0.0;
+    // Load-dependent growl: soft saturation driven harder when the throttle is open
+    this.driveGain = ctx.createGain();
+    this.driveGain.gain.value = 0.35;
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(2048);
+    for (let i = 0; i < curve.length; i++) {
+      const x = (i / (curve.length - 1)) * 2 - 1;
+      curve[i] = Math.tanh(2.5 * x) / Math.tanh(2.5);
+    }
+    shaper.curve = curve;
+    shaper.oversample = '2x';
 
-    noise.connect(rainFilter);
-    rainFilter.connect(this.rainGain);
-    this.rainGain.connect(this.ctx.destination);
+    // Body boom, then the cabin: double glazing and insulation let mostly the low end through
+    const bodyEq = ctx.createBiquadFilter();
+    bodyEq.type = 'peaking';
+    bodyEq.frequency.value = 120;
+    bodyEq.Q.value = 0.9;
+    bodyEq.gain.value = 5;
 
-    // Tire cornering load / asphalt scrub filter sharing the continuous noise source
-    this.tireFilter = this.ctx.createBiquadFilter();
-    this.tireFilter.type = 'bandpass';
-    this.tireFilter.frequency.value = 920;
-    this.tireFilter.Q.value = 4.5;
+    this.cabinFilter = ctx.createBiquadFilter();
+    this.cabinFilter.type = 'lowpass';
+    this.cabinFilter.frequency.value = 400;
+    this.cabinFilter.Q.value = 0.6;
 
-    this.tireGain = this.ctx.createGain();
-    this.tireGain.gain.value = 0.0;
+    this.engineGain = ctx.createGain();
+    this.engineGain.gain.value = 0.0;
 
-    noise.connect(this.tireFilter);
-    this.tireFilter.connect(this.tireGain);
-    this.tireGain.connect(this.ctx.destination);
+    this.lopeGain.connect(this.driveGain);
+    this.driveGain.connect(shaper);
+    shaper.connect(bodyEq);
+    bodyEq.connect(this.cabinFilter);
+    this.cabinFilter.connect(this.engineGain);
+    this.engineGain.connect(this.master);
+  }
 
-    noise.start();
+  // Turbo breath, tyre roar, wind and rain, all shaped from the shared noise source
+  setupRoadNoise() {
+    const ctx = this.ctx;
+    const band = (type, freq, q, gainNode) => {
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      this.noise.connect(f);
+      f.connect(gainNode);
+      gainNode.connect(this.master);
+      return f;
+    };
+    const silent = () => {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      return g;
+    };
+
+    // Twin-scroll turbos are barely audible in an A8: a soft rising whoosh, no whistle
+    this.turboGain = silent();
+    this.turboFilter = band('bandpass', 1500, 1.2, this.turboGain);
+
+    this.roadGain = silent();
+    this.roadFilter = band('lowpass', 220, 0.7, this.roadGain);
+
+    this.windGain = silent();
+    this.windFilter = band('bandpass', 900, 0.6, this.windGain);
+
+    this.rainGain = silent();
+    band('bandpass', 1100, 0.7, this.rainGain);
+
+    // Tire cornering load / asphalt scrub
+    this.tireGain = silent();
+    this.tireFilter = band('bandpass', 920, 4.5, this.tireGain);
   }
 
   setRainAmbience(enabled) {
@@ -158,36 +224,51 @@ export class SoundEngine {
   updateEngine(rpm, throttle, speedKmh, paused, lateralG = 0) {
     if (!this.ctx || !this.running) return;
     const now = this.ctx.currentTime;
+    const dt = Math.min(0.1, Math.max(0, now - this.lastEngineUpdate));
+    this.lastEngineUpdate = now;
 
     if (paused || this.muted) {
-      this.engineGain.gain.setTargetAtTime(0, now, 0.08);
-      this.turboGain.gain.setTargetAtTime(0, now, 0.08);
-      this.tireGain?.gain.setTargetAtTime(0, now, 0.08);
+      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain]) {
+        g?.gain.setTargetAtTime(0, now, 0.08);
+      }
       return;
     }
 
-    // Normalize RPM (850 idle -> 7800 redline)
-    const normRpm = Math.max(0, Math.min(1, (rpm - 800) / 7000));
-    const baseFreq = 36 + normRpm * 145;
+    const r = Math.max(IDLE_RPM * 0.9, Math.min(MAX_RPM * 1.03, rpm));
+    const rpmNorm = clamp01((r - IDLE_RPM) / (MAX_RPM - IDLE_RPM));
+    const speedNorm = clamp01(speedKmh / 240);
 
-    // Slight redline flutter when > 7300 RPM
-    const flutter = rpm > 7300 ? Math.sin(now * 95) * 8 : 0;
+    // Load follows the pedal with a little lag; boost builds more slowly (turbo spool)
+    this.load += (throttle - this.load) * Math.min(1, dt * 4);
+    const boostTarget = throttle * clamp01((r - 1600) / 2400);
+    this.boost += (boostTarget - this.boost) * Math.min(1, dt * (boostTarget > this.boost ? 2 : 5));
 
-    this.osc1.frequency.setTargetAtTime(baseFreq + flutter, now, 0.03);
-    this.osc2.frequency.setTargetAtTime((baseFreq + flutter) * 1.5, now, 0.03);
-    this.subOsc.frequency.setTargetAtTime((baseFreq + flutter) * 0.5, now, 0.03);
+    // Firing frequency: a four-stroke V8 fires 4 times per crank revolution
+    const firingHz = (r / 60) * (CYLINDERS / 2);
+    this.firingA.o.frequency.setTargetAtTime(firingHz, now, 0.025);
+    this.firingB.o.frequency.setTargetAtTime(firingHz, now, 0.025);
+    this.halfOrder.o.frequency.setTargetAtTime(firingHz / 2, now, 0.025);
+    this.crankOrder.o.frequency.setTargetAtTime(firingHz / 4, now, 0.025);
+    this.lopeLfo.frequency.setTargetAtTime(firingHz / 8, now, 0.025);
+    this.lopeDepth.gain.setTargetAtTime(0.1 + (1 - rpmNorm) * 0.3, now, 0.1);
 
-    const filterFreq = 180 + normRpm * 950 + throttle * 380;
-    this.filter.frequency.setTargetAtTime(filterFreq, now, 0.04);
+    // Quiet, muffled hum when cruising; the cabin "opens up" and the V8 growls under load
+    this.driveGain.gain.setTargetAtTime(0.32 + this.load * 0.42 + rpmNorm * 0.12, now, 0.06);
+    this.cabinFilter.frequency.setTargetAtTime(230 + rpmNorm * 520 + this.load * 650, now, 0.06);
 
-    const targetGain = 0.055 + normRpm * 0.065 + throttle * 0.035;
-    this.engineGain.gain.setTargetAtTime(targetGain, now, 0.05);
+    // Gear changes: a short torque dip on upshifts, a small blip on kickdowns (see triggerGearShift)
+    const shiftLevel = now < this.shiftDipUntil ? this.shiftDipLevel : 1;
+    const engineVol = (0.05 + rpmNorm * 0.06 + this.load * 0.07) * shiftLevel;
+    this.engineGain.gain.setTargetAtTime(engineVol, now, 0.045);
 
-    // Turbo whistle
-    const turboFreq = 1600 + normRpm * 2900;
-    const turboVol = throttle > 0.2 ? normRpm * 0.018 : 0.002;
-    this.turboOsc.frequency.setTargetAtTime(turboFreq, now, 0.06);
-    this.turboGain.gain.setTargetAtTime(turboVol, now, 0.08);
+    this.turboFilter.frequency.setTargetAtTime(1300 + this.boost * 2200, now, 0.1);
+    this.turboGain.gain.setTargetAtTime(this.boost * 0.012, now, 0.12);
+
+    // Tyre roar and wind grow with speed and dominate over the engine at motorway pace
+    this.roadFilter.frequency.setTargetAtTime(180 + speedNorm * 380, now, 0.2);
+    this.roadGain.gain.setTargetAtTime(0.012 + Math.pow(speedNorm, 1.5) * 0.06, now, 0.2);
+    this.windFilter.frequency.setTargetAtTime(650 + speedNorm * 1000, now, 0.2);
+    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.4) * 0.05, now, 0.2);
 
     // Tire cornering load / scrub sound when weaving hard at speed
     if (this.tireGain && this.tireFilter) {
@@ -199,35 +280,13 @@ export class SoundEngine {
     }
   }
 
+  // ZF 8-speed shifts are smooth: no blow-off hiss or exhaust pop, just the engine note
+  // dipping for a moment on an upshift and swelling briefly on a kickdown
   triggerGearShift(isUpShift = true) {
     if (!this.ctx || this.muted) return;
     const now = this.ctx.currentTime;
-
-    // Turbo blow-off hiss ("psshhh") on upshift or exhaust pop on downshift
-    const duration = isUpShift ? 0.18 : 0.12;
-    const bufferSize = Math.floor(this.ctx.sampleRate * duration);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
-    }
-
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = isUpShift ? 3600 : 280;
-    filter.Q.value = isUpShift ? 2.5 : 4.0;
-
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(isUpShift ? 0.07 : 0.1, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.ctx.destination);
-    noise.start(now);
+    this.shiftDipLevel = isUpShift ? 0.6 : 1.2;
+    this.shiftDipUntil = now + (isUpShift ? 0.12 : 0.15);
   }
 
   setHorn(active) {
@@ -248,7 +307,7 @@ export class SoundEngine {
     gain.gain.setValueAtTime(0.05, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master);
     osc.start(now);
     osc.stop(now + 0.035);
   }
@@ -282,7 +341,7 @@ export class SoundEngine {
 
     noise.connect(filter);
     filter.connect(whooshGain);
-    whooshGain.connect(this.ctx.destination);
+    whooshGain.connect(this.master);
     noise.start(now);
 
     // 2. Stylish Combo Chime (pitch scales with combo!)
@@ -302,7 +361,7 @@ export class SoundEngine {
     chimeGain.gain.exponentialRampToValueAtTime(0.001, now + (isDouble ? 0.28 : 0.18));
 
     chimeOsc.connect(chimeGain);
-    chimeGain.connect(this.ctx.destination);
+    chimeGain.connect(this.master);
     chimeOsc.start(now);
     chimeOsc.stop(now + (isDouble ? 0.3 : 0.2));
   }
@@ -331,16 +390,16 @@ export class SoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master);
     noise.start(now);
   }
 
   toggleMute() {
     this.muted = !this.muted;
     if (this.muted && this.ctx) {
-      this.engineGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
-      this.turboGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
-      this.rainGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain]) {
+        g?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+      }
     } else {
       this.setRainAmbience(this.isRaining);
     }
