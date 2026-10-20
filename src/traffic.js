@@ -8,6 +8,13 @@ import {
   setVehicleLightsNightMode,
 } from './vehicleModels.js';
 
+// Blinker time before a lane change; a car yielding to a Selektör flash moves sooner so the
+// flash still clears the lane in time
+const LANE_CHANGE_SIGNAL_SEC = 2.0;
+const YIELD_SIGNAL_SEC = 1.0;
+// How far a driver keeps to the far side of the lane when giving room to a car alongside
+const ROOM_OFFSET_M = 0.45;
+
 const VEHICLE_TYPES = [
   { type: 'sedan', width: 1.86, height: 1.42, length: 4.5, baseSpeedKmh: 105 },
   { type: 'sport', width: 1.92, height: 1.28, length: 4.4, baseSpeedKmh: 122 },
@@ -68,6 +75,11 @@ export class TrafficManager {
         noCollideUntil: 0,
         pushRemainingZ: 0,
         localOverrideUntil: 0,
+        pendingLane: -1, // lane it is signalling for (see signalLaneChange)
+        pendingLaneAt: 0,
+        laneOffset: 0, // metres from the lane centre (gives room to a car alongside)
+        laneOffsetTarget: 0,
+        givesRoom: false,
         isBraking: false,
         speedKmh: spec.baseSpeedKmh,
         targetSpeedKmh: spec.baseSpeedKmh,
@@ -129,7 +141,7 @@ export class TrafficManager {
           other !== car &&
           other.active &&
           other.targetLane === lane &&
-          Math.abs(other.z - z) < 18
+          Math.abs(other.z - z) < 24
       );
       if (!conflict) break;
       // Keep trucks/vans in right lanes (2 or 3) when resolving spawn conflicts
@@ -141,14 +153,14 @@ export class TrafficManager {
       z -= 15;
     }
 
-    // Prevent all 4 lanes from being blocked at the exact same Z band (always leave a makas corridor!)
+    // Prevent all 4 lanes from being blocked in the same Z band (always leave a makas corridor!)
     const occupiedLanesAtZ = new Set(
       this.vehicles
-        .filter((other) => other !== car && other.active && Math.abs(other.z - z) < 15)
+        .filter((other) => other !== car && other.active && Math.abs(other.z - z) < 20)
         .map((other) => other.targetLane)
     );
     if (occupiedLanesAtZ.size >= 3 && occupiedLanesAtZ.has(lane)) {
-      z -= 24;
+      z -= 30;
     }
 
     car.lane = lane;
@@ -162,6 +174,11 @@ export class TrafficManager {
     car.changingLaneTimer = 0;
     car.isBraking = false;
     car.overtaken = false;
+    car.pendingLane = -1;
+    car.laneOffset = 0;
+    car.laneOffsetTarget = 0;
+    // About half of the drivers move over in their lane when side by side with another car
+    car.givesRoom = Math.random() < 0.5;
 
     // Fresh random paint color for variety
     applyPaint(car.bodyMat, pickRandomPaint());
@@ -199,6 +216,15 @@ export class TrafficManager {
     );
   }
 
+  // Drivers signal first and only move over once the blinker has been on for a while; the
+  // move happens in update() if the lane is still clear then, otherwise they give up
+  signalLaneChange(car, lane, waitSec) {
+    car.pendingLane = lane;
+    car.pendingLaneAt = performance.now() / 1000 + waitSec;
+    car.blinkerDir = lane < car.targetLane ? -1 : 1;
+    car.changingLaneTimer = waitSec + 1.8; // keeps blinking through the move itself
+  }
+
   // Triggered when a player (Host or Guest) flashes Selektör (High-beam)!
   // Vehicles ahead of flasherZ (-85m to -8m) in the same lane signal and yield to an adjacent lane!
   notifyHighBeamFlash(flasherX, flasherZ = 0) {
@@ -206,19 +232,18 @@ export class TrafficManager {
     for (const car of this.vehicles) {
       if (!car.active) continue;
       const relZToFlasher = car.z - flasherZ; // Negative means ahead of the flashing player
-      if (relZToFlasher < -8 && relZToFlasher > -85 && Math.abs(car.x - flasherX) < 2.2) {
+      if (
+        car.pendingLane < 0 &&
+        relZToFlasher < -8 &&
+        relZToFlasher > -85 &&
+        Math.abs(car.x - flasherX) < 2.2
+      ) {
         const rightLane = car.targetLane + 1;
         if (rightLane <= 3 && this.isLaneClear(car, rightLane, 14, flasherX)) {
-          car.targetLane = rightLane;
-          car.targetSpeedKmh = this.getLaneTargetSpeed(rightLane, car.spec);
-          car.blinkerDir = 1;
-          car.changingLaneTimer = 1.6;
+          this.signalLaneChange(car, rightLane, YIELD_SIGNAL_SEC);
           anyYielded = true;
         } else if (car.targetLane > 0 && this.isLaneClear(car, car.targetLane - 1, 14, flasherX)) {
-          car.targetLane = car.targetLane - 1;
-          car.targetSpeedKmh = this.getLaneTargetSpeed(car.targetLane, car.spec);
-          car.blinkerDir = -1;
-          car.changingLaneTimer = 1.6;
+          this.signalLaneChange(car, car.targetLane - 1, YIELD_SIGNAL_SEC);
           anyYielded = true;
         }
       }
@@ -305,23 +330,55 @@ export class TrafficManager {
         let isBraking = false;
         if (carAhead && minDistAhead < 18) {
           // Either change lane with blinker or match speed and brake (only when well ahead of players)
-          if (car.z < frontMostZ - 16 && car.lane === car.targetLane && Math.random() < 0.02) {
+          if (
+            car.z < frontMostZ - 16 &&
+            car.lane === car.targetLane &&
+            car.pendingLane < 0 &&
+            Math.random() < 0.02
+          ) {
             const tryLeft = car.lane - 1;
             const tryRight = car.lane + 1;
             if (this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
-              car.targetLane = tryLeft;
-              car.blinkerDir = -1;
-              car.changingLaneTimer = 1.8;
+              this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
             } else if (this.isLaneClear(car, tryRight, 16, playerX, mpContext)) {
-              car.targetLane = tryRight;
-              car.blinkerDir = 1;
-              car.changingLaneTimer = 1.8;
+              this.signalLaneChange(car, tryRight, LANE_CHANGE_SIGNAL_SEC);
             }
           }
           car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, carAhead.speedKmh * 0.92, dt * 4);
           isBraking = true;
         } else {
           car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, car.targetSpeedKmh, dt * 1.5);
+        }
+
+        // Signalled long enough: move over once the lane is clear; if it stays blocked for
+        // another 2 s, give up and switch the blinker off
+        if (car.pendingLane >= 0 && nowSec >= car.pendingLaneAt) {
+          if (this.isLaneClear(car, car.pendingLane, 14, playerX, mpContext)) {
+            car.targetLane = car.pendingLane;
+            car.targetSpeedKmh = this.getLaneTargetSpeed(car.targetLane, car.spec);
+            car.changingLaneTimer = 1.8;
+            car.pendingLane = -1;
+          } else if (nowSec >= car.pendingLaneAt + 2) {
+            car.blinkerDir = 0;
+            car.changingLaneTimer = 0;
+            car.pendingLane = -1;
+          } else {
+            car.changingLaneTimer = Math.max(car.changingLaneTimer, 0.5); // keep blinking while waiting
+          }
+        }
+
+        // Side by side with a car in the next lane: drivers who give room keep to the far side
+        // of their lane, which now and then opens a narrow gap to thread between the two
+        car.laneOffsetTarget = 0;
+        if (car.givesRoom && car.lane === car.targetLane) {
+          let side = 0;
+          for (const other of this.vehicles) {
+            if (other === car || !other.active || Math.abs(other.z - car.z) > 9) continue;
+            const laneDiff = other.targetLane - car.targetLane;
+            if (laneDiff === 1 || laneDiff === -1) side -= laneDiff;
+          }
+          // Only one neighbour (or both on the same side): move away from it
+          if (side !== 0) car.laneOffsetTarget = Math.sign(side) * ROOM_OFFSET_M;
         }
 
         // CRITICAL PROTECTION FOR HOST: If this car is behind Host (car.z > 0), do not rear-end Host!
@@ -353,13 +410,15 @@ export class TrafficManager {
       }
 
       // 2. Smooth lateral lane changing & blinker lights (runs identically on Host & Guest!)
-      const targetX = LANE_CENTERS[car.targetLane];
+      const offsetStep = car.laneOffsetTarget - car.laneOffset;
+      car.laneOffset += Math.sign(offsetStep) * Math.min(Math.abs(offsetStep), dt * 0.6);
+      const targetX = LANE_CENTERS[car.targetLane] + car.laneOffset;
       const dx = targetX - car.x;
       let laneChangeYaw = 0;
       if (Math.abs(dx) > 0.04) {
         const moveStep = Math.sign(dx) * Math.min(Math.abs(dx), dt * 3.4);
         car.x += moveStep;
-        laneChangeYaw = -Math.sign(dx) * 0.065;
+        laneChangeYaw = -Math.sign(dx) * (car.lane === car.targetLane ? 0.015 : 0.065);
       } else {
         car.x = targetX;
         car.lane = car.targetLane;
@@ -467,6 +526,7 @@ export class TrafficManager {
         speedKmh: Math.round(c.speedKmh),
         targetSpeedKmh: Math.round(c.targetSpeedKmh),
         blinkerDir: c.blinkerDir,
+        offset: Number(c.laneOffsetTarget.toFixed(2)),
         braking: c.isBraking ? 1 : 0,
         colorHex: c.bodyMat.color.getHex(),
       })),
@@ -499,6 +559,7 @@ export class TrafficManager {
       car.speedKmh = s.speedKmh;
       car.targetSpeedKmh = s.targetSpeedKmh;
       car.blinkerDir = s.blinkerDir;
+      car.laneOffsetTarget = Number(s.offset) || 0;
       car.isBraking = Boolean(s.braking);
       if (s.blinkerDir !== 0 && car.changingLaneTimer <= 0) {
         car.changingLaneTimer = 1.0;
