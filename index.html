@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#080b12" />
   <title>OTOBAN MAKAS 3D — Kokpit Sürüş Simülasyonu</title>
-  <script type="module" crossorigin src="./assets/index-HJwwuOxk.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DHiE5WbO.css">
+  <script type="module" crossorigin src="./assets/index-mjT4GDCO.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BeWc7QXs.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -118,8 +118,17 @@
 
   <!-- Mobile & Touch Controls Overlay -->
   <div id="touch-controls" class="touch-controls">
-    <!-- Left Side: Selektör, Horn & Optional Left/Right Buttons -->
+    <!-- Left Side: kept free for the thumb steering pad; shows ◀ ▶ only in button-steering mode -->
     <div class="touch-left">
+      <!-- Button Steering Mode (Hidden unless selected in settings; Wheel mode uses the real Audi steering wheel!) -->
+      <div id="button-steer-zone" class="button-steer-zone hidden">
+        <button id="touch-left-btn" class="steer-btn" type="button" aria-label="Sola Dön">◀</button>
+        <button id="touch-right-btn" class="steer-btn" type="button" aria-label="Sağa Dön">▶</button>
+      </div>
+    </div>
+
+    <!-- Right Side: Selektör & Horn next to the Brake & Gas Pedals -->
+    <div class="touch-right">
       <div class="touch-aux-row">
         <button id="touch-selektor" class="aux-action-btn selektor-btn" type="button">
           <span class="aux-icon">≡O</span>
@@ -130,16 +139,6 @@
           <span>KORNA</span>
         </button>
       </div>
-
-      <!-- Button Steering Mode (Hidden unless selected in settings; Wheel mode uses the real Audi steering wheel!) -->
-      <div id="button-steer-zone" class="button-steer-zone hidden">
-        <button id="touch-left-btn" class="steer-btn" type="button" aria-label="Sola Dön">◀</button>
-        <button id="touch-right-btn" class="steer-btn" type="button" aria-label="Sağa Dön">▶</button>
-      </div>
-    </div>
-
-    <!-- Right Side: Brake & Gas Pedals + Nitro/Boost -->
-    <div class="touch-right">
       <button id="touch-brake" class="pedal-btn brake-pedal" type="button">
         <span class="pedal-label">FREN</span>
         <div class="pedal-ribs"></div>
