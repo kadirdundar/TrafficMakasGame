@@ -877,7 +877,8 @@ export class MultiplayerManager {
     this.broadcast({
       type: 'peer_car_hit',
       carId: car.id,
-      carWorldDistM: Number((this.localWorldDistM - car.z).toFixed(2)),
+      // Where the shove ends, not where the car is mid-slide
+      carWorldDistM: Number((this.localWorldDistM - car.z - car.pushRemainingZ).toFixed(2)),
       speedKmh: Math.round(car.speedKmh),
     });
   }
