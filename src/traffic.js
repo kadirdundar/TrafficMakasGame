@@ -167,7 +167,7 @@ export class TrafficManager {
     car.mesh.rotation.y = 0;
   }
 
-  isLaneClear(car, candidateLane, marginZ = 15, playerX = null, peerState = null) {
+  isLaneClear(car, candidateLane, marginZ = 15, playerX = null, mpContext = null) {
     if (candidateLane < 0 || candidateLane > 3) return false;
     const candidateX = LANE_CENTERS[candidateLane];
 
@@ -178,10 +178,12 @@ export class TrafficManager {
       }
     }
 
-    // Never swerve into the lane if the 2P friend's car is nearby in or near that lane
-    if (peerState?.connected && Math.abs(car.z - peerState.relZ) < 16) {
-      if (Math.abs(candidateX - peerState.x) < 2.8) {
-        return false;
+    // Never swerve into the lane if any friend's car is nearby in or near that lane
+    if (mpContext?.connected) {
+      for (const peer of mpContext.peers) {
+        if (Math.abs(car.z - peer.relZ) < 16 && Math.abs(candidateX - peer.x) < 2.8) {
+          return false;
+        }
       }
     }
 
@@ -243,8 +245,10 @@ export class TrafficManager {
       if (night !== this.nightLights) this.setNightLights(night);
     }
 
-    const frontMostZ = isConnected ? Math.min(0, mpContext.peerRelZ || 0) : 0;
-    const rearMostZ = isConnected ? Math.max(0, mpContext.peerRelZ || 0) : 0;
+    // Traffic has to cover the whole pack: from the leading player to the trailing one
+    const peers = isConnected ? mpContext.peers : [];
+    const frontMostZ = Math.min(0, ...peers.map((p) => p.relZ));
+    const rearMostZ = Math.max(0, ...peers.map((p) => p.relZ));
 
     for (let i = 0; i < this.vehicles.length; i++) {
       const car = this.vehicles[i];
@@ -320,17 +324,14 @@ export class TrafficManager {
           }
         }
 
-        // CRITICAL PROTECTION FOR GUEST: If this car is behind Guest (car.z > peerRelZ), do not rear-end Guest!
-        if (
-          isConnected &&
-          car.z > mpContext.peerRelZ &&
-          car.z < mpContext.peerRelZ + 30 &&
-          Math.abs(car.x - mpContext.peerX) < 2.8
-        ) {
-          const maxPeerRearSpeed = Math.max(40, (mpContext.peerSpeedKmh || 90) - 14);
-          if (car.speedKmh > maxPeerRearSpeed) {
-            car.speedKmh = maxPeerRearSpeed;
-            isBraking = true;
+        // CRITICAL PROTECTION FOR GUESTS: a car right behind any guest must not rear-end them
+        for (const peer of peers) {
+          if (car.z > peer.relZ && car.z < peer.relZ + 30 && Math.abs(car.x - peer.x) < 2.8) {
+            const maxPeerRearSpeed = Math.max(40, (peer.speedKmh || 90) - 14);
+            if (car.speedKmh > maxPeerRearSpeed) {
+              car.speedKmh = maxPeerRearSpeed;
+              isBraking = true;
+            }
           }
         }
 
@@ -422,7 +423,7 @@ export class TrafficManager {
         }
       }
 
-      // 5. Respawn vehicle on Host only when it falls >42m behind BOTH players,
+      // 5. Respawn vehicle on Host only when it falls >42m behind EVERY player,
       // or gets >320m ahead of the leading player!
       if (!this.isRemoteControlled) {
         if (car.z > rearMostZ + 42) {

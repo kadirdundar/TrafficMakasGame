@@ -1024,6 +1024,82 @@
     cursor: pointer;
   }
 
+  .install-btn {
+    border-color: rgba(0, 240, 255, 0.45);
+  }
+
+  .install-hint {
+    margin: 10px 0 0;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .install-hint strong {
+    color: var(--text-main);
+  }
+
+  /* "Turn your phone" screen: only on touch devices held upright */
+  .rotate-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    text-align: center;
+    background: radial-gradient(circle at 50% 40%, #10203f, #05080f 70%);
+    color: var(--text-main);
+    touch-action: manipulation;
+  }
+
+  .rotate-overlay > strong {
+    font-size: 1.35rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+  }
+
+  .rotate-overlay > span {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .rotate-phone {
+    position: relative;
+    inline-size: 54px;
+    block-size: 92px;
+    margin-block-end: 18px;
+    border: 4px solid var(--accent-cyan);
+    border-radius: 12px;
+    box-shadow: 0 0 24px rgba(0, 240, 255, 0.35);
+    animation: rotatePhone 2.6s ease-in-out infinite;
+  }
+
+  .rotate-phone::after {
+    content: '';
+    position: absolute;
+    inset-block-end: 6px;
+    inset-inline-start: calc(50% - 7px);
+    inline-size: 14px;
+    block-size: 4px;
+    border-radius: 2px;
+    background: var(--accent-cyan);
+  }
+
+  .rotate-btn {
+    flex: none;
+    margin-block-start: 16px;
+  }
+
+  @media (orientation: portrait) and (pointer: coarse) {
+    .rotate-overlay {
+      display: flex;
+    }
+  }
+
   /* 2-Player WebRTC P2P Lobby Box */
   .mp-lobby-box {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(0, 240, 255, 0.08));
@@ -1180,19 +1256,33 @@
     gap: 3px;
   }
 
-  .mp-hud-top-row,
-  .mp-hud-bottom-row {
+  .mp-peer-list {
     display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .mp-peer-row {
+    display: grid;
+    grid-template-columns: auto auto;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    column-gap: 8px;
   }
 
   .mp-peer-name {
     font-size: 0.72rem;
     font-weight: 900;
-    color: #10b981;
+    color: var(--tag, #10b981);
     letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-inline-size: 10ch;
+  }
+
+  .mp-peer-name::before {
+    content: '● ';
   }
 
   .mp-peer-dist {
@@ -1203,13 +1293,16 @@
     background: rgba(255, 174, 0, 0.14);
     padding: 1px 6px;
     border-radius: 6px;
+    white-space: nowrap;
+    justify-self: end;
   }
 
   .mp-peer-stats {
+    grid-column: 1 / -1;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: 0.66rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: #cbd5e1;
   }
 
   .mp-catchup-btn {
@@ -1235,6 +1328,20 @@
 }
 
 @layer animations {
+  @keyframes rotatePhone {
+    0%,
+    15% {
+      rotate: 0deg;
+    }
+    45%,
+    85% {
+      rotate: -90deg;
+    }
+    100% {
+      rotate: 0deg;
+    }
+  }
+
   @keyframes chipIn {
     from {
       opacity: 0;
@@ -1260,6 +1367,11 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .rotate-phone {
+      animation: none;
+      rotate: -90deg;
+    }
+
     .makas-popup,
     .makas-popup.bump,
     .makas-popup.leaving {
@@ -1327,12 +1439,19 @@
     gap: 6px !important;
   }
 
-  .mp-hud-bottom-row {
-    gap: 4px !important;
+  /* Friends side by side in the compact top bar */
+  .mp-peer-list {
+    flex-direction: row !important;
+    gap: 7px !important;
+  }
+
+  .mp-peer-row {
+    column-gap: 3px !important;
   }
 
   .mp-peer-name {
     font-size: 0.62rem !important;
+    max-inline-size: 7ch !important;
   }
 
   .mp-peer-dist {

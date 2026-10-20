@@ -1304,7 +1304,7 @@ export class CarCockpit {
       const cy = playerScreenY + (car.relZ / 90) * (rh * 0.74);
       if (cy < ry + 2 || cy > ry + rh - 2) return;
       if (car.isPeer) {
-        ctx.fillStyle = '#10b981';
+        ctx.fillStyle = car.color || '#10b981';
         ctx.fillRect(cx - 3.5, cy - 5, 7, 10);
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1;
