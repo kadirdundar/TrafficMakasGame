@@ -7,6 +7,7 @@ import {
   pickRandomPaint,
   setVehicleLightsNightMode,
 } from './vehicleModels.js';
+import { Ambulance } from './emergency.js';
 
 // Blinker time before a lane change; a car yielding to a Selektör flash moves sooner so the
 // flash still clears the lane in time
@@ -39,6 +40,9 @@ export class TrafficManager {
     this.lastMakasTime = 0;
     this.lastMakasCarId = -1;
 
+    // 112 ambulance event (hidden and idle until it is dispatched)
+    this.ambulance = new Ambulance(scene, this);
+
     this.initPool(24);
   }
 
@@ -46,6 +50,7 @@ export class TrafficManager {
     this.nightLights = night;
     setVehicleLightsNightMode(night);
     for (const car of this.vehicles) car.visual.setNight(night);
+    this.ambulance.visual.setNight(night);
   }
 
   setDensity(mode) {
@@ -110,6 +115,7 @@ export class TrafficManager {
       car.hasSynced = false;
       this.respawnVehicle(car, -42 - i * 18);
     }
+    this.ambulance.reset();
   }
 
   getLaneTargetSpeed(lane, spec) {
@@ -140,13 +146,14 @@ export class TrafficManager {
     let z = customZ !== null ? customZ : frontAnchorZ - 165 - Math.random() * 135;
 
     for (let attempt = 0; attempt < 10; attempt++) {
-      const conflict = this.vehicles.some(
-        (other) =>
-          other !== car &&
-          other.active &&
-          other.targetLane === lane &&
-          Math.abs(other.z - z) < 24
-      );
+      const conflict =
+        this.vehicles.some(
+          (other) =>
+            other !== car &&
+            other.active &&
+            other.targetLane === lane &&
+            Math.abs(other.z - z) < 24
+        ) || this.ambulance.occupiesLane(lane, z, 24, 40);
       if (!conflict) break;
       // Keep trucks/vans in right lanes (2 or 3) when resolving spawn conflicts
       if (car.spec.type === 'truck' || car.spec.type === 'van') {
@@ -212,6 +219,9 @@ export class TrafficManager {
       }
     }
 
+    // Never pull out in front of an ambulance coming up fast from behind
+    if (this.ambulance.occupiesLane(candidateLane, car.z, marginZ, marginZ + 40)) return false;
+
     return !this.vehicles.some(
       (other) =>
         other !== car &&
@@ -230,11 +240,12 @@ export class TrafficManager {
     car.changingLaneTimer = waitSec + 1.8; // keeps blinking through the move itself
   }
 
-  // Triggered when a player (Host or Guest) flashes Selektör (High-beam)!
+  // Triggered when a player (Host or Guest) flashes Selektör (High-beam), and by the ambulance!
   // Only cars actually in the flasher's path (-85m to -8m ahead) react, and only by moving to a
   // lane that clears that path: keep right if that does it, otherwise go left. A car that has
   // already moved out of the way is no longer in the path, so a second flash leaves it alone.
-  notifyHighBeamFlash(flasherX, flasherZ = 0) {
+  // playerX / mpContext: the players a car must not swerve into (by default the flasher).
+  notifyHighBeamFlash(flasherX, flasherZ = 0, playerX = flasherX, mpContext = null) {
     if (this.isRemoteControlled) return false; // guests: the host decides (notifyLocalSelektor)
     const nowSec = performance.now() / 1000;
     let anyYielded = false;
@@ -250,7 +261,7 @@ export class TrafficManager {
       for (const dir of [1, -1]) {
         const lane = car.targetLane + dir;
         if (lane < 0 || lane > 3 || blocksPath(LANE_CENTERS[lane])) continue;
-        if (!this.isLaneClear(car, lane, 14, flasherX)) continue;
+        if (!this.isLaneClear(car, lane, 14, playerX, mpContext)) continue;
         this.signalLaneChange(car, lane, YIELD_SIGNAL_SEC);
         // Having made way, it stays in its new lane for a while instead of cutting back in
         car.holdLaneUntil = nowSec + YIELD_SIGNAL_SEC + 6;
@@ -335,6 +346,18 @@ export class TrafficManager {
               carAhead = other;
             }
           }
+        }
+        // An ambulance held up right in front: queue behind it (one that is faster just leaves)
+        const amb = this.ambulance;
+        if (
+          amb.active &&
+          amb.targetLane === car.targetLane &&
+          amb.z < car.z &&
+          car.z - amb.z < minDistAhead &&
+          amb.speedKmh < car.speedKmh
+        ) {
+          minDistAhead = car.z - amb.z;
+          carAhead = amb;
         }
 
         let isBraking = false;
@@ -520,6 +543,17 @@ export class TrafficManager {
         }
       }
     }
+
+    this.ambulance.update(dt, {
+      playerSpeedKmh,
+      playerX,
+      peers,
+      mpContext,
+      nowSec,
+      blinkState,
+      callbacks,
+      world,
+    });
   }
 
   exportSyncState(hostWorldDistM, weatherKey = null) {
@@ -541,6 +575,7 @@ export class TrafficManager {
         braking: c.isBraking ? 1 : 0,
         colorHex: c.bodyMat.color.getHex(),
       })),
+      ambulance: this.ambulance.exportState(hostWorldDistM),
     };
   }
 
@@ -593,6 +628,8 @@ export class TrafficManager {
         car.x = THREE.MathUtils.lerp(car.x, s.x, 0.5);
       }
     }
+
+    this.ambulance.applyState(snapshot.ambulance, guestWorldDistM);
   }
 
   getRadarSnapshot(playerX) {
@@ -603,6 +640,7 @@ export class TrafficManager {
         relX: v.x - playerX,
         relZ: v.z,
       }));
+    if (this.ambulance.active) list.push(this.ambulance.radarEntry(playerX));
     list.playerX = playerX;
     return list;
   }

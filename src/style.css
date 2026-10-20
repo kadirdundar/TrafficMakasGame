@@ -92,6 +92,48 @@
   .vignette.crash-flash {
     box-shadow: inset 0 0 140px rgba(255, 30, 66, 0.85);
   }
+
+  /* Pre-drawn gradients; JS only flips which one is shown (opacity, composited) */
+  .siren-vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  .siren-vignette > div {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    will-change: opacity;
+  }
+
+  .siren-red {
+    background:
+      linear-gradient(90deg, rgba(255, 30, 60, 0.5), transparent 26%),
+      linear-gradient(180deg, rgba(255, 30, 60, 0.2), transparent 16%);
+  }
+
+  .siren-blue {
+    background:
+      linear-gradient(270deg, rgba(40, 110, 255, 0.55), transparent 26%),
+      linear-gradient(180deg, rgba(40, 110, 255, 0.22), transparent 16%);
+  }
+
+  .siren-vignette[data-half='red'] > .siren-red,
+  .siren-vignette[data-half='blue'] > .siren-blue {
+    opacity: 1;
+  }
+
+  /* No flashing: a steady dim glow of both colours */
+  @media (prefers-reduced-motion: reduce) {
+    .siren-vignette[data-half] > .siren-red,
+    .siren-vignette[data-half] > .siren-blue {
+      opacity: 0.5;
+      transition: none;
+    }
+  }
 }
 
 @layer hud {
@@ -286,6 +328,14 @@
 
   .makas-popup.danger {
     --chip-accent: var(--accent-red);
+  }
+
+  .makas-popup.siren {
+    --chip-accent: var(--accent-red);
+  }
+
+  .makas-popup.siren::before {
+    background: linear-gradient(180deg, var(--accent-red) 50%, #2f6dff 50%);
   }
 
   /* Older chips recede so the newest one reads first */
