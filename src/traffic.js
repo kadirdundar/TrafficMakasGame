@@ -14,6 +14,9 @@ const LANE_CHANGE_SIGNAL_SEC = 2.0;
 const YIELD_SIGNAL_SEC = 1.0;
 // How far a driver keeps to the far side of the lane when giving room to a car alongside
 const ROOM_OFFSET_M = 0.45;
+// A Selektör flash moves cars out of the flasher's path: the player car's half-width plus a margin
+const PLAYER_HALF_WIDTH = 0.86;
+const PATH_MARGIN_M = 0.25;
 
 const VEHICLE_TYPES = [
   { type: 'sedan', width: 1.86, height: 1.42, length: 4.5, baseSpeedKmh: 105 },
@@ -77,6 +80,7 @@ export class TrafficManager {
         localOverrideUntil: 0,
         pendingLane: -1, // lane it is signalling for (see signalLaneChange)
         pendingLaneAt: 0,
+        holdLaneUntil: 0, // no overtaking lane changes until then (after yielding to a flash)
         laneOffset: 0, // metres from the lane centre (gives room to a car alongside)
         laneOffsetTarget: 0,
         givesRoom: false,
@@ -175,6 +179,7 @@ export class TrafficManager {
     car.isBraking = false;
     car.overtaken = false;
     car.pendingLane = -1;
+    car.holdLaneUntil = 0;
     car.laneOffset = 0;
     car.laneOffsetTarget = 0;
     // About half of the drivers move over in their lane when side by side with another car
@@ -226,26 +231,31 @@ export class TrafficManager {
   }
 
   // Triggered when a player (Host or Guest) flashes Selektör (High-beam)!
-  // Vehicles ahead of flasherZ (-85m to -8m) in the same lane signal and yield to an adjacent lane!
+  // Only cars actually in the flasher's path (-85m to -8m ahead) react, and only by moving to a
+  // lane that clears that path: keep right if that does it, otherwise go left. A car that has
+  // already moved out of the way is no longer in the path, so a second flash leaves it alone.
   notifyHighBeamFlash(flasherX, flasherZ = 0) {
+    if (this.isRemoteControlled) return false; // guests: the host decides (notifyLocalSelektor)
+    const nowSec = performance.now() / 1000;
     let anyYielded = false;
     for (const car of this.vehicles) {
-      if (!car.active) continue;
+      if (!car.active || car.pendingLane >= 0) continue;
       const relZToFlasher = car.z - flasherZ; // Negative means ahead of the flashing player
-      if (
-        car.pendingLane < 0 &&
-        relZToFlasher < -8 &&
-        relZToFlasher > -85 &&
-        Math.abs(car.x - flasherX) < 2.2
-      ) {
-        const rightLane = car.targetLane + 1;
-        if (rightLane <= 3 && this.isLaneClear(car, rightLane, 14, flasherX)) {
-          this.signalLaneChange(car, rightLane, YIELD_SIGNAL_SEC);
-          anyYielded = true;
-        } else if (car.targetLane > 0 && this.isLaneClear(car, car.targetLane - 1, 14, flasherX)) {
-          this.signalLaneChange(car, car.targetLane - 1, YIELD_SIGNAL_SEC);
-          anyYielded = true;
-        }
+      if (relZToFlasher >= -8 || relZToFlasher <= -85) continue;
+
+      const clearance = car.spec.width / 2 + PLAYER_HALF_WIDTH + PATH_MARGIN_M;
+      const blocksPath = (x) => Math.abs(x - flasherX) < clearance;
+      if (!blocksPath(car.x)) continue;
+
+      for (const dir of [1, -1]) {
+        const lane = car.targetLane + dir;
+        if (lane < 0 || lane > 3 || blocksPath(LANE_CENTERS[lane])) continue;
+        if (!this.isLaneClear(car, lane, 14, flasherX)) continue;
+        this.signalLaneChange(car, lane, YIELD_SIGNAL_SEC);
+        // Having made way, it stays in its new lane for a while instead of cutting back in
+        car.holdLaneUntil = nowSec + YIELD_SIGNAL_SEC + 6;
+        anyYielded = true;
+        break;
       }
     }
     return anyYielded;
@@ -334,6 +344,7 @@ export class TrafficManager {
             car.z < frontMostZ - 16 &&
             car.lane === car.targetLane &&
             car.pendingLane < 0 &&
+            nowSec > car.holdLaneUntil &&
             Math.random() < 0.02
           ) {
             const tryLeft = car.lane - 1;
