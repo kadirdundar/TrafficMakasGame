@@ -60,7 +60,7 @@ class OtobanMakasGame {
       onMatchReady: ({ remoteName, slot }) => {
         // Automatically launch everyone onto the highway side-by-side, one lane per slot
         this.playerX = SLOT_START_X[slot] ?? -1.8;
-        this.speedKmh = 95;
+        this.speedKmh = 0; // everyone starts from a standstill
         this.lateralVel = 0;
         this.headingAngle = 0;
         this.sound.init();
@@ -123,7 +123,7 @@ class OtobanMakasGame {
     this.rollVel = 0;
     this.bodyPitch = 0; // rad suspension pitch angle (spring-damper)
     this.pitchVel = 0;
-    this.speedKmh = 90;
+    this.speedKmh = 0; // the car waits at a standstill until the gas is pressed
     this.rpm = 2200;
     this.gear = 3;
     this.lastShiftAt = 0;
@@ -821,7 +821,7 @@ class OtobanMakasGame {
     this.combo = 1.0;
     this.comboTimer = 0;
     this.health = 100;
-    this.speedKmh = 95;
+    this.speedKmh = 0;
     this.playerX = -1.8;
     this.lateralVel = 0;
     this.yawRate = 0;
@@ -945,7 +945,7 @@ class OtobanMakasGame {
   handleCollision() {
     this.combo = 1.0;
     this.comboTimer = 0;
-    this.speedKmh = Math.max(55, this.speedKmh * 0.58);
+    this.speedKmh *= 0.58;
     this.health = Math.max(0, this.health - 18);
     this.shakeIntensity = 0.85;
     this.rollVel += (Math.random() - 0.5) * 0.6;
@@ -993,30 +993,30 @@ class OtobanMakasGame {
     this.steerInput = THREE.MathUtils.lerp(this.steerInput, rawSteer, Math.min(1, dt * steerRate));
 
     // 2. Longitudinal Speed (KM/H)
-    // Top speed capped at 240 km/h; natural highway coasting minimum ~ 48 km/h
+    // Top speed capped at 240 km/h; the car can roll to a full stop
     const maxSpeed = 240;
-    const minSpeed = 48;
+    const minSpeed = 0;
 
     // Resistance grows with the square of speed (aero drag) plus a small rolling term,
     // so the car pulls hard in town but has to fight the air past ~200 km/h.
-    const AERO_DRAG = 0.00036; // km/h/s per (km/h)^2
+    const AERO_DRAG = 0.00027; // km/h/s per (km/h)^2
     const ROLLING_DRAG = 1.5;
     const resistance = AERO_DRAG * this.speedKmh * this.speedKmh + ROLLING_DRAG;
 
     let accelKmhPerSec = 0;
     if (throttle > 0) {
       // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
-      // ~1.3 s 48→100, ~4 s 100→200, ~8 s 200→240 (power meets drag just above the limiter)
-      const ENGINE_POWER = 5600;
-      const TRACTION_LIMIT = 44;
+      // ~1.7 s 48→100, ~5.6 s 100→200, ~9 s 200→235 (power meets drag just above the limiter)
+      const ENGINE_POWER = 4200;
+      const TRACTION_LIMIT = 33;
       const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
-      // Part throttle settles at a cruising speed: ~120 km/h at 15%, ~185 km/h at 50%
+      // Part throttle settles at a cruising speed: ~125 km/h at 15%, ~185 km/h at 50%
       accelKmhPerSec = thrust * throttle - resistance;
     } else if (brake > 0) {
       accelKmhPerSec = -115; // Strong Brembo sport brakes
     } else {
-      // Off throttle: engine braking + drag (bleeds speed faster at 200+), gentle creep up to 85 km/h cruise
-      accelKmhPerSec = this.speedKmh > 85 ? -(6 + resistance) : 12;
+      // Off throttle: engine braking + drag (bleeds speed faster at 200+), rolling to a stop
+      accelKmhPerSec = -(6 + resistance);
     }
 
     // Slight cornering scrub when carving aggressively at high G
@@ -1089,7 +1089,8 @@ class OtobanMakasGame {
     const centrifugalDriftVel = -curveKappa * speedMs * 21.0;
 
     const steerLatVel =
-      Math.sin(this.headingAngle) * speedMs * 0.62 + this.steerInput * (4.6 + speedRatio * 2.0);
+      Math.sin(this.headingAngle) * speedMs * 0.62 +
+      this.steerInput * (4.6 + speedRatio * 2.0) * Math.min(1, this.speedKmh / 40); // no sideways creep when standing
     const desiredLatVel = steerLatVel + centrifugalDriftVel;
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
@@ -1122,7 +1123,7 @@ class OtobanMakasGame {
       this.rollVel += -Math.sign(this.playerX) * 0.2;
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
       // Slight speed scrub on barrier scrape
-      this.speedKmh = Math.max(60, this.speedKmh - 28 * dt);
+      this.speedKmh = Math.max(0, this.speedKmh - 28 * dt);
     }
 
     // 5. Critically Damped Suspension Dynamics (Smooth Weight Transfer, Zero Straight-Line Bounce)
