@@ -5,9 +5,6 @@ import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } fro
 import { TrafficManager } from './traffic.js';
 import { MultiplayerManager } from './multiplayer.js';
 
-// v3: earlier versions could save the photo fallback after a failed 3D load; start everyone on 3D again
-const COCKPIT_MODE_KEY = 'otoban_cockpit_mode_v3';
-
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
   { name: 'Standart', offset: new THREE.Vector3(0.0, 1.25, 0.2), baseFov: 58, horizonShiftY: 0.24 },
@@ -204,9 +201,6 @@ class OtobanMakasGame {
       if (code === 'KeyC') {
         this.applyCameraPreset(this.cameraPresetIndex + 1);
       }
-      if (code === 'KeyK') {
-        this.setCockpitMode(this.cockpit.mode === '3d' ? 'photo' : '3d');
-      }
       if (code === 'KeyM') {
         this.toggleSound();
       }
@@ -350,16 +344,7 @@ class OtobanMakasGame {
       });
     });
 
-    document.querySelectorAll('#cockpit-mode-group .seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => this.setCockpitMode(btn.getAttribute('data-cockpit')));
-    });
-    // The 3D interior is the default; a saved "photo" choice is kept (v2 key so the new
-    // default reaches players who had the old photo default stored)
-    let savedCockpit = '3d';
-    try {
-      savedCockpit = localStorage.getItem(COCKPIT_MODE_KEY) || '3d';
-    } catch (_) {}
-    this.setCockpitMode(savedCockpit);
+    this.loadCockpit3D();
 
     document.querySelectorAll('#touch-vis-group .seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -591,17 +576,15 @@ class OtobanMakasGame {
     this.sound.setRainAmbience(preset.rain);
   }
 
-  async setCockpitMode(mode) {
-    const applied = await this.cockpit.setMode(mode, CAMERA_PRESETS[0].offset);
-    document.querySelectorAll('#cockpit-mode-group .seg-btn').forEach((b) => {
-      b.classList.toggle('active', b.getAttribute('data-cockpit') === applied);
-    });
-    // Persist what was asked for, not the fallback: a one-off 3D load failure (slow network,
-    // memory pressure) must not pin the player to the photo cockpit on every later visit
-    try {
-      localStorage.setItem(COCKPIT_MODE_KEY, mode === '3d' ? '3d' : 'photo');
-    } catch (_) {}
+  // The 3D interior is the only cockpit. While its model downloads (or if every attempt
+  // fails) the photo cockpit stays on screen as a fallback so the game remains playable.
+  async loadCockpit3D(attempt = 1) {
+    const applied = await this.cockpit.setMode('3d', CAMERA_PRESETS[0].offset);
+    if (applied !== '3d' && attempt < 3) {
+      setTimeout(() => this.loadCockpit3D(attempt + 1), attempt * 2000);
+    }
   }
+
 
   syncAmbientUI(key, cssColor) {
     const dot = document.getElementById('ambient-dot');
