@@ -7,8 +7,8 @@ import { createGlowMaterial } from './vehicleModels.js';
 // Online friend's car: optimized Audi A8 (D5) glTF.
 // Source: "Audi A8 Custom 2018" by everhard (Sketchfab, CC BY 4.0) — interior removed,
 // simplified 774k -> 57k triangles, 13 draw calls, meshopt-compressed (~0.55 MB).
-// This module is dynamically imported only when a multiplayer session starts, so the
-// loader + model never cost anything in single-player.
+// This module is dynamically imported by the start-menu garage and by multiplayer sessions, so
+// the loader + model stay out of the initial bundle.
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/audi-a8.glb`;
 const TARGET_LENGTH = 4.85;

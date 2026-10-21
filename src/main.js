@@ -5,6 +5,7 @@ import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } fro
 import { TrafficManager } from './traffic.js';
 import { AMBULANCE_BLOCK_PENALTY, AMBULANCE_YIELD_BONUS } from './emergency.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
+import { A8Showroom } from './showroom.js';
 
 // Audi A8 drivetrain: ZF 8HP gear ratios, final drive and 20" wheel rolling circumference
 const A8_GEAR_RATIOS = [0, 5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64];
@@ -66,11 +67,8 @@ class OtobanMakasGame {
         this.headingAngle = 0;
         this.sound.init();
         this.sound.setRainAmbience(this.world.weatherKey === 'rain');
-        this.paused = false;
-        document.getElementById('menu-overlay')?.classList.add('hidden');
-        document.getElementById('btn-reset-car')?.classList.remove('hidden');
-        const startBtnSpan = document.querySelector('#btn-start-game span');
-        if (startBtnSpan) startBtnSpan.textContent = 'SÜRÜŞE DEVAM ET';
+        this.setMenuOpen(false);
+        this.showResumeButtons();
         this.showMakasNotification(
           `🏁 ${remoteName} BAĞLANDI! BERABER SÜRÜŞ BAŞLADI!`,
           0,
@@ -101,6 +99,26 @@ class OtobanMakasGame {
       },
     });
     this.lastTandemTime = 0;
+
+    // Start-menu garage with the rotatable A8. Optional: the game runs without it if a second
+    // WebGL context is not available.
+    try {
+      this.showroom = new A8Showroom(
+        document.getElementById('garage-canvas'),
+        document.getElementById('garage-stage'),
+        {
+          paintHex: SLOT_STYLES[0].paint,
+          accent: AMBIENT_COLORS[this.cockpit.ambientKey]?.css,
+          onReady: (ok) => document.getElementById('garage-loader')?.classList.add(ok ? 'done' : 'failed'),
+        }
+      );
+    } catch (err) {
+      console.warn('Garaj başlatılamadı', err);
+      this.showroom = null;
+      document.getElementById('garage-loader')?.classList.add('failed');
+    }
+    this.syncedPaintSlot = null;
+    this.lastCoveredRender = 0;
 
     // Add camera to cockpit group so it moves laterally with the car
     this.cockpit.group.add(this.camera);
@@ -165,6 +183,7 @@ class OtobanMakasGame {
     this.bindEvents();
     this.setupAppMode();
     this.updateHUD();
+    this.setMenuOpen(true);
     this.animate();
   }
 
@@ -178,6 +197,9 @@ class OtobanMakasGame {
 
     const label = document.getElementById('camera-label');
     if (label) label.textContent = preset.name;
+    document.querySelectorAll('#camera-preset-group .seg-btn').forEach((btn) => {
+      btn.classList.toggle('active', Number(btn.dataset.camera) === this.cameraPresetIndex);
+    });
   }
 
   updateCameraProjection() {
@@ -260,8 +282,7 @@ class OtobanMakasGame {
 
     // Quick Top HUD Buttons
     document.getElementById('btn-mp-quick')?.addEventListener('click', () => {
-      this.paused = true;
-      document.getElementById('menu-overlay')?.classList.remove('hidden');
+      this.setMenuOpen(true, 'online');
     });
 
     document.getElementById('btn-mp-catchup')?.addEventListener('click', () => this.catchUpToFriend());
@@ -327,17 +348,42 @@ class OtobanMakasGame {
       }
       this.sound.init();
       this.sound.setRainAmbience(this.world.weatherKey === 'rain');
-      this.paused = false;
-      document.getElementById('menu-overlay')?.classList.add('hidden');
-      document.getElementById('btn-reset-car')?.classList.remove('hidden');
-      const startBtnSpan = document.querySelector('#btn-start-game span');
-      if (startBtnSpan) startBtnSpan.textContent = 'SÜRÜŞE DEVAM ET';
+      this.setMenuOpen(false);
+      this.showResumeButtons();
     });
 
     document.getElementById('btn-reset-car')?.addEventListener('click', () => {
       this.resetRun();
-      this.paused = false;
-      document.getElementById('menu-overlay')?.classList.add('hidden');
+      this.setMenuOpen(false);
+    });
+
+    // Menu tabs
+    document.querySelectorAll('.panel-tab').forEach((tab) => {
+      tab.addEventListener('click', () => this.showMenuTab(tab.dataset.tab));
+    });
+
+    // Garage: camera angles, lights, turntable and the online paint preview
+    document.querySelectorAll('#garage-view-group .chip').forEach((chip) => {
+      chip.addEventListener('click', () => this.showroom?.goToView(chip.dataset.view));
+    });
+    const bindToggleChip = (id, onToggle) => {
+      const chip = document.getElementById(id);
+      chip?.addEventListener('click', () => {
+        const on = chip.getAttribute('aria-pressed') !== 'true';
+        chip.setAttribute('aria-pressed', String(on));
+        onToggle(on);
+      });
+    };
+    // Reduced motion: the turntable stands still until switched on
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.showroom?.setAutoRotate(false);
+      document.getElementById('garage-spin')?.setAttribute('aria-pressed', 'false');
+    }
+    bindToggleChip('garage-lights', (on) => this.showroom?.setLights(on));
+    bindToggleChip('garage-spin', (on) => this.showroom?.setAutoRotate(on));
+    document.getElementById('garage-flash')?.addEventListener('click', () => this.showroom?.flashHighBeam());
+    document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
+      sw.addEventListener('click', () => this.setGaragePaint(Number(sw.dataset.paint)));
     });
 
     // Modal Settings Selectors
@@ -369,6 +415,10 @@ class OtobanMakasGame {
           DeviceOrientationEvent.requestPermission().catch(() => {});
         }
       });
+    });
+
+    document.querySelectorAll('#camera-preset-group .seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this.applyCameraPreset(Number(btn.dataset.camera)));
     });
 
     document.querySelectorAll('#traffic-density-group .seg-btn').forEach((btn) => {
@@ -623,8 +673,11 @@ class OtobanMakasGame {
     }
 
     const portrait = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
+    this.portraitPhone = portrait;
     portrait.addEventListener('change', () => {
       if (portrait.matches && !this.paused) this.togglePauseMenu();
+      // The rotate screen covers the garage: no need to draw it meanwhile
+      this.showroom?.setActive(this.paused && !portrait.matches);
     });
 
     // Where the browser can lock the orientation (Android Chrome), one tap on the rotate
@@ -734,6 +787,8 @@ class OtobanMakasGame {
     document.querySelectorAll('#weather-select-group .opt-card').forEach((card) => {
       card.classList.toggle('active', card.getAttribute('data-weather') === preset.key);
     });
+    const overlay = document.getElementById('menu-overlay');
+    if (overlay) overlay.dataset.weather = preset.key;
 
     // Automatically turn on wipers in Rainy weather
     this.cockpit.toggleWipers(preset.rain);
@@ -758,6 +813,19 @@ class OtobanMakasGame {
     }
     document.querySelectorAll('#ambient-select-group .swatch').forEach((sw) => {
       sw.classList.toggle('active', sw.getAttribute('data-color') === key);
+    });
+    // The garage takes the cabin's ambient colour as its accent (turntable ring, buttons)
+    document.getElementById('menu-overlay')?.style.setProperty('--accent', cssColor);
+    this.showroom?.setAccent(cssColor);
+  }
+
+  // Garage paint preview: the four colours friends see online, one per room slot
+  setGaragePaint(slot) {
+    this.showroom?.setPaint(SLOT_STYLES[slot % SLOT_STYLES.length].paint);
+    document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
+      const on = Number(sw.dataset.paint) === slot;
+      sw.classList.toggle('active', on);
+      if (on) this.setHudText('garage-paint-name', sw.getAttribute('aria-label'));
     });
   }
 
@@ -811,6 +879,13 @@ class OtobanMakasGame {
     if (quickLabel) {
       quickLabel.textContent = connected ? `Oda ${roomCode} · ${playerCount}/${MAX_PLAYERS}` : `${MAX_PLAYERS} Kişilik`;
     }
+    document.getElementById('tab-online-dot')?.classList.toggle('on', Boolean(connected));
+    // In a room the garage shows the car in the colour the others see it in
+    const slot = connected ? this.multiplayer.localSlot : null;
+    if (slot !== this.syncedPaintSlot) {
+      this.syncedPaintSlot = slot;
+      if (slot !== null) this.setGaragePaint(slot);
+    }
   }
 
   toggleSound() {
@@ -820,11 +895,34 @@ class OtobanMakasGame {
   }
 
   togglePauseMenu() {
-    this.paused = !this.paused;
-    const overlay = document.getElementById('menu-overlay');
-    if (overlay) {
-      overlay.classList.toggle('hidden', !this.paused);
-    }
+    this.setMenuOpen(!this.paused);
+  }
+
+  // The start / pause menu is the A8 garage: the game is paused exactly while it is open
+  setMenuOpen(open, tab) {
+    this.paused = open;
+    document.getElementById('menu-overlay')?.classList.toggle('hidden', !open);
+    if (tab) this.showMenuTab(tab);
+    if (open) this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
+    this.showroom?.setActive(open && !this.portraitPhone?.matches);
+  }
+
+  // Once driving, the menu's main button resumes the drive and the road can be reset
+  showResumeButtons() {
+    document.getElementById('btn-reset-car')?.classList.remove('hidden');
+    this.setHudText('start-label', 'SÜRÜŞE DEVAM ET');
+    this.setHudText('start-sublabel', 'KALDIĞIN YERDEN');
+  }
+
+  showMenuTab(name) {
+    document.querySelectorAll('.panel-tab').forEach((tab) => {
+      const on = tab.dataset.tab === name;
+      tab.classList.toggle('active', on);
+      tab.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.tab-page').forEach((page) => {
+      page.hidden = page.id !== `page-${name}`;
+    });
   }
 
   resetRun() {
@@ -1546,7 +1644,8 @@ class OtobanMakasGame {
     const frameSec = (now - this.lastTime) / 1000;
     const dt = Math.min(0.05, frameSec);
     this.lastTime = now;
-    this.adaptRenderScale(frameSec);
+    // Only judge the frame rate while the road is actually drawn every frame (not in the garage)
+    if (!this.paused) this.adaptRenderScale(frameSec);
     this.renderer.info.reset();
 
     if (!this.paused && this.multiplayer.connected) {
@@ -1602,6 +1701,11 @@ class OtobanMakasGame {
       this.setSirenGlow(0, 0);
       this.updateHUD();
     }
+
+    // While the garage covers the road, redraw it once a second: enough to keep its shaders,
+    // textures and mirrors warm for the start without drawing two 3D scenes every frame
+    if (this.paused && now - this.lastCoveredRender < 1000) return;
+    this.lastCoveredRender = now;
 
     // 1. Render real-time Rear-View & Wing Mirror texture
     this.cockpit.renderRearMirror(this.scene);
