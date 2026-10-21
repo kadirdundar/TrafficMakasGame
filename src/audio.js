@@ -10,6 +10,12 @@ const MAX_RPM = 6500;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// 112 siren: electronic wail, switching to the fast yelp when the ambulance is held up
+const SIREN_CENTER_HZ = 960;
+const SIREN_WAIL = { rateHz: 0.24, depthHz: 380 };
+const SIREN_YELP = { rateHz: 3.4, depthHz: 300 };
+const SOUND_SPEED_MS = 343;
+
 export class SoundEngine {
   constructor() {
     this.ctx = null;
@@ -28,6 +34,8 @@ export class SoundEngine {
 
     this.rainGain = null;
     this.isRaining = false;
+
+    this.siren = null; // nodes exist only while an ambulance is on the road
 
     // Smoothed engine load / turbo boost and gear-change envelope (see updateEngine)
     this.load = 0;
@@ -228,7 +236,7 @@ export class SoundEngine {
     this.lastEngineUpdate = now;
 
     if (paused || this.muted) {
-      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain]) {
+      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.siren?.gain]) {
         g?.gain.setTargetAtTime(0, now, 0.08);
       }
       return;
@@ -294,6 +302,65 @@ export class SoundEngine {
     const now = this.ctx.currentTime;
     const target = active && !this.muted ? 0.09 : 0.0;
     this.hornGain.gain.setTargetAtTime(target, now, 0.015);
+  }
+
+  // Square-wave siren swept by an LFO, softened to a horn-speaker tone, placed by distance and
+  // side; the pitch rises while it closes in and drops once it pulls away (Doppler)
+  updateSiren(distM, relX, closingMs, urgent) {
+    if (!this.ctx || !this.running) return;
+    const ctx = this.ctx;
+    if (!this.siren) {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = SIREN_CENTER_HZ;
+      const lfo = ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = SIREN_WAIL.rateHz;
+      const depth = ctx.createGain();
+      depth.gain.value = SIREN_WAIL.depthHz;
+      lfo.connect(depth);
+      depth.connect(osc.frequency);
+
+      const tone = ctx.createBiquadFilter();
+      tone.type = 'lowpass';
+      tone.frequency.value = 2200;
+      tone.Q.value = 0.8;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      osc.connect(tone);
+      tone.connect(gain);
+      const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      if (pan) {
+        gain.connect(pan);
+        pan.connect(this.master);
+      } else {
+        gain.connect(this.master);
+      }
+      osc.start();
+      lfo.start();
+      this.siren = { osc, lfo, depth, gain, pan };
+    }
+
+    const s = this.siren;
+    const now = ctx.currentTime;
+    const mode = urgent ? SIREN_YELP : SIREN_WAIL;
+    s.lfo.frequency.setTargetAtTime(mode.rateHz, now, 0.08);
+    s.depth.gain.setTargetAtTime(mode.depthHz, now, 0.08);
+    const closing = Math.max(-60, Math.min(60, closingMs));
+    const doppler = SOUND_SPEED_MS / (SOUND_SPEED_MS - closing);
+    s.osc.detune.setTargetAtTime(1200 * Math.log2(doppler), now, 0.1);
+    s.pan?.pan.setTargetAtTime(Math.max(-0.7, Math.min(0.7, relX / 8)), now, 0.1);
+    s.gain.gain.setTargetAtTime(this.muted ? 0 : 0.075 / (1 + distM / 16), now, 0.1);
+  }
+
+  stopSiren() {
+    if (!this.siren) return;
+    const { osc, lfo, gain } = this.siren;
+    const now = this.ctx.currentTime;
+    gain.gain.setTargetAtTime(0, now, 0.15);
+    osc.stop(now + 0.8);
+    lfo.stop(now + 0.8);
+    this.siren = null;
   }
 
   playSelektorClick() {
@@ -397,7 +464,7 @@ export class SoundEngine {
   toggleMute() {
     this.muted = !this.muted;
     if (this.muted && this.ctx) {
-      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain]) {
+      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain, this.siren?.gain]) {
         g?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
       }
     } else {
