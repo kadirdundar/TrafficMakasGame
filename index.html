@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-Ca-VKFbu.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-hiC5d0Y1.css">
+  <script type="module" crossorigin src="./assets/index-BBfVAuvF.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DS2HXmMw.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -26,6 +26,12 @@
 
   <!-- Flash / Damage / Near-Miss Screen Vignette -->
   <div id="screen-vignette" class="vignette"></div>
+
+  <!-- Ambulance right behind: red/blue light at the screen edges -->
+  <div id="siren-vignette" class="siren-vignette hidden" aria-hidden="true">
+    <div class="siren-red"></div>
+    <div class="siren-blue"></div>
+  </div>
 
   <!-- Top HUD Bar -->
   <header id="hud-top" class="hud-top">
@@ -274,6 +280,7 @@
       <div class="features-banner">
         <div class="feat-item">⚡ <strong>Yakın Makas:</strong> 100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div>
         <div class="feat-item">🔦 <strong>Selektör Tepkisi:</strong> Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div>
+        <div class="feat-item">🚑 <strong>Ambulans:</strong> Siren duyunca şeridini boşalt, yol verirsen +1500, engellersen −1000!</div>
         <div class="feat-item">👥 <strong>4 Kişilik P2P Mod:</strong> Arkadaşlarınla aynı trafikte makas at, dikiz aynasından selektörlerini gör!</div>
       </div>
 
