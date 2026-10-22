@@ -19,9 +19,17 @@ const BRAKE_ZONE_M = 32; // starts matching the speed of whatever is in its way 
 const FOLLOW_GAP_M = 9; // ...and keeps this much space to it
 const STUCK_GAP_M = 22;
 const YIELD_CALL_SEC = 0.5; // how often the traffic ahead of it is asked to make way
-const GO_AROUND_SEC = 4.0; // held up this long: changes lane to get past
+const GO_AROUND_SEC = 3.5; // held up this long: changes lane to get past...
+const GIVE_UP_SEC = 15; // ...and if it still cannot, it drops back and leaves the motorway
 const LANE_CHANGE_MS = 3.2;
 const DESPAWN_M = 240;
+const GAVE_UP_DESPAWN_M = 110;
+
+// Beside the outer lanes it can take the hard shoulder (lane -1 on the left, 4 on the right)
+const LEFT_SHOULDER = -1;
+const RIGHT_SHOULDER = 4;
+const SHOULDER_X = 7.35;
+const laneX = (lane) => (lane < 0 ? -SHOULDER_X : lane > 3 ? SHOULDER_X : LANE_CENTERS[lane]);
 
 // The local player's part of a call
 const WARN_AFTER_SEC = 0.8;
@@ -36,7 +44,7 @@ const PLAYER_HALF_W = 0.86;
 const PLAYER_HALF_L = 1.85;
 
 const randIn = ([lo, hi]) => lo + Math.random() * (hi - lo);
-const clampLane = (lane) => Math.max(0, Math.min(3, Math.round(Number(lane) || 0)));
+const clampLane = (lane) => Math.max(LEFT_SHOULDER, Math.min(RIGHT_SHOULDER, Math.round(Number(lane) || 0)));
 
 function nearestLane(x) {
   let best = 0;
@@ -66,6 +74,8 @@ export class Ambulance {
     this.laneYaw = 0;
     this.urgent = false; // held up: the siren switches to the fast yelp
     this.stuckSec = 0;
+    this.heldUpSec = 0; // total time held up during this call (see GIVE_UP_SEC)
+    this.gaveUp = false;
     this.yieldCallIn = 0;
     this.beaconHalf = 0; // 0 = red half of the flash cycle, 1 = blue half
 
@@ -91,6 +101,8 @@ export class Ambulance {
     this.active = true;
     this.mesh.visible = true;
     this.stuckSec = 0;
+    this.heldUpSec = 0;
+    this.gaveUp = false;
     this.yieldCallIn = 0;
     this.local = {
       announced: false,
@@ -142,7 +154,7 @@ export class Ambulance {
     }
 
     // Lane changes (same on every device)
-    const targetX = LANE_CENTERS[this.targetLane];
+    const targetX = laneX(this.targetLane);
     const dx = targetX - this.x;
     this.laneYaw = 0;
     if (Math.abs(dx) > 0.04) {
@@ -192,7 +204,7 @@ export class Ambulance {
     this.drivingSec = 0;
     this.nextCallSec = randIn(NEXT_CALL_SEC);
     this.lane = this.targetLane = nearestLane(rearX);
-    this.x = LANE_CENTERS[this.lane];
+    this.x = laneX(this.lane);
     this.z = rearZ + SPAWN_BEHIND_M;
     this.speedKmh = THREE.MathUtils.clamp(fastest + CLOSE_IN_KMH, MIN_SPEED_KMH, MAX_SPEED_KMH);
     this.blinkerDir = 0;
@@ -214,14 +226,19 @@ export class Ambulance {
       rearMostZ = Math.max(rearMostZ, p.z);
     }
     let desiredKmh = THREE.MathUtils.clamp(fastest + CLOSE_IN_KMH, MIN_SPEED_KMH, MAX_SPEED_KMH);
+    // Gave up: falls back behind everyone and leaves
+    if (this.gaveUp) desiredKmh = Math.max(0, fastest - 60);
 
-    // Closest thing ahead of it in its path (traffic car or player)
+    // Closest thing ahead of it in its path (traffic car or player). On the shoulder it passes the
+    // outer lane's cars with only centimetres to spare, so only a real overlap counts there.
+    const onShoulder = this.targetLane < 0 || this.targetLane > 3;
+    const sideMargin = onShoulder ? -0.05 : 0.2;
     let gap = Infinity;
     let blockerZ = 0;
     let blockerHalfL = 0;
     let blockerKmh = 0;
     const consider = (x, z, halfW, halfL, kmh) => {
-      if (Math.abs(x - this.x) > HALF_W + halfW + 0.2) return;
+      if (Math.abs(x - this.x) > HALF_W + halfW + sideMargin) return;
       const g = this.z - HALF_L - (z + halfL);
       if (g < -1 || g >= gap) return; // alongside or behind it
       gap = g;
@@ -254,37 +271,48 @@ export class Ambulance {
       }
     }
 
-    this.stuckSec = gap < STUCK_GAP_M ? this.stuckSec + dt : 0;
+    this.stuckSec = gap < STUCK_GAP_M && !this.gaveUp ? this.stuckSec + dt : 0;
+    if (this.stuckSec > 0) this.heldUpSec += dt;
     this.urgent = this.stuckSec > 0.6;
+    if (this.heldUpSec > GIVE_UP_SEC && !this.gaveUp) {
+      this.gaveUp = true;
+      this.urgent = false;
+    }
 
     this.yieldCallIn -= dt;
-    if (this.yieldCallIn <= 0) {
+    if (this.yieldCallIn <= 0 && !this.gaveUp) {
       this.yieldCallIn = YIELD_CALL_SEC;
       this.traffic.notifyHighBeamFlash(this.x, this.z, ctx.playerX, ctx.mpContext);
     }
 
     if (this.stuckSec > GO_AROUND_SEC && this.lane === this.targetLane) {
-      for (const lane of [this.lane - 1, this.lane + 1]) {
-        if (lane < 0 || lane > 3 || !this.laneIsFree(lane, players)) continue;
+      // A free lane next to it, else the hard shoulder beside an outer lane
+      const options = [this.lane - 1, this.lane + 1];
+      if (this.lane === 0) options.push(LEFT_SHOULDER);
+      if (this.lane === 3) options.push(RIGHT_SHOULDER);
+      for (const lane of options) {
+        const isShoulder = lane === LEFT_SHOULDER || lane === RIGHT_SHOULDER;
+        if ((!isShoulder && (lane < 0 || lane > 3)) || !this.laneIsFree(lane, players)) continue;
         this.targetLane = lane;
-        this.blinkerDir = lane < this.lane ? -1 : 1;
+        this.blinkerDir = laneX(lane) < this.x ? -1 : 1;
         this.stuckSec = 0;
         break;
       }
     }
 
-    if (this.z < frontMostZ - DESPAWN_M || this.z > rearMostZ + DESPAWN_M) this.deactivate();
+    const behindLimit = this.gaveUp ? GAVE_UP_DESPAWN_M : DESPAWN_M;
+    if (this.z < frontMostZ - DESPAWN_M || this.z > rearMostZ + behindLimit) this.deactivate();
   }
 
   laneIsFree(lane, players) {
-    const laneX = LANE_CENTERS[lane];
+    const x = laneX(lane);
     const inWindow = (z) => z > this.z - 30 && z < this.z + 12;
     for (const car of this.traffic.vehicles) {
       if (!car.active || (car.lane !== lane && car.targetLane !== lane)) continue;
       if (inWindow(car.z)) return false;
     }
     for (const p of players) {
-      if (Math.abs(p.x - laneX) < 2.4 && inWindow(p.z)) return false;
+      if (Math.abs(p.x - x) < (lane < 0 || lane > 3 ? HALF_W + PLAYER_HALF_W : 2.4) && inWindow(p.z)) return false;
     }
     return true;
   }
@@ -364,7 +392,7 @@ export class Ambulance {
     this.blinkerDir = Math.sign(Number(s.blinkerDir) || 0);
     this.urgent = Boolean(s.urgent);
     this.worldDistM = Number(s.worldDistM) || 0;
-    const x = Number(s.x) || LANE_CENTERS[this.targetLane];
+    const x = Number(s.x) || laneX(this.targetLane);
     const targetZ = guestWorldDistM - this.worldDistM;
     if (!this.active || Math.abs(this.z - targetZ) > 16) {
       this.z = targetZ;
