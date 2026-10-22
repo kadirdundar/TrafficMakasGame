@@ -156,6 +156,7 @@ class OtobanMakasGame {
     this.lastShiftAt = 0;
     this.lateralG = 0;
     this.longitudinalG = 0;
+    this.accelFeel = 0; // felt acceleration that pushes the driver into the seat (see updatePhysics)
     this.shakeIntensity = 0;
 
     // Input State
@@ -939,6 +940,7 @@ class OtobanMakasGame {
     this.rollVel = 0;
     this.bodyPitch = 0;
     this.pitchVel = 0;
+    this.accelFeel = 0;
     this.traffic.resetTraffic();
     this.updateHUD();
   }
@@ -1301,7 +1303,14 @@ class OtobanMakasGame {
 
     // Only pitch during active throttle or braking; dead-flat when cruising straight
     const activeLongG = throttle > 0 || brake > 0 ? this.longitudinalG : 0;
-    const targetPitch = THREE.MathUtils.clamp(activeLongG * 0.011, -0.022, 0.018);
+
+    // Felt acceleration: the real G is small at motorway speeds (the car pulls realistically
+    // there), so it is boosted as the speed rises. It builds up and eases off smoothly and drives
+    // the seat push, the nose lift and the widening view below.
+    const feltTarget = THREE.MathUtils.clamp(activeLongG * (1 + this.speedKmh / 120), -0.6, 0.6);
+    this.accelFeel += (feltTarget - this.accelFeel) * Math.min(1, dt * (feltTarget > this.accelFeel ? 3 : 5));
+
+    const targetPitch = THREE.MathUtils.clamp(this.accelFeel * 0.011, -0.022, 0.018);
     const pitchSpring = 95.0;
     const pitchDamping = 22.0; // Critically damped
     const pitchAccel = (targetPitch - this.bodyPitch) * pitchSpring - this.pitchVel * pitchDamping;
@@ -1320,17 +1329,19 @@ class OtobanMakasGame {
 
     this.camera.position.x = preset.offset.x - this.lateralG * 0.022 + shakeX;
     this.camera.position.y = preset.offset.y + shakeY;
-    this.camera.position.z =
-      preset.offset.z - Math.max(-0.35, Math.min(0.35, activeLongG)) * 0.018;
+    // Pushed back into the seat under acceleration, thrown forward under braking (+Z is backward)
+    this.camera.position.z = preset.offset.z + this.accelFeel * 0.06;
 
     // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean
     this.camera.rotation.y = -this.headingAngle * 0.52;
     this.camera.rotation.z = this.bodyRoll * 0.75;
     this.camera.rotation.x = this.bodyPitch * 0.65;
 
-    // Speed-based FOV warp for intense sense of speed above 140 km/h
+    // Speed-based FOV warp for intense sense of speed above 140 km/h, widening a little more
+    // while the car pulls (and narrowing a little under braking)
     const speedFovBoost = Math.max(0, (this.speedKmh - 100) / 200) * 11;
-    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost, dt * 6);
+    const accelFovKick = this.accelFeel * 5;
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost + accelFovKick, dt * 6);
     this.camera.updateProjectionMatrix();
 
     // 7. Continuous High-Speed Scoring & Combo Decay
