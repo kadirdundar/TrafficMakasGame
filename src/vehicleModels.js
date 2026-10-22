@@ -158,6 +158,7 @@ function shared() {
     glowFront: glow(0xe4eeff, 0.95),
     glowRear: glow(0xff2032, 0.7),
     glowBrake: glow(0xff3043, 1.0),
+    glowAmber: glow(0xffa020, 1.0),
     plates: PLATE_TEXTS.map((t) => new THREE.MeshBasicMaterial({ map: makePlateTexture(t) })),
   };
   return SHARED;
@@ -395,7 +396,7 @@ export const STYLE_VARIANTS = {
 function newParts() {
   return {
     body: [], glass: [], trim: [], rim: [], cargo: [], head: [], tail: [],
-    blinkL: [], blinkR: [], plate: [], glowF: [], glowR: [], flare: [],
+    blinkL: [], blinkR: [], haloL: [], haloR: [], plate: [], glowF: [], glowR: [], flare: [],
   };
 }
 
@@ -590,7 +591,9 @@ function buildCar(spec, S, blackRoof, rimDesign) {
     P.glass.push(box(hw + 0.04, 0.12, 0.06, sx * hx, yH - 0.03, f + 0.04));
     P.head.push(box(hw, 0.036, 0.07, sx * hx, yH, f + 0.02));
     P.head.push(box(0.03, 0.08, 0.07, sx * (hx + hw / 2 - 0.015), yH - 0.05, f + 0.025));
-    (sx < 0 ? P.blinkL : P.blinkR).push(box(0.1, 0.028, 0.065, sx * (hx - hw / 2 + 0.06), yH - 0.065, f + 0.028));
+    const fbx = sx * (hx - hw / 2 + 0.08);
+    (sx < 0 ? P.blinkL : P.blinkR).push(box(0.18, 0.055, 0.065, fbx, yH - 0.075, f + 0.028));
+    (sx < 0 ? P.haloL : P.haloR).push(...blinkerHalo(1.2, 0.7, fbx, yH - 0.075, f - 0.08, true));
     P.glowF.push(quad(1.1, 0.55, sx * hx, yH - 0.02, f - 0.07, true));
     if (S.flare) P.flare.push(quad(2.4, 1.3, sx * hx, yH - 0.02, f - 0.1, true));
     if (S.chrome) P.head.push(box(hw * 0.8, 0.014, 0.07, sx * hx, yH - 0.035, f + 0.022)); // matrix row
@@ -660,7 +663,8 @@ function buildCar(spec, S, blackRoof, rimDesign) {
       const lx = sx * W * 0.45;
       P.glass.push(box(0.1, 0.5, 0.04, lx, 0.95, b - 0.005));
       P.tail.push(box(0.07, 0.4, 0.05, lx, 1.0, b + 0.004));
-      (sx < 0 ? P.blinkL : P.blinkR).push(box(0.07, 0.07, 0.05, lx, 0.74, b + 0.006));
+      (sx < 0 ? P.blinkL : P.blinkR).push(box(0.1, 0.16, 0.05, lx, 0.71, b + 0.006));
+      (sx < 0 ? P.haloL : P.haloR).push(...blinkerHalo(1.3, 0.9, lx, 0.71, b + 0.07));
       P.glass.push(box(W * 0.36, 0.42, 0.02, sx * W * 0.2, 1.62, b + 0.003));
       P.glowR.push(quad(0.6, 0.8, lx, 0.95, b + 0.06));
     });
@@ -681,7 +685,10 @@ function buildCar(spec, S, blackRoof, rimDesign) {
       if (!S.rearBar) P.glass.push(box(tw2 + 0.05, 0.11, 0.05, sx * tx, yT - 0.01, b - 0.008));
       P.tail.push(box(tw2, 0.045, 0.05, sx * tx, yT + 0.008, b + 0.004));
       P.tail.push(box(0.035, 0.1, 0.05, sx * (tx + tw2 / 2 - 0.0175), yT - 0.03, b + 0.002));
-      (sx < 0 ? P.blinkL : P.blinkR).push(box(0.1, 0.026, 0.05, sx * (tx - tw2 / 2 + 0.06), yT - 0.028, b + 0.006));
+      // Outer corner, under the tail lamp, so the amber never blends into the red bar
+      const rbx = sx * (tx + tw2 / 2 - 0.15);
+      (sx < 0 ? P.blinkL : P.blinkR).push(box(0.22, 0.065, 0.05, rbx, yT - 0.05, b + 0.006));
+      (sx < 0 ? P.haloL : P.haloR).push(...blinkerHalo(1.4, 0.8, rbx, yT - 0.05, b + 0.07));
       P.glowR.push(quad(0.85, 0.46, sx * tx, yT, b + 0.06));
     });
     // Third brake light on top of the rear glass
@@ -799,7 +806,8 @@ function buildTruck(spec, rimDesign) {
     P.glass.push(box(0.42, 0.16, 0.05, sx * 0.8, 0.86, f + 0.01));
     P.head.push(box(0.36, 0.035, 0.05, sx * 0.8, 0.9, f - 0.005));
     P.head.push(box(0.03, 0.09, 0.05, sx * 0.995, 0.85, f - 0.004));
-    (sx < 0 ? P.blinkL : P.blinkR).push(box(0.1, 0.05, 0.05, sx * 1.07, 0.82, f - 0.002));
+    (sx < 0 ? P.blinkL : P.blinkR).push(box(0.12, 0.08, 0.05, sx * 1.07, 0.82, f - 0.002));
+    (sx < 0 ? P.haloL : P.haloR).push(...blinkerHalo(1.3, 0.8, sx * 1.07, 0.82, f - 0.08, true));
     P.glowF.push(quad(1.3, 0.65, sx * 0.8, 0.88, f - 0.08, true));
     P.trim.push(box(0.25, 0.03, 0.03, sx * (cabW / 2 + 0.1), 2.05, f + 0.35));
     P.trim.push(rbox(0.07, 0.42, 0.2, sx * (cabW / 2 + 0.22), 1.95, f + 0.35, 0.025));
@@ -813,7 +821,8 @@ function buildTruck(spec, rimDesign) {
   P.trim.push(box(W * 0.92, 0.12, 0.1, 0, 0.55, b - 0.05));
   [-1, 1].forEach((sx) => {
     P.tail.push(box(0.3, 0.07, 0.04, sx * 0.8, 0.94, b));
-    (sx < 0 ? P.blinkL : P.blinkR).push(box(0.12, 0.07, 0.04, sx * 1.04, 0.94, b));
+    (sx < 0 ? P.blinkL : P.blinkR).push(box(0.16, 0.12, 0.04, sx * 1.04, 0.94, b));
+    (sx < 0 ? P.haloL : P.haloR).push(...blinkerHalo(1.5, 0.9, sx * 1.04, 0.94, b + 0.07));
     P.tail.push(box(0.18, 0.035, 0.03, sx * (W / 2 - 0.15), H - 0.07, b + 0.01));
     P.glowR.push(quad(0.9, 0.45, sx * 0.8, 0.94, b + 0.06));
   });
@@ -831,7 +840,7 @@ function getStyleGeometry(spec, style, blackRoof, rimDesign) {
   const P = S.truck ? buildTruck(spec, rimDesign) : buildCar(spec, S, blackRoof, rimDesign);
   const out = {};
   for (const k of Object.keys(P)) {
-    out[k] = merge(P[k], k === 'plate' || k === 'glowF' || k === 'glowR' || k === 'flare');
+    out[k] = merge(P[k], k === 'plate' || k.startsWith('glow') || k.startsWith('halo') || k === 'flare');
   }
   geometryCache.set(key, out);
   return out;
@@ -840,6 +849,20 @@ function getStyleGeometry(spec, style, blackRoof, rimDesign) {
 // ---------------------------------------------------------------------------------------------
 // Public factory
 // ---------------------------------------------------------------------------------------------
+// Amber halo around each blinker's lamps: a child of the blinker mesh, so it flashes with it and
+// costs a draw call only while that blinker is lit
+// Wide soft glow plus a bright core, so a lit blinker reads from far away, day and night
+function blinkerHalo(w, h, x, y, z, facingFront = false) {
+  return [quad(w, h, x, y, z, facingFront), quad(w * 0.4, h * 0.45, x, y, z + (facingFront ? -0.01 : 0.01), facingFront)];
+}
+
+function addBlinkerHalo(blinker, haloGeo) {
+  if (!blinker || !haloGeo) return;
+  const halo = new THREE.Mesh(haloGeo, shared().glowAmber);
+  halo.renderOrder = 2;
+  blinker.add(halo);
+}
+
 // Per-car clear-coated paint (colour is synced in multiplayer)
 function createPaintMaterial(paintHex) {
   const mat = LIGHTWEIGHT_PAINT
@@ -882,6 +905,8 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
   const tailMesh = add(geo.tail, m.tail);
   const leftBlinker = add(geo.blinkL, m.amber);
   const rightBlinker = add(geo.blinkR, m.amber);
+  addBlinkerHalo(leftBlinker, geo.haloL);
+  addBlinkerHalo(rightBlinker, geo.haloR);
   const frontGlow = add(geo.glowF, m.glowFront);
   const rearGlow = add(geo.glowR, m.glowRear);
   leftBlinker.visible = false;
@@ -1086,6 +1111,8 @@ export function createAmbulance() {
   const tailMesh = add(geo.tail, m.tail);
   const leftBlinker = add(geo.blinkL, m.amber);
   const rightBlinker = add(geo.blinkR, m.amber);
+  addBlinkerHalo(leftBlinker, geo.haloL);
+  addBlinkerHalo(rightBlinker, geo.haloR);
   const frontGlow = add(geo.glowF, m.glowFront);
   const rearGlow = add(geo.glowR, m.glowRear);
   const red = add(geo.red, redMat);
