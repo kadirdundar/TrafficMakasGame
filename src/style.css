@@ -297,6 +297,14 @@
     --chip-accent: var(--accent-amber);
   }
 
+  .makas-popup.bridge {
+    --chip-accent: #06b6d4;
+  }
+
+  .makas-popup.bridge::before {
+    background: linear-gradient(180deg, #06b6d4 50%, #3b82f6 50%);
+  }
+
   .makas-popup.danger {
     --chip-accent: var(--accent-red);
   }

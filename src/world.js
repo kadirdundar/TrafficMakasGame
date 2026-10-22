@@ -85,15 +85,160 @@ export const ROAD_HALF_WIDTH = 8.4;
 export const ROAD_MODES = ['highway', 'twoway'];
 export const ROAD_HALF_WIDTHS = { highway: ROAD_HALF_WIDTH, twoway: 4.6 };
 
+export const ZONE_CYCLE_LENGTH = 3600;
+
+export function getZoneAt(trackDistM) {
+  const s = ((trackDistM % ZONE_CYCLE_LENGTH) + ZONE_CYCLE_LENGTH) % ZONE_CYCLE_LENGTH;
+  if (s >= 1100 && s < 1900) return 'tunnel';
+  if (s >= 2600 && s < 3600) return 'bridge';
+  return 'highway';
+}
+
+function createTunnelSignTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  // Highway blue background with cyan border
+  ctx.fillStyle = '#0a2540';
+  ctx.fillRect(0, 0, 1024, 256);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, 1014, 246);
+
+  // Ministry header
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('T.C. ULAŞTIRMA VE ALTYAPI BAKANLIĞI', 512, 38);
+
+  // Main text: AVRASYA TÜNELİ
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 76px system-ui, sans-serif';
+  ctx.fillText('AVRASYA TÜNELİ', 512, 118);
+
+  // Subtext with speed limit badge and headlights warning
+  ctx.fillStyle = '#fde047';
+  ctx.font = 'bold 28px system-ui, sans-serif';
+  ctx.fillText('⚡ HIZ LİMİTİ 70 KM/S  •  FARLARINIZI YAKINIZ 💡', 512, 168);
+
+  // 4 Green Lane Status Arrows (⬇ ⬇ ⬇ ⬇)
+  ctx.fillStyle = '#22c55e';
+  ctx.font = '900 44px system-ui, sans-serif';
+  for (let i = 0; i < 4; i++) {
+    const x = 160 + i * 235;
+    ctx.fillText('⬇', x, 230);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createBridgeSignTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  // Turkish Highway green background
+  ctx.fillStyle = '#065f46';
+  ctx.fillRect(0, 0, 1024, 256);
+  ctx.strokeStyle = '#34d399';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, 1014, 246);
+
+  // Route number badge: O-1
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(40, 22, 90, 48);
+  ctx.fillStyle = '#065f46';
+  ctx.font = '900 32px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('O-1', 85, 57);
+
+  // Main Bridge Name
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 68px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('15 TEMMUZ ŞEHİTLER KÖPRÜSÜ', 512, 120);
+
+  // Subtitle
+  ctx.fillStyle = '#a7f3d0';
+  ctx.font = 'bold 30px system-ui, sans-serif';
+  ctx.fillText('ASYA ➔ AVRUPA  •  BOĞAZİÇİ  •  HOŞ GELDİNİZ', 512, 180);
+
+  // Lane arrows
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '900 38px system-ui, sans-serif';
+  for (let i = 0; i < 4; i++) {
+    const x = 160 + i * 235;
+    ctx.fillText('⬆', x, 232);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createTunnelTileTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  // Off-white ceramic base
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Lower darker base skirting band
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 410, 512, 102);
+
+  // Blue & Orange decorative safety bands (Eurasia Tunnel styling)
+  ctx.fillStyle = '#0284c7';
+  ctx.fillRect(0, 310, 512, 34);
+  ctx.fillStyle = '#f97316';
+  ctx.fillRect(0, 344, 512, 14);
+
+  // Subtle ceramic tile grid
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 2;
+  for (let x = 0; x <= 512; x += 32) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 410);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= 410; y += 32) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(512, y);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 1);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export class HighwayWorld {
   constructor(scene) {
     this.scene = scene;
     this.weatherKey = 'night';
     this.roadMode = 'highway';
     this.roadHalfWidth = ROAD_HALF_WIDTH;
+    this.currentZone = 'highway';
+
+    this.tunnelAmbientColor = new THREE.Color(0xffcb99);
+    this.tunnelHemiColor = new THREE.Color(0xffb066);
 
     this.roadTexture = null;
     this.roadMat = null;
+    this.groundMesh = null;
     this.scrollOffset = 0;
     this.worldDistM = 0;
     this.curvableGeometries = [];
@@ -359,6 +504,7 @@ export class HighwayWorld {
       roughness: 0.95,
     });
     const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    this.groundMesh = groundMesh;
     this.scene.add(groundMesh);
 
     // Concrete Jersey Barriers on Left & Right Highway Edges (Subdivided along Z to follow curves)
@@ -527,6 +673,60 @@ export class HighwayWorld {
       roughness: 0.85,
     });
 
+    // Shared tunnel materials
+    const tunnelTileTex = createTunnelTileTexture();
+    const tunnelWallMat = new THREE.MeshStandardMaterial({
+      map: tunnelTileTex,
+      roughness: 0.45,
+      metalness: 0.15,
+      side: THREE.DoubleSide,
+    });
+    const tunnelCeilingMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2633,
+      roughness: 0.85,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+    });
+    const tunnelLightMat = new THREE.MeshBasicMaterial({
+      color: 0xffea92, // warm sodium yellow-amber
+    });
+    const tunnelPortalSignMat = new THREE.MeshBasicMaterial({
+      map: createTunnelSignTexture(),
+    });
+    const tunnelFrameMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.6,
+      metalness: 0.35,
+    });
+
+    // Shared bridge materials
+    const bridgeTrussMat = new THREE.MeshStandardMaterial({
+      color: 0x475569,
+      roughness: 0.38,
+      metalness: 0.75,
+    });
+    const bridgeCableMat = new THREE.MeshStandardMaterial({
+      color: 0x64748b,
+      roughness: 0.3,
+      metalness: 0.85,
+    });
+    const bridgeWaterMat = new THREE.MeshStandardMaterial({
+      color: 0x051329,
+      roughness: 0.12,
+      metalness: 0.94,
+    });
+    const bridgeNeonRedMat = new THREE.MeshBasicMaterial({
+      color: 0xf43f5e, // Turkish flag glowing red neon
+    });
+    const bridgeSignMat = new THREE.MeshBasicMaterial({
+      map: createBridgeSignTexture(),
+    });
+    const bridgePylonMat = new THREE.MeshStandardMaterial({
+      color: 0xcfd8dc,
+      roughness: 0.5,
+      metalness: 0.35,
+    });
+
     // Static pieces of a segment are baked into one geometry per material, so each segment
     // costs ~5 draw calls instead of ~10 (x18 segments, and again for the rear-view mirror)
     const _m = new THREE.Matrix4();
@@ -534,8 +734,8 @@ export class HighwayWorld {
     const _e = new THREE.Euler();
     const _p = new THREE.Vector3();
     const _s = new THREE.Vector3(1, 1, 1);
-    const placed = (geo, x, y, z, rotZ = 0) => {
-      _q.setFromEuler(_e.set(0, 0, rotZ));
+    const placed = (geo, x, y, z, rx = 0, ry = 0, rz = 0) => {
+      _q.setFromEuler(_e.set(rx, ry, rz));
       return geo.applyMatrix4(_m.compose(_p.set(x, y, z), _q, _s));
     };
 
@@ -544,11 +744,7 @@ export class HighwayWorld {
       const segGroup = new THREE.Group();
       segGroup.position.z = z;
 
-      const poleParts = [];
-      const bulbParts = [];
-      const buildingParts = [];
-
-      // 1. Reflective Cat-Eye Posts on top of Jersey Barriers (Every 20m)
+      // 1. Reflective Cat-Eye Posts on top of Jersey Barriers (Always visible)
       const leftRef = new THREE.Mesh(
         placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), -half - 0.55, twoWay ? 0.8 : 1.05, 0),
         redReflectorMat
@@ -561,21 +757,23 @@ export class HighwayWorld {
       );
       segGroup.add(rightRef);
 
-      // 2. Highway Streetlights (Left & Right tall curved poles)
+      // --- A. HIGHWAY GROUP ---
+      const highwayGroup = new THREE.Group();
+      const poleParts = [];
+      const bulbParts = [];
+      const buildingParts = [];
+
+      // Highway Streetlights (Left & Right tall curved poles)
       [-1, 1].forEach((side) => {
         const poleX = side * (half + 1.35);
         poleParts.push(placed(new THREE.CylinderGeometry(0.1, 0.14, 8.8, 8), poleX, 4.4, 0));
-
-        // Overhanging arm toward road
         poleParts.push(
-          placed(new THREE.BoxGeometry(2.6, 0.1, 0.1), poleX - side * 1.2, 8.6, 0, side * 0.12)
+          placed(new THREE.BoxGeometry(2.6, 0.1, 0.1), poleX - side * 1.2, 8.6, 0, 0, 0, side * 0.12)
         );
-
-        // Glowing LED/Sodium fixture
         bulbParts.push(placed(new THREE.BoxGeometry(0.75, 0.08, 0.32), poleX - side * 2.2, 8.45, 0));
       });
 
-      // 3. Distant City Buildings / Towers Silhouette on both sides
+      // Distant City Buildings Silhouette
       [-1, 1].forEach((side) => {
         const bHeight = 14 + ((i * 7 + (side > 0 ? 3 : 0)) % 28);
         const bWidth = 8 + (i % 5) * 2;
@@ -589,20 +787,145 @@ export class HighwayWorld {
         );
       });
 
-      segGroup.add(new THREE.Mesh(mergeGeometries(poleParts), poleMat));
-      segGroup.add(new THREE.Mesh(mergeGeometries(bulbParts), lampGlowMat));
+      highwayGroup.add(new THREE.Mesh(mergeGeometries(poleParts), poleMat));
+      highwayGroup.add(new THREE.Mesh(mergeGeometries(bulbParts), lampGlowMat));
       const buildings = new THREE.Mesh(mergeGeometries(buildingParts), buildingMat);
-      // Far-off silhouettes are left out of the rear-view mirror render (see CarCockpit)
       buildings.layers.set(MIRROR_SKIP_LAYER);
-      segGroup.add(buildings);
+      highwayGroup.add(buildings);
       [...poleParts, ...bulbParts, ...buildingParts].forEach((g) => g.dispose());
 
-      // 4. Overhead Highway Gantry Sign every 6 segments
+      // Overhead Highway Gantry Sign every 6 segments
       if (i % 6 === 2 && !twoWay) {
         const [t1, t2] = signTexts[Math.floor(i / 6) % signTexts.length];
         const gantry = this.createHighwayGantrySign(t1, t2);
-        segGroup.add(gantry);
+        highwayGroup.add(gantry);
       }
+      segGroup.add(highwayGroup);
+      segGroup.highwayGroup = highwayGroup;
+
+      // --- B. TUNNEL GROUP ---
+      const tunnelGroup = new THREE.Group();
+      const tunnelConcreteParts = [];
+      const tunnelLightParts = [];
+
+      // Vaulted Ceiling Arch
+      const archRadius = half + 1.8;
+      const archGeo = new THREE.CylinderGeometry(archRadius, archRadius, spacing, 16, 1, true, 0, Math.PI);
+      archGeo.rotateX(Math.PI / 2);
+      archGeo.scale(1, 0.68, 1);
+      archGeo.translate(0, 0.35, 0);
+      tunnelGroup.add(new THREE.Mesh(archGeo, tunnelCeilingMat));
+
+      // Lower Wall Panels and Curbs
+      tunnelConcreteParts.push(placed(new THREE.BoxGeometry(0.35, 3.2, spacing), -half - 1.5, 1.6, 0));
+      tunnelConcreteParts.push(placed(new THREE.BoxGeometry(0.35, 3.2, spacing), half + 1.5, 1.6, 0));
+      tunnelConcreteParts.push(placed(new THREE.BoxGeometry(1.2, 0.45, spacing), -half - 0.7, 0.22, 0));
+      tunnelConcreteParts.push(placed(new THREE.BoxGeometry(1.2, 0.45, spacing), half + 0.7, 0.22, 0));
+      tunnelGroup.add(new THREE.Mesh(mergeGeometries(tunnelConcreteParts), tunnelWallMat));
+      tunnelConcreteParts.forEach((g) => g.dispose());
+
+      // Continuous ceiling light strips
+      tunnelLightParts.push(placed(new THREE.BoxGeometry(0.25, 0.08, spacing), -5.8, 6.2, 0));
+      tunnelLightParts.push(placed(new THREE.BoxGeometry(0.25, 0.08, spacing), 5.8, 6.2, 0));
+      tunnelGroup.add(new THREE.Mesh(mergeGeometries(tunnelLightParts), tunnelLightMat));
+      tunnelLightParts.forEach((g) => g.dispose());
+
+      // Jet fans on every 3rd segment
+      if (i % 3 === 0) {
+        const jetParts = [];
+        jetParts.push(placed(new THREE.CylinderGeometry(0.42, 0.42, 3.4, 12), -3.6, 6.1, 0, Math.PI / 2, 0, 0));
+        jetParts.push(placed(new THREE.CylinderGeometry(0.42, 0.42, 3.4, 12), 3.6, 6.1, 0, Math.PI / 2, 0, 0));
+        tunnelGroup.add(new THREE.Mesh(mergeGeometries(jetParts), bridgeTrussMat));
+        jetParts.forEach((g) => g.dispose());
+      }
+
+      // Portal Group (Entrance / Exit portal frame and signboard)
+      const portalGroup = new THREE.Group();
+      const portalFrameParts = [];
+      portalFrameParts.push(placed(new THREE.BoxGeometry(2.0, 9.4, 2.5), -half - 2.2, 4.7, 0));
+      portalFrameParts.push(placed(new THREE.BoxGeometry(2.0, 9.4, 2.5), half + 2.2, 4.7, 0));
+      portalFrameParts.push(placed(new THREE.BoxGeometry((half + 3.2) * 2, 2.4, 2.5), 0, 8.6, 0));
+      portalGroup.add(new THREE.Mesh(mergeGeometries(portalFrameParts), tunnelFrameMat));
+      portalFrameParts.forEach((g) => g.dispose());
+
+      const portalSign = new THREE.Mesh(
+        new THREE.BoxGeometry((half + 2.6) * 2, 2.0, 0.12),
+        tunnelPortalSignMat
+      );
+      portalSign.position.set(0, 8.6, -1.32);
+      portalGroup.add(portalSign);
+      portalGroup.visible = false;
+      tunnelGroup.add(portalGroup);
+
+      tunnelGroup.visible = false;
+      segGroup.add(tunnelGroup);
+      segGroup.tunnelGroup = tunnelGroup;
+      segGroup.portalGroup = portalGroup;
+
+      // --- C. BRIDGE GROUP ---
+      const bridgeGroup = new THREE.Group();
+      const railingParts = [];
+      const cableParts = [];
+
+      // Steel Truss Railings on Left & Right
+      [-1, 1].forEach((side) => {
+        const rx = side * (half + 0.85);
+        railingParts.push(placed(new THREE.BoxGeometry(0.16, 0.12, spacing), rx, 1.45, 0));
+        railingParts.push(placed(new THREE.BoxGeometry(0.16, 0.12, spacing), rx, 0.35, 0));
+        for (let k = -2; k <= 2; k++) {
+          railingParts.push(placed(new THREE.BoxGeometry(0.12, 1.3, 0.12), rx, 0.9, k * 4));
+        }
+      });
+      bridgeGroup.add(new THREE.Mesh(mergeGeometries(railingParts), bridgeTrussMat));
+      railingParts.forEach((g) => g.dispose());
+
+      // Main Cables & Suspenders
+      [-1, 1].forEach((side) => {
+        const cx = side * (half + 1.3);
+        cableParts.push(placed(new THREE.CylinderGeometry(0.12, 0.12, spacing, 8), cx, 12, 0, Math.PI / 2, 0, 0));
+        for (let k = -1.5; k <= 1.5; k++) {
+          cableParts.push(placed(new THREE.CylinderGeometry(0.02, 0.02, 11, 6), cx, 6.5, k * 5));
+        }
+      });
+      bridgeGroup.add(new THREE.Mesh(mergeGeometries(cableParts), bridgeCableMat));
+      cableParts.forEach((g) => g.dispose());
+
+      // Deep Water Plane beneath the bridge
+      const waterGeo = new THREE.PlaneGeometry(260, spacing);
+      waterGeo.rotateX(-Math.PI / 2);
+      waterGeo.translate(0, -4.5, 0);
+      bridgeGroup.add(new THREE.Mesh(waterGeo, bridgeWaterMat));
+
+      // Bridge Pylon (Suspension Tower) Group
+      const pylonGroup = new THREE.Group();
+      const pylonParts = [];
+      pylonParts.push(placed(new THREE.BoxGeometry(1.8, 48, 2.6), -half - 3.2, 21, 0));
+      pylonParts.push(placed(new THREE.BoxGeometry(1.8, 48, 2.6), half + 3.2, 21, 0));
+      pylonParts.push(placed(new THREE.BoxGeometry((half + 4.2) * 2, 1.8, 2.6), 0, 9.2, 0));
+      pylonParts.push(placed(new THREE.BoxGeometry((half + 4.2) * 2, 1.4, 2.2), 0, 28, 0));
+      pylonParts.push(placed(new THREE.BoxGeometry((half + 4.2) * 2, 1.6, 2.4), 0, 44, 0));
+      pylonGroup.add(new THREE.Mesh(mergeGeometries(pylonParts), bridgePylonMat));
+      pylonParts.forEach((g) => g.dispose());
+
+      // Red LED Neon Strips on Tower Legs
+      const neonParts = [];
+      neonParts.push(placed(new THREE.BoxGeometry(0.18, 48, 0.18), -half - 4.15, 21, 0));
+      neonParts.push(placed(new THREE.BoxGeometry(0.18, 48, 0.18), half + 4.15, 21, 0));
+      pylonGroup.add(new THREE.Mesh(mergeGeometries(neonParts), bridgeNeonRedMat));
+      neonParts.forEach((g) => g.dispose());
+
+      // Bridge Gantry Sign
+      const bridgeSign = new THREE.Mesh(new THREE.BoxGeometry(13.5, 2.2, 0.14), bridgeSignMat);
+      bridgeSign.position.set(0, 9.2, -1.4);
+      pylonGroup.add(bridgeSign);
+
+      pylonGroup.visible = false;
+      bridgeGroup.add(pylonGroup);
+
+      bridgeGroup.visible = false;
+      segGroup.add(bridgeGroup);
+      segGroup.bridgeGroup = bridgeGroup;
+      segGroup.pylonGroup = pylonGroup;
 
       this.scene.add(segGroup);
       this.sceneryItems.push(segGroup);
@@ -713,6 +1036,56 @@ export class HighwayWorld {
       }
       seg.position.x = this.getCurveOffsetAtZ(seg.position.z);
       seg.rotation.y = this.getCurveYawAtZ(seg.position.z);
+
+      // Zone visibility per segment
+      const trackS = this.worldDistM - seg.position.z;
+      const s = ((trackS % ZONE_CYCLE_LENGTH) + ZONE_CYCLE_LENGTH) % ZONE_CYCLE_LENGTH;
+      const zone = getZoneAt(trackS);
+
+      const isTunnel = zone === 'tunnel';
+      const isBridge = zone === 'bridge';
+      const isHighway = zone === 'highway';
+
+      if (seg.highwayGroup) seg.highwayGroup.visible = isHighway;
+      if (seg.tunnelGroup) seg.tunnelGroup.visible = isTunnel;
+      if (seg.bridgeGroup) seg.bridgeGroup.visible = isBridge;
+
+      if (isTunnel) {
+        const isPortal = (s >= 1100 && s < 1120) || (s >= 1880 && s < 1900);
+        if (seg.portalGroup) seg.portalGroup.visible = isPortal;
+      } else if (isBridge) {
+        const isPylon = (s >= 2620 && s < 2640) || (s >= 3120 && s < 3140);
+        if (seg.pylonGroup) seg.pylonGroup.visible = isPylon;
+      }
+    }
+
+    // Update player zone environment & lighting transitions
+    const playerZone = getZoneAt(this.worldDistM);
+    this.currentZone = playerZone;
+
+    const preset = WEATHER_PRESETS[this.weatherKey] || WEATHER_PRESETS.night;
+
+    if (playerZone === 'tunnel') {
+      if (this.groundMesh) this.groundMesh.visible = false;
+      if (this.rainSystem) this.rainSystem.visible = false;
+      this.ambientLight.color.lerp(this.tunnelAmbientColor, dt * 3.5);
+      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, 1.85, dt * 3.5);
+      this.hemiLight.color.lerp(this.tunnelHemiColor, dt * 3.5);
+      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, 0.2, dt * 3.5);
+    } else if (playerZone === 'bridge') {
+      if (this.groundMesh) this.groundMesh.visible = false;
+      if (this.rainSystem) this.rainSystem.visible = Boolean(preset.rain);
+      this.ambientLight.color.lerp(new THREE.Color(preset.ambientColor), dt * 3.5);
+      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, preset.ambientIntensity, dt * 3.5);
+      this.hemiLight.color.lerp(new THREE.Color(preset.dirColor), dt * 3.5);
+      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, preset.dirIntensity, dt * 3.5);
+    } else {
+      if (this.groundMesh) this.groundMesh.visible = true;
+      if (this.rainSystem) this.rainSystem.visible = Boolean(preset.rain);
+      this.ambientLight.color.lerp(new THREE.Color(preset.ambientColor), dt * 3.5);
+      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, preset.ambientIntensity, dt * 3.5);
+      this.hemiLight.color.lerp(new THREE.Color(preset.dirColor), dt * 3.5);
+      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, preset.dirIntensity, dt * 3.5);
     }
 
     // Update Headlight & Selektör position to follow player car X + Audi Matrix Adaptive Cornering light swivel
@@ -734,5 +1107,9 @@ export class HighwayWorld {
       }
       pos.needsUpdate = true;
     }
+  }
+
+  getCurrentZone() {
+    return getZoneAt(this.worldDistM);
   }
 }

@@ -29,6 +29,10 @@ export class SoundEngine {
     this.rainGain = null;
     this.isRaining = false;
 
+    this.tunnelGain = null;
+    this.tunnelDelay = null;
+    this.acousticZone = 'highway';
+
     // Smoothed engine load / turbo boost and gear-change envelope (see updateEngine)
     this.load = 0;
     this.boost = 0;
@@ -73,6 +77,7 @@ export class SoundEngine {
 
     this.setupEngine();
     this.setupRoadNoise();
+    this.setupTunnelAcoustics();
 
     // Setup Horn Oscillators (Dual-tone F4 + A4 automotive horn)
     this.hornGain = this.ctx.createGain();
@@ -217,8 +222,60 @@ export class SoundEngine {
   setRainAmbience(enabled) {
     this.isRaining = enabled;
     if (!this.ctx || !this.rainGain) return;
-    const target = enabled && !this.muted ? 0.035 : 0.0;
+    const inTunnel = this.acousticZone === 'tunnel';
+    const target = enabled && !inTunnel && !this.muted ? 0.035 : 0.0;
     this.rainGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.3);
+  }
+
+  setupTunnelAcoustics() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+
+    this.tunnelDelay = ctx.createDelay();
+    this.tunnelDelay.delayTime.value = 0.045; // 45ms slap-back echo
+
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.32;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 820;
+    filter.Q.value = 1.1;
+
+    this.tunnelGain = ctx.createGain();
+    this.tunnelGain.gain.value = 0.0;
+
+    if (this.cabinFilter) {
+      this.cabinFilter.connect(this.tunnelDelay);
+      this.tunnelDelay.connect(filter);
+      filter.connect(feedback);
+      feedback.connect(this.tunnelDelay);
+      filter.connect(this.tunnelGain);
+      this.tunnelGain.connect(this.master);
+    }
+  }
+
+  setAcousticZone(zone) {
+    this.acousticZone = zone;
+    if (!this.ctx || !this.running) return;
+    const now = this.ctx.currentTime;
+    const inTunnel = zone === 'tunnel';
+    const inBridge = zone === 'bridge';
+
+    if (this.tunnelGain) {
+      const target = inTunnel && !this.muted ? 0.36 : 0.0;
+      this.tunnelGain.gain.setTargetAtTime(target, now, 0.25);
+    }
+
+    if (this.rainGain) {
+      const rainTarget = this.isRaining && !inTunnel && !this.muted ? 0.035 : 0.0;
+      this.rainGain.gain.setTargetAtTime(rainTarget, now, 0.25);
+    }
+
+    if (this.windFilter) {
+      const windFreq = inTunnel ? 520 : inBridge ? 1100 : 900;
+      this.windFilter.frequency.setTargetAtTime(windFreq, now, 0.35);
+    }
   }
 
   updateEngine(rpm, throttle, speedKmh, paused, lateralG = 0) {
@@ -228,7 +285,7 @@ export class SoundEngine {
     this.lastEngineUpdate = now;
 
     if (paused || this.muted) {
-      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain]) {
+      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.tunnelGain]) {
         g?.gain.setTargetAtTime(0, now, 0.08);
       }
       return;
@@ -397,7 +454,7 @@ export class SoundEngine {
   toggleMute() {
     this.muted = !this.muted;
     if (this.muted && this.ctx) {
-      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain]) {
+      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain, this.tunnelGain]) {
         g?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
       }
     } else {

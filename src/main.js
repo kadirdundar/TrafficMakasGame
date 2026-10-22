@@ -173,6 +173,7 @@ class OtobanMakasGame {
     this.lastTime = performance.now();
     this.perf = { frames: 0, elapsed: 0, calls: 0, window: 0, goodWindows: 0, lastRaise: -10, settle: 0 };
     this.fpsMeter = null;
+    this.lastZone = undefined;
     // Road layout chosen last time (motorway by default)
     let savedRoad = null;
     try {
@@ -182,6 +183,8 @@ class OtobanMakasGame {
 
     const params = new URLSearchParams(window.location.search);
     if (params.has('fps')) this.toggleFpsMeter();
+    if (params.has('tunel')) this.multiplayer.localWorldDistM = 1040;
+    if (params.has('kopru')) this.multiplayer.localWorldDistM = 2540;
 
     this.bindEvents();
     this.setupAppMode();
@@ -1443,6 +1446,22 @@ class OtobanMakasGame {
       this.keys.highBeam,
       this.multiplayer.localWorldDistM
     );
+
+    const playerZone = this.world.getCurrentZone();
+    if (playerZone !== this.lastZone) {
+      const prev = this.lastZone;
+      this.lastZone = playerZone;
+      this.sound.setAcousticZone(playerZone);
+      if (prev !== undefined) {
+        if (playerZone === 'tunnel') {
+          this.showMakasNotification('🚇 AVRASYA TÜNELİ (HIZ LİMİTİ 70)', 0, 'gold');
+        } else if (playerZone === 'bridge') {
+          this.showMakasNotification('🌉 15 TEMMUZ ŞEHİTLER KÖPRÜSÜ', 0, 'bridge');
+        } else if (playerZone === 'highway') {
+          this.showMakasNotification('🛣️ İSTANBUL ÇEVRE OTOYOLU', 0, 'normal');
+        }
+      }
+    }
 
     this.traffic.update(
       dt,
