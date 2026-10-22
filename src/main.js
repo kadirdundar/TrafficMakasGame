@@ -3,7 +3,6 @@ import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
-import { AMBULANCE_BLOCK_PENALTY, AMBULANCE_YIELD_BONUS } from './emergency.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { A8Showroom } from './showroom.js';
 
@@ -129,14 +128,6 @@ class OtobanMakasGame {
     this.cockpit.camera = this.camera;
     this.applyCameraPreset(0);
 
-    // Build the ambulance's shaders now, for the main view and for the mirror pass (rendering into
-    // a render target needs shader variants of its own), so its first appearance does not stutter
-    const ambulanceMesh = this.traffic.ambulance.mesh;
-    this.renderer.compile(ambulanceMesh, this.camera, this.scene);
-    this.renderer.setRenderTarget(this.cockpit.mirrorRenderTarget);
-    this.renderer.compile(ambulanceMesh, this.cockpit.mirrorCamera, this.scene);
-    this.renderer.setRenderTarget(null);
-
     // Game & Vehicle Physics State
     this.paused = true;
     this.score = 0;
@@ -191,7 +182,6 @@ class OtobanMakasGame {
 
     const params = new URLSearchParams(window.location.search);
     if (params.has('fps')) this.toggleFpsMeter();
-    if (params.has('ambulans')) this.traffic.ambulance.setFirstCallDelay(6);
 
     this.bindEvents();
     this.setupAppMode();
@@ -1186,57 +1176,6 @@ class OtobanMakasGame {
     }
   }
 
-  handleAmbulanceEvent({ type }) {
-    if (type === 'approach') {
-      this.showMakasNotification('🚑 AMBULANS GELİYOR! ŞERİDİ BOŞALT', 0, 'siren');
-    } else if (type === 'warn') {
-      this.showMakasNotification('🚑 YOL VER! AMBULANS ARKANDA', 0, 'siren');
-    } else if (type === 'blocked') {
-      this.score = Math.max(0, this.score - AMBULANCE_BLOCK_PENALTY);
-      this.combo = 1.0;
-      this.comboTimer = 0;
-      this.showMakasNotification(`🚑 AMBULANSI ENGELLEDİN! −${AMBULANCE_BLOCK_PENALTY}`, 0, 'danger');
-    } else if (type === 'yielded') {
-      this.score += AMBULANCE_YIELD_BONUS;
-      if (this.score > this.bestScore) {
-        this.bestScore = Math.floor(this.score);
-        localStorage.setItem('otoban_makas_best', String(this.bestScore));
-      }
-      this.showMakasNotification('🚑 AMBULANSA YOL VERDİN!', AMBULANCE_YIELD_BONUS, 'gold');
-    } else if (type === 'hit') {
-      this.handleCollision('💥 AMBULANSA ÇARPTIN! KOMBO SIFIRLANDI');
-    }
-  }
-
-  // Siren (distance, side, Doppler) and a red/blue glow at the screen edges while it is right
-  // behind. The glow is two pre-drawn gradient layers: only their opacity changes, and the DOM is
-  // touched only when the (quantised) level or the colour half changes.
-  updateAmbulanceCues() {
-    const amb = this.traffic.ambulance;
-    if (!amb.active) {
-      this.sound.stopSiren();
-      this.setSirenGlow(0, 0);
-      return;
-    }
-    const relX = amb.x - this.playerX;
-    const dist = Math.hypot(relX, amb.z);
-    const closingMs = (((amb.speedKmh - this.speedKmh) / 3.6) * amb.z) / Math.max(1, dist);
-    this.sound.updateSiren(dist, relX, closingMs, amb.urgent || (amb.local?.blockingSec ?? 0) > 0);
-    this.setSirenGlow(amb.z > 0 ? (45 - amb.z) / 35 : 0, amb.beaconHalf);
-  }
-
-  setSirenGlow(level, half) {
-    const q = Math.round(Math.max(0, Math.min(1, level)) * 10) / 10;
-    const color = q > 0 && half ? 'blue' : 'red';
-    if (this.hudCache.sirenGlow === q && this.hudCache.sirenColor === color) return;
-    this.hudCache.sirenGlow = q;
-    this.hudCache.sirenColor = color;
-    const el = this.hudEls.sirenGlow ?? (this.hudEls.sirenGlow = document.getElementById('siren-vignette'));
-    if (!el) return;
-    el.classList.toggle('hidden', q === 0);
-    el.style.opacity = String(q);
-    el.dataset.half = color;
-  }
 
   updatePhysics(dt) {
     // 1. Determine throttle & brake input
@@ -1516,12 +1455,10 @@ class OtobanMakasGame {
           if (car.dir < 0) this.handleCollision('💥 KAFA KAFAYA ÇARPIŞTIN!', true);
           else this.handleCollision();
         },
-        onAmbulance: (event) => this.handleAmbulanceEvent(event),
       },
       this.world,
       this.multiplayer.getTrafficContext()
     );
-    this.updateAmbulanceCues();
     this.updateOvertakeRun();
 
     const radarCars = this.traffic.getRadarSnapshot(this.playerX);
@@ -1824,7 +1761,6 @@ class OtobanMakasGame {
         radarCars
       );
       this.sound.updateEngine(900, 0, 0, true);
-      this.setSirenGlow(0, 0);
       this.updateHUD();
     }
 
