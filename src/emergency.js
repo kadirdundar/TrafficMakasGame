@@ -187,6 +187,7 @@ export class Ambulance {
 
   // HOST: counts driving time and sends one in behind the player it will reach first
   dispatch(dt, { playerSpeedKmh, playerX, peers }) {
+    if (this.traffic.roadMode === 'twoway') return; // motorway only
     let fastest = playerSpeedKmh;
     let rearX = playerX;
     let rearZ = 0;

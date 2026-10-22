@@ -769,6 +769,8 @@ export class MultiplayerManager {
       }
       this.syncRoster(data.roster, { announce: false });
       if (data.trafficSnapshot) {
+        // The road layout first, so the cars land on the right road
+        if (data.trafficSnapshot.roadMode) this.callbacks.onRoadModeSync?.(data.trafficSnapshot.roadMode);
         this.traffic.applySyncState(data.trafficSnapshot, this.localWorldDistM);
         if (data.trafficSnapshot.weatherKey) {
           this.callbacks.onWeatherSync?.(data.trafficSnapshot.weatherKey);
@@ -818,6 +820,7 @@ export class MultiplayerManager {
         if (player) this.applyState(player, s);
       }
     } else if (data.type === 'traffic') {
+      if (data.snapshot?.roadMode) this.callbacks.onRoadModeSync?.(data.snapshot.roadMode);
       this.traffic.applySyncState(data.snapshot, this.localWorldDistM);
       if (data.snapshot?.weatherKey) {
         this.callbacks.onWeatherSync?.(data.snapshot.weatherKey);

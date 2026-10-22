@@ -79,10 +79,18 @@ export const WEATHER_PRESETS = {
 export const LANE_CENTERS = [-5.4, -1.8, 1.8, 5.4];
 export const ROAD_HALF_WIDTH = 8.4;
 
+// Road layouts. 'highway': the 4-lane motorway. 'twoway': a 1+1 two-way road (devlet yolu) on the
+// middle two lane positions — lane 2 (x +1.8) is ours, lane 1 (x -1.8) carries oncoming traffic,
+// with a narrow shoulder outside each lane.
+export const ROAD_MODES = ['highway', 'twoway'];
+export const ROAD_HALF_WIDTHS = { highway: ROAD_HALF_WIDTH, twoway: 4.6 };
+
 export class HighwayWorld {
   constructor(scene) {
     this.scene = scene;
     this.weatherKey = 'night';
+    this.roadMode = 'highway';
+    this.roadHalfWidth = ROAD_HALF_WIDTH;
 
     this.roadTexture = null;
     this.roadMat = null;
@@ -181,7 +189,9 @@ export class HighwayWorld {
     for (let i = 0; i < pos.count; i++) {
       baseX[i] = pos.getX(i);
     }
-    this.curvableGeometries.push({ geo, baseX });
+    const item = { geo, baseX, originalX: baseX.slice() };
+    this.curvableGeometries.push(item);
+    return item;
   }
 
   buildLights() {
@@ -241,12 +251,9 @@ export class HighwayWorld {
     this.highBeamLight.target = this.highBeamTarget;
   }
 
-  createRoadCanvasTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
-
+  // Asphalt, edge lines and lane markings for the current layout, drawn across the whole road plane
+  // (ROAD_HALF_WIDTH * 2 + 1.6 m wide for either layout: the plane is scaled, see setRoadLayout)
+  drawRoadMarkings(ctx, mode) {
     // Clearer, brighter highway asphalt tone so road is clearly visible at night
     ctx.fillStyle = '#2d3442';
     ctx.fillRect(0, 0, 1024, 1024);
@@ -258,6 +265,26 @@ export class HighwayWorld {
       const v = 38 + Math.floor(Math.random() * 22);
       ctx.fillStyle = `rgb(${v},${v + 3},${v + 8})`;
       ctx.fillRect(x, y, 2, 3);
+    }
+
+    if (mode === 'twoway') {
+      // Plane is 2 * 4.6 + 1.6 = 10.8 m wide: px per metre
+      const half = ROAD_HALF_WIDTHS.twoway + 0.8;
+      const px = (x) => ((x + half) / (half * 2)) * 1024;
+      const pw = 1024 / (half * 2);
+      // Gravel shoulder strips beyond the asphalt edge
+      ctx.fillStyle = '#3b3a36';
+      ctx.fillRect(0, 0, px(-ROAD_HALF_WIDTHS.twoway), 1024);
+      ctx.fillRect(px(ROAD_HALF_WIDTHS.twoway), 0, 1024, 1024);
+      // Solid white edge lines just outside both lanes
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(px(-3.75), 0, 0.15 * pw, 1024);
+      ctx.fillRect(px(3.6), 0, 0.15 * pw, 1024);
+      // Dashed white centre line: overtaking allowed
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(px(-0.07), 60, 0.14 * pw, 330);
+      ctx.fillRect(px(-0.07), 572, 0.14 * pw, 330);
+      return;
     }
 
     // Left & Right Emergency Shoulder Solid Yellow/White Lines
@@ -283,6 +310,13 @@ export class HighwayWorld {
       ctx.fillRect(lx, 80, 12, 310);
       ctx.fillRect(lx, 590, 12, 310);
     }
+  }
+
+  createRoadCanvasTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    this.drawRoadMarkings(canvas.getContext('2d'), this.roadMode);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
@@ -303,7 +337,7 @@ export class HighwayWorld {
     const roadGeo = new THREE.PlaneGeometry(ROAD_HALF_WIDTH * 2 + 1.6, roadLength, 1, zSegments);
     roadGeo.rotateX(-Math.PI / 2);
     roadGeo.translate(0, 0, -140);
-    this.registerCurvableGeometry(roadGeo);
+    this.roadCurvable = this.registerCurvableGeometry(roadGeo);
 
     this.roadMat = new THREE.MeshStandardMaterial({
       map: this.roadTexture,
@@ -336,15 +370,56 @@ export class HighwayWorld {
 
     const leftBarrierGeo = new THREE.BoxGeometry(0.65, 0.95, roadLength, 1, 1, zSegments);
     leftBarrierGeo.translate(-ROAD_HALF_WIDTH - 0.55, 0.47, -140);
-    this.registerCurvableGeometry(leftBarrierGeo);
     const leftBarrier = new THREE.Mesh(leftBarrierGeo, barrierMat);
     this.scene.add(leftBarrier);
 
     const rightBarrierGeo = new THREE.BoxGeometry(0.65, 0.95, roadLength, 1, 1, zSegments);
     rightBarrierGeo.translate(ROAD_HALF_WIDTH + 0.55, 0.47, -140);
-    this.registerCurvableGeometry(rightBarrierGeo);
     const rightBarrier = new THREE.Mesh(rightBarrierGeo, barrierMat);
     this.scene.add(rightBarrier);
+    this.barriers = [
+      { mesh: leftBarrier, side: -1, curvable: this.registerCurvableGeometry(leftBarrierGeo) },
+      { mesh: rightBarrier, side: 1, curvable: this.registerCurvableGeometry(rightBarrierGeo) },
+    ];
+  }
+
+  // Switches between the motorway and the two-way road: redraws the markings, narrows or widens the
+  // road surface, moves the barriers and rebuilds the roadside (poles, reflectors; no overhead
+  // gantries on the two-way road). Only runs when the layout actually changes.
+  setRoadLayout(mode) {
+    if (!ROAD_MODES.includes(mode) || mode === this.roadMode) return;
+    this.roadMode = mode;
+    this.roadHalfWidth = ROAD_HALF_WIDTHS[mode];
+
+    this.drawRoadMarkings(this.roadTexture.image.getContext('2d'), mode);
+    this.roadTexture.needsUpdate = true;
+
+    const widthScale = (this.roadHalfWidth + 0.8) / (ROAD_HALF_WIDTH + 0.8);
+    const road = this.roadCurvable;
+    for (let i = 0; i < road.baseX.length; i++) road.baseX[i] = road.originalX[i] * widthScale;
+    for (const b of this.barriers) {
+      const shift = b.side * (this.roadHalfWidth - ROAD_HALF_WIDTH);
+      for (let i = 0; i < b.curvable.baseX.length; i++) b.curvable.baseX[i] = b.curvable.originalX[i] + shift;
+      b.mesh.scale.y = mode === 'twoway' ? 0.75 : 1; // a lower roadside barrier
+    }
+
+    // Rebuild the roadside segments where the current ones are
+    const zs = this.sceneryItems.map((seg) => seg.position.z);
+    for (const seg of this.sceneryItems) {
+      this.scene.remove(seg);
+      seg.traverse((o) => {
+        o.geometry?.dispose();
+        if (o.material) {
+          o.material.map?.dispose();
+          o.material.dispose();
+        }
+      });
+    }
+    this.sceneryItems = [];
+    this.lampFixtures = [];
+    this.buildRoadsideScenery();
+    this.sceneryItems.forEach((seg, i) => (seg.position.z = zs[i] ?? seg.position.z));
+    this.applyWeather(this.weatherKey); // lamp colours for the new fixtures
   }
 
   createHighwayGantrySign(textMain, textSub) {
@@ -420,6 +495,8 @@ export class HighwayWorld {
   }
 
   buildRoadsideScenery() {
+    const half = this.roadHalfWidth;
+    const twoWay = this.roadMode === 'twoway';
     const poleMat = new THREE.MeshStandardMaterial({
       color: 0x475569,
       roughness: 0.4,
@@ -473,20 +550,20 @@ export class HighwayWorld {
 
       // 1. Reflective Cat-Eye Posts on top of Jersey Barriers (Every 20m)
       const leftRef = new THREE.Mesh(
-        placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), -ROAD_HALF_WIDTH - 0.55, 1.05, 0),
+        placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), -half - 0.55, twoWay ? 0.8 : 1.05, 0),
         redReflectorMat
       );
       segGroup.add(leftRef);
 
       const rightRef = new THREE.Mesh(
-        placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), ROAD_HALF_WIDTH + 0.55, 1.05, 0),
+        placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), half + 0.55, twoWay ? 0.8 : 1.05, 0),
         whiteReflectorMat
       );
       segGroup.add(rightRef);
 
       // 2. Highway Streetlights (Left & Right tall curved poles)
       [-1, 1].forEach((side) => {
-        const poleX = side * (ROAD_HALF_WIDTH + 1.35);
+        const poleX = side * (half + 1.35);
         poleParts.push(placed(new THREE.CylinderGeometry(0.1, 0.14, 8.8, 8), poleX, 4.4, 0));
 
         // Overhanging arm toward road
@@ -521,7 +598,7 @@ export class HighwayWorld {
       [...poleParts, ...bulbParts, ...buildingParts].forEach((g) => g.dispose());
 
       // 4. Overhead Highway Gantry Sign every 6 segments
-      if (i % 6 === 2) {
+      if (i % 6 === 2 && !twoWay) {
         const [t1, t2] = signTexts[Math.floor(i / 6) % signTexts.length];
         const gantry = this.createHighwayGantrySign(t1, t2);
         segGroup.add(gantry);
