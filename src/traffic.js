@@ -19,6 +19,11 @@ const ROOM_OFFSET_M = 0.45;
 const PLAYER_HALF_WIDTH = 0.86;
 const PATH_MARGIN_M = 0.25;
 
+// Two-way road (see world.js ROAD_MODES): our lane and the oncoming lane, and cruising speeds
+const TWO_WAY_OUR_LANE = 2;
+const TWO_WAY_ONCOMING_LANE = 1;
+const TWO_WAY_SPEEDS = { truck: 72, van: 80, suv: 86, sedan: 90, sport: 96 };
+
 const VEHICLE_TYPES = [
   { type: 'sedan', width: 1.86, height: 1.42, length: 4.5, baseSpeedKmh: 105 },
   { type: 'sport', width: 1.92, height: 1.28, length: 4.4, baseSpeedKmh: 122 },
@@ -33,6 +38,7 @@ export class TrafficManager {
     this.vehicles = [];
     this.densityMode = 'heavy'; // 'normal' | 'heavy' | 'extreme'
     this.maxVehicles = 18;
+    this.roadMode = 'highway'; // 'highway' | 'twoway'
     this.isRemoteControlled = false;
     this.nightLights = null; // Synced from world.weatherKey in update()
 
@@ -55,9 +61,20 @@ export class TrafficManager {
 
   setDensity(mode) {
     this.densityMode = mode;
-    if (mode === 'normal') this.maxVehicles = 12;
-    else if (mode === 'heavy') this.maxVehicles = 18;
-    else this.maxVehicles = 24;
+    const counts = this.roadMode === 'twoway' ? [8, 12, 16] : [12, 18, 24];
+    if (mode === 'normal') this.maxVehicles = counts[0];
+    else if (mode === 'heavy') this.maxVehicles = counts[1];
+    else this.maxVehicles = counts[2];
+  }
+
+  // Motorway or two-way road. The host (or single player) starts a fresh traffic field; a guest
+  // just takes the mode and gets the cars from the host's next snapshot.
+  setRoadMode(mode) {
+    if (mode === this.roadMode) return;
+    this.roadMode = mode;
+    this.setDensity(this.densityMode);
+    if (this.isRemoteControlled) this.ambulance.reset();
+    else this.resetTraffic();
   }
 
   initPool(count) {
@@ -95,6 +112,7 @@ export class TrafficManager {
         changingLaneTimer: 0,
         blinkerDir: 0, // -1 left, +1 right, 0 off
         overtaken: false,
+        dir: 1, // 1 drives our way, -1 comes the other way (two-way road)
         active: true,
       };
 
@@ -113,7 +131,8 @@ export class TrafficManager {
       car.active = i < this.maxVehicles;
       car.mesh.visible = car.active;
       car.hasSynced = false;
-      this.respawnVehicle(car, -42 - i * 18);
+      if (this.roadMode === 'twoway') this.respawnTwoWay(car, -42 - i * 18, 0, i % 2 === 0 ? 1 : -1);
+      else this.respawnVehicle(car, -42 - i * 18);
     }
     this.ambulance.reset();
   }
@@ -130,6 +149,11 @@ export class TrafficManager {
   }
 
   respawnVehicle(car, customZ = null, frontAnchorZ = 0) {
+    if (this.roadMode === 'twoway') {
+      this.respawnTwoWay(car, customZ, frontAnchorZ);
+      return;
+    }
+    car.dir = 1;
     // Trucks & vans stay in right lanes (2 or 3); sport/sedans prefer left lanes (0, 1, 2)
     let lane = Math.floor(Math.random() * 4);
     if (car.spec.type === 'truck') {
@@ -181,6 +205,13 @@ export class TrafficManager {
 
     car.targetSpeedKmh = this.getLaneTargetSpeed(lane, car.spec);
     car.speedKmh = car.targetSpeedKmh;
+    this.resetDriving(car);
+    // About half of the drivers move over in their lane when side by side with another car
+    car.givesRoom = Math.random() < 0.5;
+  }
+
+  // Fresh state for a car put back on the road (after respawnVehicle / respawnTwoWay placed it)
+  resetDriving(car) {
     car.blinkerDir = 0;
     car.changingLaneTimer = 0;
     car.isBraking = false;
@@ -189,14 +220,148 @@ export class TrafficManager {
     car.holdLaneUntil = 0;
     car.laneOffset = 0;
     car.laneOffsetTarget = 0;
-    // About half of the drivers move over in their lane when side by side with another car
-    car.givesRoom = Math.random() < 0.5;
+    car.givesRoom = false;
 
     // Fresh random paint color for variety
     applyPaint(car.bodyMat, pickRandomPaint());
 
     car.mesh.position.set(car.x, 0, car.z);
-    car.mesh.rotation.y = 0;
+    car.mesh.rotation.y = car.dir < 0 ? Math.PI : 0;
+  }
+
+  // Two-way road: about half of the cars come the other way. Cars going our way appear ahead of
+  // the pack (slower than the players, so they get caught up with). Oncoming ones queue up behind
+  // the furthest oncoming car, in small groups with long empty stretches between them: those
+  // stretches are the windows to overtake in.
+  respawnTwoWay(car, customZ = null, frontAnchorZ = 0, forceDir = null) {
+    let dir = forceDir;
+    if (dir === null) {
+      let oncoming = 0;
+      let ours = 0;
+      for (const other of this.vehicles) {
+        if (other === car || !other.active) continue;
+        if (other.dir < 0) oncoming++;
+        else ours++;
+      }
+      dir = oncoming <= ours ? -1 : 1;
+    }
+    car.dir = dir;
+    const lane = dir > 0 ? TWO_WAY_OUR_LANE : TWO_WAY_ONCOMING_LANE;
+    let z;
+    if (dir > 0) {
+      // Anywhere in a long band ahead, at least 55 m from the others: single slow cars and short
+      // queues rather than one endless convoy
+      const near = customZ !== null ? -60 : frontAnchorZ - 160;
+      const far = customZ !== null ? -480 : frontAnchorZ - 480;
+      let placed = false;
+      for (let attempt = 0; attempt < 12 && !placed; attempt++) {
+        z = near + Math.random() * (far - near);
+        placed = !this.vehicles.some(
+          (other) => other !== car && other.active && other.dir > 0 && Math.abs(other.z - z) < 55
+        );
+      }
+      // Band full: line up behind the furthest one instead
+      if (!placed) {
+        z = far;
+        for (const other of this.vehicles) {
+          if (other !== car && other.active && other.dir > 0) z = Math.min(z, other.z - 55);
+        }
+      }
+    } else {
+      const anchor = customZ !== null ? 0 : frontAnchorZ;
+      let furthest = customZ !== null ? customZ * 2 - 40 : anchor - 250;
+      for (const other of this.vehicles) {
+        if (other !== car && other.active && other.dir < 0) furthest = Math.min(furthest, other.z);
+      }
+      const inGroup = Math.random() < 0.55;
+      z = furthest - (inGroup ? 22 + Math.random() * 25 : 200 + Math.random() * 250);
+      // Never chains on past 1200 m out (it would only be respawned again)
+      if (z < anchor - 1200) {
+        z = anchor - 1200;
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const clash = this.vehicles.some((o) => o !== car && o.active && o.dir < 0 && Math.abs(o.z - z) < 22);
+          if (!clash) break;
+          z += 25;
+        }
+      }
+    }
+
+
+    car.lane = lane;
+    car.targetLane = lane;
+    car.x = LANE_CENTERS[lane];
+    car.z = z;
+    car.targetSpeedKmh = (TWO_WAY_SPEEDS[car.spec.type] ?? 88) + (Math.random() * 12 - 6);
+    car.speedKmh = car.targetSpeedKmh;
+    this.resetDriving(car);
+  }
+
+  // Two-way road driving (host / single player): no lane changes. A car keeps its distance to the
+  // one in front in its own direction; after a Selektör flash it keeps right and eases off; an
+  // oncoming car with a player coming at it in its lane moves to its edge and brakes.
+  driveTwoWay(car, dt, playerSpeedKmh, playerX, peers, nowSec) {
+    const dir = car.dir;
+    let ahead = null;
+    let gapAhead = Infinity;
+    for (const other of this.vehicles) {
+      if (other === car || !other.active || other.dir !== dir) continue;
+      const d = dir > 0 ? car.z - other.z : other.z - car.z;
+      if (d > 0 && d < gapAhead) {
+        gapAhead = d;
+        ahead = other;
+      }
+    }
+
+    let isBraking = false;
+    let target = car.targetSpeedKmh;
+    car.laneOffsetTarget = 0;
+    if (dir > 0 && nowSec < car.holdLaneUntil) {
+      car.laneOffsetTarget = 0.85;
+      target *= 0.85;
+    }
+    if (dir < 0) {
+      const threatened = (x, z) => x < 0.2 && z > car.z && z - car.z < 90;
+      if (threatened(playerX, 0) || peers.some((p) => threatened(p.x, p.relZ))) {
+        car.laneOffsetTarget = -0.8;
+        target *= 0.6;
+        isBraking = true;
+      }
+    }
+
+    if (ahead && gapAhead < 22) {
+      car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, Math.min(target, ahead.speedKmh * 0.95), dt * 3);
+      isBraking = true;
+    } else {
+      car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, target, dt * (target < car.speedKmh ? 2.5 : 1.5));
+    }
+
+    // Never rear-ends a player in its lane (cars going our way only)
+    if (dir > 0) {
+      const protect = (x, z, kmh) => {
+        if (car.z > z && car.z < z + 30 && Math.abs(car.x - x) < 2.8) {
+          const max = Math.max(30, kmh - 14);
+          if (car.speedKmh > max) {
+            car.speedKmh = max;
+            isBraking = true;
+          }
+        }
+      };
+      protect(playerX, 0, playerSpeedKmh);
+      for (const peer of peers) protect(peer.x, peer.relZ, peer.speedKmh || 90);
+    }
+
+    car.isBraking = isBraking;
+    car.visual.setBraking(isBraking);
+    car.z += ((playerSpeedKmh - dir * car.speedKmh) / 3.6) * dt;
+  }
+
+  // Distance to the nearest oncoming car still ahead of the local player (Infinity if none)
+  nearestOncomingAheadM() {
+    let best = Infinity;
+    for (const car of this.vehicles) {
+      if (car.active && car.dir < 0 && car.z < 0) best = Math.min(best, -car.z);
+    }
+    return best;
   }
 
   isLaneClear(car, candidateLane, marginZ = 15, playerX = null, mpContext = null) {
@@ -249,6 +414,20 @@ export class TrafficManager {
     if (this.isRemoteControlled) return false; // guests: the host decides (notifyLocalSelektor)
     const nowSec = performance.now() / 1000;
     let anyYielded = false;
+    if (this.roadMode === 'twoway') {
+      // Two-way road: the car ahead signals right, keeps to the edge and eases off for a while
+      for (const car of this.vehicles) {
+        if (!car.active || car.dir < 0) continue;
+        const rel = car.z - flasherZ;
+        if (rel >= -8 || rel <= -85) continue;
+        if (Math.abs(car.x - flasherX) > car.spec.width / 2 + PLAYER_HALF_WIDTH + PATH_MARGIN_M) continue;
+        car.holdLaneUntil = nowSec + 6;
+        car.blinkerDir = 1;
+        car.changingLaneTimer = 3;
+        anyYielded = true;
+      }
+      return anyYielded;
+    }
     for (const car of this.vehicles) {
       if (!car.active || car.pendingLane >= 0) continue;
       const relZToFlasher = car.z - flasherZ; // Negative means ahead of the flashing player
@@ -317,7 +496,7 @@ export class TrafficManager {
 
       if (this.isRemoteControlled) {
         // GUEST MODE: Smooth 60 FPS dead-reckoning from Host's synchronized traffic state!
-        car.syncWorldDistM += (car.speedKmh / 3.6) * dt;
+        car.syncWorldDistM += (car.dir * car.speedKmh / 3.6) * dt;
         const guestWorldDistM = mpContext?.localWorldDistM ?? 0;
         const desiredZ = guestWorldDistM - car.syncWorldDistM;
 
@@ -332,6 +511,8 @@ export class TrafficManager {
         // Smoothly interpolate speed toward targetSpeedKmh between packets
         car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, car.targetSpeedKmh, dt * 1.5);
         car.visual.setBraking(car.isBraking);
+      } else if (this.roadMode === 'twoway') {
+        this.driveTwoWay(car, dt, playerSpeedKmh, playerX, peers, nowSec);
       } else {
         // HOST / SINGLE-PLAYER AUTHORITATIVE SIMULATION:
         // 1. Check if there is a slower AI car directly ahead in the same lane
@@ -411,14 +592,14 @@ export class TrafficManager {
             const laneDiff = other.targetLane - car.targetLane;
             if (laneDiff === 1 || laneDiff === -1) side -= laneDiff;
           }
-          // An ambulance passing on the shoulder next to it counts as a neighbour too
-          const amb = this.ambulance;
-          if (amb.active && Math.abs(amb.z - car.z) < 12) {
-            const laneDiff = amb.targetLane - car.targetLane;
-            if (laneDiff === 1 || laneDiff === -1) side -= laneDiff;
-          }
           // Only one neighbour (or both on the same side): move away from it
           if (side !== 0) car.laneOffsetTarget = Math.sign(side) * ROOM_OFFSET_M;
+        }
+        // An ambulance passing on the hard shoulder right next to it: every driver in the outer lane
+        // keeps to the inside of the lane, whatever else is around
+        if (amb.active && Math.abs(amb.z - car.z) < 14) {
+          if (amb.targetLane < 0 && car.targetLane === 0) car.laneOffsetTarget = ROOM_OFFSET_M;
+          if (amb.targetLane > 3 && car.targetLane === 3) car.laneOffsetTarget = -ROOM_OFFSET_M;
         }
 
         // CRITICAL PROTECTION FOR HOST: If this car is behind Host (car.z > 0), do not rear-end Host!
@@ -451,7 +632,8 @@ export class TrafficManager {
 
       // 2. Smooth lateral lane changing & blinker lights (runs identically on Host & Guest!)
       const offsetStep = car.laneOffsetTarget - car.laneOffset;
-      car.laneOffset += Math.sign(offsetStep) * Math.min(Math.abs(offsetStep), dt * 0.6);
+      const offsetRate = this.roadMode === 'twoway' ? 1.4 : 0.6;
+      car.laneOffset += Math.sign(offsetStep) * Math.min(Math.abs(offsetStep), dt * offsetRate);
       const targetX = LANE_CENTERS[car.targetLane] + car.laneOffset;
       const dx = targetX - car.x;
       let laneChangeYaw = 0;
@@ -476,7 +658,7 @@ export class TrafficManager {
       const halfW = car.spec.width / 2 + 0.86; // Player car half-width ~ 0.86m
 
       // Ensure a car that was already behind the local player (prevZ >= 1.2) never creeps forward into the player's rear bumper
-      if (prevZ >= 1.2 && car.z < halfL + 1.5 && Math.abs(car.x - playerX) < halfW + 0.5) {
+      if (car.dir > 0 && prevZ >= 1.2 && car.z < halfL + 1.5 && Math.abs(car.x - playerX) < halfW + 0.5) {
         car.z = halfL + 1.5;
         car.speedKmh = Math.max(35, playerSpeedKmh - 18);
         if (this.isRemoteControlled && mpContext) {
@@ -496,22 +678,61 @@ export class TrafficManager {
       const curveX = world ? world.getCurveOffsetAtZ(car.z) : 0;
       const curveYaw = world ? world.getCurveYawAtZ(car.z) : 0;
       car.mesh.position.set(car.x + curveX, 0, car.z);
-      car.mesh.rotation.y = laneChangeYaw + curveYaw;
+      car.mesh.rotation.y = laneChangeYaw + curveYaw + (car.dir < 0 ? Math.PI : 0);
 
       // 4. COLLISION & MAKAS (NEAR-MISS) DETECTION around Z = 0
       const absZ = Math.abs(car.z);
       const absX = Math.abs(car.x - playerX);
 
       // Check collision overlap (Only if car was ahead of or beside player, never from behind!)
-      if (nowSec > car.noCollideUntil && prevZ < 1.2 && absZ < halfL - 0.4 && absX < halfW - 0.16) {
+      // An oncoming car closes in at up to ~340 km/h, which can carry it right through the overlap
+      // window between two frames, so a crossing of the whole window counts too
+      const overlapZ = halfL - 0.4;
+      const sweptThrough = car.dir < 0 && prevZ < -overlapZ && car.z > overlapZ;
+      if (
+        nowSec > car.noCollideUntil &&
+        absX < halfW - 0.16 &&
+        ((prevZ < 1.2 && absZ < overlapZ) || sweptThrough)
+      ) {
         // Collision! The hit car is shoved ahead over a few frames (not teleported), can't count as
-        // a new crash right away, and on a guest keeps its local position until the host has it too
+        // a new crash right away, and on a guest keeps its local position until the host has it too.
+        // A head-on one is moved past behind us instead.
         car.noCollideUntil = nowSec + 1.2;
-        car.pushRemainingZ = -halfL - 1.2 - car.z;
-        car.speedKmh = Math.max(50, playerSpeedKmh * 0.7);
+        if (car.dir < 0) {
+          car.pushRemainingZ = halfL + 1.5 - car.z;
+          // The host takes a head-on wreck off the road and sends the car in again far ahead
+          if (!this.isRemoteControlled) {
+            callbacks?.onCollision?.(car);
+            this.respawnVehicle(car, null, frontMostZ);
+            continue;
+          }
+        } else {
+          car.pushRemainingZ = -halfL - 1.2 - car.z;
+          car.speedKmh = Math.max(50, playerSpeedKmh * 0.7);
+        }
         if (this.isRemoteControlled) car.localOverrideUntil = nowSec + 0.8;
         callbacks?.onCollision?.(car);
         car.overtaken = true;
+      }
+
+      // Two-way road: overtaking a car of ours from the oncoming lane is a "sollama"; passing an
+      // oncoming car close is a near miss of its own
+      if (this.roadMode === 'twoway' && !car.overtaken && prevZ <= 0.5 && car.z > 0.5 && playerSpeedKmh >= 60) {
+        const lateralGap = absX - halfW;
+        if (car.dir > 0 && playerX < 0) {
+          car.overtaken = true;
+          callbacks?.onMakas?.({
+            car,
+            kind: 'sollama',
+            speedKmh: playerSpeedKmh,
+            oncomingGapM: this.nearestOncomingAheadM(),
+          });
+        } else if (car.dir < 0) {
+          car.overtaken = true;
+          if (lateralGap >= -0.15 && lateralGap < 1.2) {
+            callbacks?.onMakas?.({ car, kind: 'karsi', lateralGap: Math.max(0.08, lateralGap), speedKmh: playerSpeedKmh });
+          }
+        }
       }
 
       // Check Makas (Near-Miss Overtake) when car crosses from ahead (z <= 0) to behind (z > 0)
@@ -544,7 +765,7 @@ export class TrafficManager {
       if (!this.isRemoteControlled) {
         if (car.z > rearMostZ + 42) {
           this.respawnVehicle(car, null, frontMostZ);
-        } else if (car.z < frontMostZ - 320) {
+        } else if (car.z < frontMostZ - (this.roadMode !== 'twoway' ? 320 : car.dir < 0 ? 1400 : 520)) {
           this.respawnVehicle(car, frontMostZ - 160, frontMostZ);
         }
       }
@@ -566,6 +787,7 @@ export class TrafficManager {
     const activeCount = Math.min(this.vehicles.length, this.maxVehicles + 4);
     return {
       densityMode: this.densityMode,
+      roadMode: this.roadMode,
       weatherKey,
       cars: this.vehicles.slice(0, activeCount).map((c) => ({
         id: c.id,
@@ -580,6 +802,7 @@ export class TrafficManager {
         offset: Number(c.laneOffsetTarget.toFixed(2)),
         braking: c.isBraking ? 1 : 0,
         colorHex: c.bodyMat.color.getHex(),
+        dir: c.dir,
       })),
       ambulance: this.ambulance.exportState(hostWorldDistM),
     };
@@ -606,6 +829,7 @@ export class TrafficManager {
 
       car.active = true;
       car.mesh.visible = true;
+      car.dir = s.dir === -1 ? -1 : 1;
       car.lane = s.lane;
       car.targetLane = s.targetLane;
       car.speedKmh = s.speedKmh;

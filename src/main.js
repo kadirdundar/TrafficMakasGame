@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
-import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_HALF_WIDTH, WEATHER_PRESETS } from './world.js';
+import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
 import { AMBULANCE_BLOCK_PENALTY, AMBULANCE_YIELD_BONUS } from './emergency.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { A8Showroom } from './showroom.js';
+
+// Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
+const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
 
 // Audi A8 drivetrain: ZF 8HP gear ratios, final drive and 20" wheel rolling circumference
 const A8_GEAR_RATIOS = [0, 5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64];
@@ -61,7 +64,7 @@ class OtobanMakasGame {
       onStatusChange: (status) => this.syncMultiplayerUI(status),
       onMatchReady: ({ remoteName, slot }) => {
         // Automatically launch everyone onto the highway side-by-side, one lane per slot
-        this.playerX = SLOT_START_X[slot] ?? -1.8;
+        this.playerX = this.startX(slot);
         this.speedKmh = 0; // everyone starts from a standstill
         this.lateralVel = 0;
         this.headingAngle = 0;
@@ -91,6 +94,7 @@ class OtobanMakasGame {
       onPeerHorn: ({ name }) => {
         this.showMakasNotification(`📯 ${name} KORNA ÇALDI!`, 50, 'normal');
       },
+      onRoadModeSync: (mode) => this.setRoadMode(mode, { fromHost: true }),
       onWeatherSync: (weatherKey) => {
         if (weatherKey && weatherKey !== this.world.weatherKey) {
           const preset = this.world.applyWeather(weatherKey);
@@ -142,7 +146,8 @@ class OtobanMakasGame {
     this.health = 100;
     this.odometerKm = 1428.4;
 
-    this.playerX = -1.8; // Start in left-center fast lane
+    this.playerX = -1.8; // Start in left-center fast lane (two-way road: see setRoadMode below)
+    this.overtakeRun = null; // two-way road: an excursion into the oncoming lane (see updateOvertakeRun)
     this.lateralVel = 0;
     this.yawRate = 0; // rad/s chassis yaw angular velocity
     this.headingAngle = 0; // rad chassis slip/heading angle relative to highway
@@ -177,6 +182,13 @@ class OtobanMakasGame {
     this.lastTime = performance.now();
     this.perf = { frames: 0, elapsed: 0, calls: 0, window: 0, goodWindows: 0, lastRaise: -10, settle: 0 };
     this.fpsMeter = null;
+    // Road layout chosen last time (motorway by default)
+    let savedRoad = null;
+    try {
+      savedRoad = localStorage.getItem('otoban_makas_road');
+    } catch (_) {}
+    if (ROAD_MODES.includes(savedRoad)) this.setRoadMode(savedRoad);
+
     const params = new URLSearchParams(window.location.search);
     if (params.has('fps')) this.toggleFpsMeter();
     if (params.has('ambulans')) this.traffic.ambulance.setFirstCallDelay(6);
@@ -420,6 +432,10 @@ class OtobanMakasGame {
 
     document.querySelectorAll('#camera-preset-group .seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => this.applyCameraPreset(Number(btn.dataset.camera)));
+    });
+
+    document.querySelectorAll('#road-mode-group .seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this.setRoadMode(btn.dataset.road, { remember: true }));
     });
 
     document.querySelectorAll('#traffic-density-group .seg-btn').forEach((btn) => {
@@ -932,7 +948,7 @@ class OtobanMakasGame {
     this.comboTimer = 0;
     this.health = 100;
     this.speedKmh = 0;
-    this.playerX = -1.8;
+    this.playerX = this.startX();
     this.lateralVel = 0;
     this.yawRate = 0;
     this.headingAngle = 0;
@@ -1012,7 +1028,104 @@ class OtobanMakasGame {
     scheduleExit(item);
   }
 
-  handleMakas({ lateralGap, speedKmh, isRazorClose, isDoubleMakas }) {
+  // Where the car starts: one lane per room slot on the motorway, our lane on the two-way road
+  startX(slot = this.multiplayer.connected ? this.multiplayer.localSlot : 0) {
+    if (this.traffic.roadMode === 'twoway') return TWO_WAY_START_X[slot] ?? 1.8;
+    return SLOT_START_X[slot] ?? -1.8;
+  }
+
+  // Motorway or two-way road (the garage's "Yol Tipi"). Online the host's choice applies to the
+  // whole room: a guest's own pick is replaced by the host's with the next traffic snapshot.
+  setRoadMode(mode, { remember = false, fromHost = false } = {}) {
+    if (!ROAD_MODES.includes(mode)) return;
+    if (!fromHost && this.multiplayer.connected && this.multiplayer.role === 'guest') {
+      this.showMakasNotification('YOL TİPİNİ ODA KURUCUSU SEÇER', 0, 'normal');
+      mode = this.traffic.roadMode;
+    }
+    if (remember) {
+      try {
+        localStorage.setItem('otoban_makas_road', mode);
+      } catch (_) {}
+    }
+    document.querySelectorAll('#road-mode-group .seg-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.road === mode);
+    });
+    if (mode === this.traffic.roadMode && mode === this.world.roadMode) return;
+
+    this.world.setRoadLayout(mode);
+    this.traffic.setRoadMode(mode);
+    this.overtakeRun = null;
+    this.playerX = this.startX();
+    this.lateralVel = 0;
+    this.headingAngle = 0;
+  }
+
+  // Two-way road: one trip into the oncoming lane. Every car overtaken on it is a "sollama"; getting
+  // back into our lane with an oncoming car close ahead scores a last-moment return.
+  updateOvertakeRun() {
+    if (this.traffic.roadMode !== 'twoway') return;
+    if (this.playerX < -0.2) {
+      this.overtakeRun ??= { passed: 0 };
+      return;
+    }
+    if (!this.overtakeRun || this.playerX < 0.9) return;
+    const run = this.overtakeRun;
+    this.overtakeRun = null;
+    const gap = this.traffic.nearestOncomingAheadM();
+    if (run.passed > 0 && gap < 45) {
+      const pts = 600 * (1 + (45 - gap) / 45) * this.combo;
+      this.score += pts;
+      this.combo = Math.min(10.0, this.combo + 1.0);
+      this.comboTimer = 1.0;
+      this.triggerScreenFlash('double-makas-flash');
+      this.sound.playMakasWhoosh(this.combo, true);
+      this.showMakasNotification(`⚡ SON ANDA DÖNÜŞ (${Math.round(gap)} M)`, pts, 'gold');
+    }
+  }
+
+  handleTwoWayPass({ kind, speedKmh, lateralGap, oncomingGapM }) {
+    const speedFactor = speedKmh / 100;
+    let basePts;
+    let label;
+    let style = 'normal';
+    if (kind === 'sollama') {
+      // The closer the next oncoming car, the riskier (and better) the overtake
+      const risk = Number.isFinite(oncomingGapM) ? Math.max(0, Math.min(1, (120 - oncomingGapM) / 120)) : 0;
+      basePts = 300 * speedFactor * (1 + 2 * risk);
+      this.combo = Math.min(10.0, this.combo + 0.5 + risk);
+      if (this.overtakeRun) this.overtakeRun.passed += 1;
+      const count = this.overtakeRun?.passed ?? 1;
+      label = risk > 0.6 ? '⚡ KIL PAYI SOLLAMA!' : count > 1 ? `SOLLAMA ×${count}` : 'SOLLAMA!';
+      if (risk > 0.6) style = 'gold';
+      this.triggerScreenFlash(risk > 0.6 ? 'double-makas-flash' : 'near-miss-flash');
+    } else {
+      // Brushed past an oncoming car
+      const closeness = Math.max(1, (1.2 - lateralGap) * 2.5);
+      basePts = 350 * closeness * speedFactor;
+      this.combo = Math.min(10.0, this.combo + 1.0);
+      label = `😱 KARŞIDAN SIYIRDIN (${Math.round(lateralGap * 100)} CM)`;
+      style = 'gold';
+      this.triggerScreenFlash('near-miss-flash');
+    }
+    this.comboTimer = 1.0;
+    const totalPts = basePts * this.combo;
+    this.score += totalPts;
+    if (this.score > this.bestScore) {
+      this.bestScore = Math.floor(this.score);
+      localStorage.setItem('otoban_makas_best', String(this.bestScore));
+    }
+    this.shakeIntensity = Math.min(0.45, this.shakeIntensity + 0.18);
+    this.cockpit.triggerMakasCockpitPulse();
+    this.sound.playMakasWhoosh(this.combo, style === 'gold');
+    this.showMakasNotification(label, totalPts, style);
+  }
+
+  handleMakas(data) {
+    if (data.kind) {
+      this.handleTwoWayPass(data);
+      return;
+    }
+    const { lateralGap, speedKmh, isRazorClose, isDoubleMakas } = data;
     // Increase combo multiplier (up to 10.0x)
     const comboStep = isDoubleMakas ? 1.5 : isRazorClose ? 1.0 : 0.5;
     this.combo = Math.min(10.0, this.combo + comboStep);
@@ -1053,12 +1166,12 @@ class OtobanMakasGame {
     this.showMakasNotification(label, totalPts, style);
   }
 
-  handleCollision(message = '💥 SÜRTME / KAZA! KOMBO SIFIRLANDI') {
+  handleCollision(message = '💥 SÜRTME / KAZA! KOMBO SIFIRLANDI', headOn = false) {
     this.combo = 1.0;
     this.comboTimer = 0;
-    this.speedKmh *= 0.58;
-    this.health = Math.max(0, this.health - 18);
-    this.shakeIntensity = 0.85;
+    this.speedKmh *= headOn ? 0.25 : 0.58;
+    this.health = Math.max(0, this.health - (headOn ? 45 : 18));
+    this.shakeIntensity = headOn ? 1.0 : 0.85;
     this.rollVel += (Math.random() - 0.5) * 0.6;
     this.pitchVel -= 0.25;
 
@@ -1278,7 +1391,7 @@ class OtobanMakasGame {
     }
 
     // Keep car inside highway barriers (-7.35m to +7.35m)
-    const maxLateralX = ROAD_HALF_WIDTH - 1.05;
+    const maxLateralX = this.world.roadHalfWidth - 1.05;
     if (Math.abs(this.playerX) > maxLateralX) {
       this.playerX = Math.sign(this.playerX) * maxLateralX;
       this.lateralVel *= -0.3;
@@ -1400,7 +1513,8 @@ class OtobanMakasGame {
         onMakas: (data) => this.handleMakas(data),
         onCollision: (car) => {
           this.multiplayer.notifyLocalCarHit(car);
-          this.handleCollision();
+          if (car.dir < 0) this.handleCollision('💥 KAFA KAFAYA ÇARPIŞTIN!', true);
+          else this.handleCollision();
         },
         onAmbulance: (event) => this.handleAmbulanceEvent(event),
       },
@@ -1408,6 +1522,7 @@ class OtobanMakasGame {
       this.multiplayer.getTrafficContext()
     );
     this.updateAmbulanceCues();
+    this.updateOvertakeRun();
 
     const radarCars = this.traffic.getRadarSnapshot(this.playerX);
 
