@@ -411,6 +411,12 @@ export class TrafficManager {
             const laneDiff = other.targetLane - car.targetLane;
             if (laneDiff === 1 || laneDiff === -1) side -= laneDiff;
           }
+          // An ambulance passing on the shoulder next to it counts as a neighbour too
+          const amb = this.ambulance;
+          if (amb.active && Math.abs(amb.z - car.z) < 12) {
+            const laneDiff = amb.targetLane - car.targetLane;
+            if (laneDiff === 1 || laneDiff === -1) side -= laneDiff;
+          }
           // Only one neighbour (or both on the same side): move away from it
           if (side !== 0) car.laneOffsetTarget = Math.sign(side) * ROOM_OFFSET_M;
         }
