@@ -18,6 +18,21 @@ const A8_FINAL_DRIVE = 2.85;
 const A8_WHEEL_CIRCUMFERENCE_M = 2.23;
 const A8_IDLE_RPM = 700;
 
+export const CAR_CONFIGS = {
+  a8: {
+    id: 'a8',
+    make: 'AUDI',
+    model: 'A8',
+    variant: 'D5 · quattro',
+  },
+  bmw: {
+    id: 'bmw',
+    make: 'BMW',
+    model: '520',
+    variant: 'G30 · M Sport',
+  },
+};
+
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
   { name: 'Standart', offset: new THREE.Vector3(0.0, 1.25, 0.2), baseFov: 58, horizonShiftY: 0.24 },
@@ -118,8 +133,11 @@ class OtobanMakasGame {
     });
     this.lastTandemTime = 0;
 
-    // Start-menu garage with the rotatable A8. Optional: the game runs without it if a second
+    // Start-menu garage with the rotatable car. Optional: the game runs without it if a second
     // WebGL context is not available.
+    this.selectedCar = localStorage.getItem('otoban_selected_car') || 'a8';
+    if (!CAR_CONFIGS[this.selectedCar]) this.selectedCar = 'a8';
+
     try {
       this.showroom = new A8Showroom(
         document.getElementById('garage-canvas'),
@@ -127,6 +145,7 @@ class OtobanMakasGame {
         {
           paintHex: SLOT_STYLES[0].paint,
           accent: AMBIENT_COLORS[this.cockpit.ambientKey]?.css,
+          carType: this.selectedCar,
           onReady: (ok) => document.getElementById('garage-loader')?.classList.add(ok ? 'done' : 'failed'),
         }
       );
@@ -402,7 +421,14 @@ class OtobanMakasGame {
       tab.addEventListener('click', () => this.showMenuTab(tab.dataset.tab));
     });
 
-    // Garage: camera angles, lights, turntable and the online paint preview
+    // Garage: car model selection, camera angles, lights, turntable and the online paint preview
+    document.querySelectorAll('#garage-car-select .seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.setCar(btn.dataset.car);
+      });
+    });
+    this.setCar(this.selectedCar, false);
+
     document.querySelectorAll('#garage-view-group .chip').forEach((chip) => {
       chip.addEventListener('click', () => this.showroom?.goToView(chip.dataset.view));
     });
@@ -904,6 +930,38 @@ class OtobanMakasGame {
     // The garage takes the cabin's ambient colour as its accent (turntable ring, buttons)
     document.getElementById('menu-overlay')?.style.setProperty('--accent', cssColor);
     this.showroom?.setAccent(cssColor);
+  }
+
+  // Garage car model selection
+  setCar(carId, switchShowroom = true) {
+    if (!CAR_CONFIGS[carId]) return;
+    this.selectedCar = carId;
+    localStorage.setItem('otoban_selected_car', carId);
+
+    const config = CAR_CONFIGS[carId];
+    this.setHudText('garage-car-make', config.make);
+    const modelEl = document.getElementById('garage-car-model');
+    if (modelEl) {
+      modelEl.innerHTML = `${config.model} <small class="car-variant" id="garage-car-variant">${config.variant}</small>`;
+    }
+    document.querySelectorAll('#garage-car-select .seg-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.car === carId);
+    });
+
+    const loader = document.getElementById('garage-loader');
+    if (loader) {
+      loader.classList.remove('done', 'failed');
+      const text = loader.querySelector('span:not(.loader-ring)');
+      if (text) text.textContent = `${config.model} garaja çekiliyor…`;
+    }
+
+    if (switchShowroom) {
+      this.showroom?.switchCar(carId);
+    }
+
+    if (this.multiplayer) {
+      this.multiplayer.setLocalCarModel(carId);
+    }
   }
 
   // Garage paint preview: the four colours friends see online, one per room slot

@@ -65,6 +65,7 @@ export class MultiplayerManager {
     this.roomCode = null;
     this.connected = false; // host: at least one guest in the room; guest: welcomed by the host
     this.playerName = localStorage.getItem('otoban_player_name') || 'OYUNCU';
+    this.localCarModel = localStorage.getItem('otoban_selected_car') || 'a8';
     this.localId = null;
     this.localSlot = 0;
     this.hostId = null; // who hosts the room right now (changes on a hand-over)
@@ -199,20 +200,22 @@ export class MultiplayerManager {
     return peerCar;
   }
 
-  // Each friend gets their own optimized A8 (separate chunk + ~0.55 MB glb, fetched once and
+  // Each friend gets their own optimized car model (separate chunk + glb, fetched once and
   // then served from the HTTP cache); single-player never downloads it.
-  loadA8Model(player) {
-    import('./peerA8.js')
-      .then((m) => m.loadA8PeerCar({ paintHex: player.style.paint }))
+  loadPeerModel(player) {
+    const isBmw = player.carModel === 'bmw';
+    const importPromise = isBmw ? import('./peerBMW.js') : import('./peerA8.js');
+    importPromise
+      .then((m) => (isBmw ? m.loadBmwPeerCar : m.loadA8PeerCar)({ paintHex: player.style.paint }))
       .then((model) => {
         if (!player.removed) player.car.swapModel(model);
       })
       .catch((err) => {
-        console.warn('A8 modeli yüklenemedi, yedek model kullanılıyor:', err);
+        console.warn('Araç modeli yüklenemedi, yedek model kullanılıyor:', err);
       });
   }
 
-  addRemotePlayer(id, name, slot) {
+  addRemotePlayer(id, name, slot, carModel = 'a8') {
     const style = SLOT_STYLES[slot % SLOT_STYLES.length];
     const car = this.createPeerCarMesh(style);
     car.group.visible = false;
@@ -222,6 +225,7 @@ export class MultiplayerManager {
       id,
       name: cleanName(name, `OYUNCU ${slot + 1}`),
       slot,
+      carModel,
       style,
       conn: null,
       lastRecvTime: performance.now(),
@@ -245,7 +249,7 @@ export class MultiplayerManager {
     };
     this.players.set(id, player);
     this.drawNameplate(player);
-    this.loadA8Model(player);
+    this.loadPeerModel(player);
     return player;
   }
 
@@ -476,7 +480,7 @@ export class MultiplayerManager {
         this._helloInterval = null;
         return;
       }
-      this.broadcast({ type: 'join_hello', name: this.playerName });
+      this.broadcast({ type: 'join_hello', name: this.playerName, carModel: this.localCarModel });
     };
     sayHello();
     this._helloInterval = setInterval(sayHello, 450);
@@ -493,7 +497,7 @@ export class MultiplayerManager {
     conn.on('data', (data) => this.handlePacket(data, conn));
     conn.on('open', () => {
       clearTimeout(this._connectTimer);
-      this.broadcast({ type: 'join_hello', name: this.playerName });
+      this.broadcast({ type: 'join_hello', name: this.playerName, carModel: this.localCarModel });
     });
     conn.on('close', () => {
       if (this.hostConn !== conn) return;
@@ -652,8 +656,8 @@ export class MultiplayerManager {
 
   roster() {
     return [
-      { id: this.localId, name: this.playerName, slot: this.localSlot },
-      ...this.getRemotePlayers().map((p) => ({ id: p.id, name: p.name, slot: p.slot })),
+      { id: this.localId, name: this.playerName, slot: this.localSlot, carModel: this.localCarModel },
+      ...this.getRemotePlayers().map((p) => ({ id: p.id, name: p.name, slot: p.slot, carModel: p.carModel })),
     ];
   }
 
@@ -679,7 +683,7 @@ export class MultiplayerManager {
           this.localWorldDistM = 0;
           this.traffic.resetTraffic();
         }
-        player = this.addRemotePlayer(data.from, data.name, slot);
+        player = this.addRemotePlayer(data.from, data.name, slot, data.carModel || 'a8');
       }
       if (conn) player.conn = conn;
       player.lastRecvTime = Math.max(player.lastRecvTime, performance.now());
@@ -710,6 +714,11 @@ export class MultiplayerManager {
     if (!player) return;
     player.lastRecvTime = Math.max(player.lastRecvTime, performance.now());
     if (conn && !player.conn) player.conn = conn;
+
+    if (data.carModel && player.carModel !== data.carModel) {
+      player.carModel = data.carModel;
+      this.loadPeerModel(player);
+    }
 
     if (data.type === 'state') {
       const prevHighBeam = player.highBeam;
@@ -839,8 +848,12 @@ export class MultiplayerManager {
       const existing = this.players.get(entry.id);
       if (existing) {
         existing.name = cleanName(entry.name, existing.name);
+        if (entry.carModel && existing.carModel !== entry.carModel) {
+          existing.carModel = entry.carModel;
+          this.loadPeerModel(existing);
+        }
       } else {
-        const player = this.addRemotePlayer(entry.id, entry.name, num(entry.slot, 1));
+        const player = this.addRemotePlayer(entry.id, entry.name, num(entry.slot, 1), entry.carModel || 'a8');
         if (announce) this.callbacks.onPlayerJoined?.({ name: player.name });
       }
     }
@@ -853,6 +866,10 @@ export class MultiplayerManager {
 
   applyState(player, d) {
     if (d.name) player.name = cleanName(d.name, player.name);
+    if (d.carModel && player.carModel !== d.carModel) {
+      player.carModel = d.carModel;
+      this.loadPeerModel(player);
+    }
     player.targetX = num(d.x, player.targetX);
     player.targetWorldDistM = num(d.worldDistM, player.targetWorldDistM);
     player.speedKmh = num(d.speedKmh, player.speedKmh);
@@ -908,9 +925,17 @@ export class MultiplayerManager {
     return nearest.name;
   }
 
+  setLocalCarModel(carModel) {
+    this.localCarModel = carModel;
+    if (this.connected) {
+      this.broadcast({ type: 'car_changed', carModel });
+    }
+  }
+
   localStatePacket(localState) {
     return {
       name: this.playerName,
+      carModel: this.localCarModel,
       x: Number(localState.playerX.toFixed(2)),
       worldDistM: Number(this.localWorldDistM.toFixed(2)),
       speedKmh: Math.round(localState.speedKmh),
@@ -969,6 +994,7 @@ export class MultiplayerManager {
             id: p.id,
             slot: p.slot,
             name: p.name,
+            carModel: p.carModel,
             x: p.targetX,
             worldDistM: Number(p.targetWorldDistM.toFixed(2)),
             speedKmh: p.speedKmh,

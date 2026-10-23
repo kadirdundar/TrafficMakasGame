@@ -192,9 +192,14 @@
       </div>
 
       <section class="garage-car" aria-label="Aracın">
+        <div class="segmented-control car-select-group" id="garage-car-select" role="group" aria-label="Araç modeli seçimi">
+          <button type="button" class="seg-btn active" data-car="a8">Audi A8</button>
+          <button type="button" class="seg-btn" data-car="bmw">BMW 520</button>
+        </div>
+
         <div class="car-title">
-          <span class="car-make">AUDI</span>
-          <strong class="car-model">A8 <small class="car-variant">D5 · quattro</small></strong>
+          <span class="car-make" id="garage-car-make">AUDI</span>
+          <strong class="car-model" id="garage-car-model">A8 <small class="car-variant" id="garage-car-variant">D5 · quattro</small></strong>
         </div>
 
         <div class="garage-tools">
