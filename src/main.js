@@ -178,7 +178,8 @@ class OtobanMakasGame {
       horn: false,
     };
     this.touchSteerValue = 0; // -1 to +1 from steering wheel drag or tilt
-    this.touchThrottle = 0; // 0 to 1 from the analog gas pedal (keyboard gas is always full)
+    this.touchThrottle = 0; // 0 to 1 from the analog drive pedal (pushing up)
+    this.touchBrake = 0; // 0 to 1 from the analog drive pedal (pulling down)
     this.steerMode = 'wheel'; // 'wheel' | 'buttons' | 'tilt'
     this.tiltBaseline = null;
     this.steerInput = 0;
@@ -742,8 +743,8 @@ class OtobanMakasGame {
     el.requestFullscreen({ navigationUI: 'hide' }).then(lockLandscape).catch(() => {});
   }
 
-  // Analog gas pedal: the higher the finger on the pedal, the more gas (bottom edge ~15%, top
-  // quarter 100%). Sliding up or down while holding changes the level, like a real pedal.
+  // Unified Analog Drive Pedal: push upwards for throttle, pull downwards for brake.
+  // Allows seamless acceleration and braking without ever lifting the finger.
   bindAnalogGasPedal(preventSafariZoom) {
     const el = document.getElementById('touch-gas');
     if (!el) return;
@@ -752,19 +753,62 @@ class OtobanMakasGame {
 
     const setLevel = (clientY) => {
       const rect = el.getBoundingClientRect();
-      const level = Math.max(0.15, Math.min(1, (rect.bottom - clientY) / (rect.height * 0.75)));
-      this.touchThrottle = level;
-      el.style.setProperty('--gas-level', level.toFixed(2));
-      if (label) label.textContent = `%${Math.round(level * 100)}`;
+      const H = rect.height;
+      // Center neutral zone (middle 48% height)
+      const centerY = rect.top + H * 0.48;
+      const deadzone = H * 0.08;
+
+      if (clientY < centerY - deadzone) {
+        // Pushing UP: GAZ (0.15 to 1.0)
+        const upDistance = (centerY - deadzone) - clientY;
+        const maxUp = (centerY - deadzone) - rect.top;
+        const norm = Math.min(1.0, upDistance / Math.max(1, maxUp));
+        const gas = Math.max(0.15, Math.min(1.0, 0.15 + norm * 0.85));
+
+        this.touchThrottle = gas;
+        this.touchBrake = 0;
+
+        el.classList.add('gas-active');
+        el.classList.remove('brake-active');
+        el.style.setProperty('--gas-level', gas.toFixed(2));
+        el.style.setProperty('--brake-level', '0');
+        if (label) label.textContent = `%${Math.round(gas * 100)}`;
+      } else if (clientY > centerY + deadzone) {
+        // Pulling DOWN: FREN (0.35 to 1.0)
+        const downDistance = clientY - (centerY + deadzone);
+        const maxDown = rect.bottom - (centerY + deadzone);
+        const norm = Math.min(1.0, downDistance / Math.max(1, maxDown));
+        const brake = Math.max(0.35, Math.min(1.0, 0.35 + norm * 0.65));
+
+        this.touchThrottle = 0;
+        this.touchBrake = brake;
+
+        el.classList.add('brake-active');
+        el.classList.remove('gas-active');
+        el.style.setProperty('--gas-level', '0');
+        el.style.setProperty('--brake-level', brake.toFixed(2));
+        if (label) label.textContent = `FREN %${Math.round(brake * 100)}`;
+      } else {
+        // Neutral deadzone: Coasting (Süzülme)
+        this.touchThrottle = 0;
+        this.touchBrake = 0;
+        el.classList.remove('gas-active', 'brake-active');
+        el.style.setProperty('--gas-level', '0');
+        el.style.setProperty('--brake-level', '0');
+        if (label) label.textContent = 'BOŞTA';
+      }
     };
+
     const end = (e) => {
       if (activePid === null || e.pointerId !== activePid) return;
       e.preventDefault();
       activePid = null;
       this.touchThrottle = 0;
-      el.classList.remove('active');
+      this.touchBrake = 0;
+      el.classList.remove('active', 'gas-active', 'brake-active');
       el.style.setProperty('--gas-level', '0');
-      if (label) label.textContent = 'GAZ';
+      el.style.setProperty('--brake-level', '0');
+      if (label) label.textContent = 'GAZ / FREN';
     };
 
     el.addEventListener('pointerdown', (e) => {
@@ -1240,7 +1284,7 @@ class OtobanMakasGame {
   updatePhysics(dt) {
     // 1. Determine throttle & brake input
     const throttle = this.keys.gas ? 1.0 : this.touchThrottle;
-    const brake = this.keys.brake ? 1.0 : 0.0;
+    const brake = this.keys.brake ? 1.0 : this.touchBrake;
 
     // Determine steering input (-1 left, +1 right)
     let rawSteer = 0;
@@ -1288,7 +1332,7 @@ class OtobanMakasGame {
       // Part throttle settles at a cruising speed: ~125 km/h at 15%, ~185 km/h at 50%
       accelKmhPerSec = thrust * throttle - resistance;
     } else if (brake > 0) {
-      accelKmhPerSec = -115; // Strong Brembo sport brakes
+      accelKmhPerSec = -115 * brake; // Strong Brembo sport brakes
     } else {
       // Off throttle: engine braking + drag (bleeds speed faster at 200+), rolling to a stop
       accelKmhPerSec = -(6 + resistance);

@@ -782,6 +782,93 @@
       linear-gradient(0deg, rgba(0, 255, 136, 0.42) calc(var(--gas-level) * 100%), transparent 0),
       linear-gradient(180deg, rgba(32, 39, 56, 0.88), rgba(14, 18, 28, 0.94));
   }
+
+  /* Unified Gas & Brake Drive Pedal */
+  .unified-drive-pedal {
+    inline-size: 88px;
+    block-size: 154px;
+    padding: 8px 6px;
+    border-radius: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    user-select: none;
+    touch-action: none;
+    --gas-level: 0;
+    --brake-level: 0;
+    background:
+      linear-gradient(0deg, rgba(0, 255, 136, 0.35) calc(var(--gas-level) * 50%), transparent 0),
+      linear-gradient(180deg, rgba(255, 42, 75, 0.35) calc(var(--brake-level) * 50%), transparent 0),
+      linear-gradient(180deg, rgba(26, 38, 54, 0.94) 0%, rgba(16, 20, 30, 0.96) 50%, rgba(42, 20, 26, 0.94) 100%);
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .unified-drive-pedal.gas-active {
+    border-color: var(--accent-emerald) !important;
+    box-shadow: 0 0 22px rgba(0, 255, 136, 0.45), inset 0 0 16px rgba(0, 255, 136, 0.2) !important;
+  }
+
+  .unified-drive-pedal.brake-active {
+    border-color: var(--accent-red) !important;
+    box-shadow: 0 0 24px rgba(255, 42, 75, 0.55), inset 0 0 16px rgba(255, 42, 75, 0.25) !important;
+  }
+
+  .pedal-zone {
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 4px 6px;
+    border-radius: 6px;
+    pointer-events: none;
+    transition: color 0.1s ease, text-shadow 0.1s ease;
+  }
+
+  .pedal-zone-gas {
+    color: rgba(0, 255, 136, 0.75);
+  }
+
+  .unified-drive-pedal.gas-active .pedal-zone-gas {
+    color: #00ff88;
+    text-shadow: 0 0 8px rgba(0, 255, 136, 0.85);
+  }
+
+  .pedal-zone-brake {
+    color: rgba(255, 70, 85, 0.75);
+  }
+
+  .unified-drive-pedal.brake-active .pedal-zone-brake {
+    color: #ff3355;
+    text-shadow: 0 0 8px rgba(255, 42, 75, 0.85);
+  }
+
+  .pedal-center-indicator {
+    inline-size: 92%;
+    padding: 6px 4px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+    transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+  }
+
+  .unified-drive-pedal.gas-active .pedal-center-indicator {
+    background: rgba(0, 255, 136, 0.18);
+    border-color: rgba(0, 255, 136, 0.45);
+    color: #00ff88;
+  }
+
+  .unified-drive-pedal.brake-active .pedal-center-indicator {
+    background: rgba(255, 42, 75, 0.22);
+    border-color: rgba(255, 42, 75, 0.55);
+    color: #ff4d66;
+  }
 }
 
 @layer modal {
@@ -2283,6 +2370,25 @@
   .gas-pedal {
     inline-size: 60px !important;
     block-size: 102px !important;
+  }
+
+  .unified-drive-pedal {
+    inline-size: 76px !important;
+    block-size: 126px !important;
+    padding: 6px 4px !important;
+  }
+
+  .unified-drive-pedal .pedal-zone {
+    font-size: 0.55rem !important;
+    padding: 2px 3px !important;
+  }
+
+  .unified-drive-pedal .pedal-center-indicator {
+    padding: 4px 2px !important;
+  }
+
+  .unified-drive-pedal .pedal-label {
+    font-size: 0.62rem !important;
   }
 
   .steer-btn {
