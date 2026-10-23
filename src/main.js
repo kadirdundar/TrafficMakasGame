@@ -1537,7 +1537,9 @@ class OtobanMakasGame {
 
     // Lateral velocity follows natural heading + composed all-wheel steering assistance + curve drift
     const curveKappa = this.world.getCurrentCurvature(); // + = right curve ahead, - = left curve ahead
-    const centrifugalDriftVel = -curveKappa * speedMs * 18.0;
+    const maxDrift = 1.35;
+    const rawCentrifugal = -curveKappa * speedMs * (this.traffic.roadMode === 'track' ? 8.0 : 18.0);
+    const centrifugalDriftVel = Math.max(-maxDrift, Math.min(maxDrift, rawCentrifugal));
 
     const steerLatVel =
       Math.sin(this.headingAngle) * speedMs * 0.82 +

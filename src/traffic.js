@@ -56,12 +56,11 @@ export class TrafficManager {
 
   setDensity(mode) {
     this.densityMode = mode;
-    const counts =
-      this.roadMode === 'twoway'
-        ? [8, 12, 16]
-        : this.roadMode === 'track'
-        ? [8, 14, 20]
-        : [12, 18, 24];
+    if (this.roadMode === 'track') {
+      this.maxVehicles = 0;
+      return;
+    }
+    const counts = this.roadMode === 'twoway' ? [8, 12, 16] : [12, 18, 24];
     if (mode === 'normal') this.maxVehicles = counts[0];
     else if (mode === 'heavy') this.maxVehicles = counts[1];
     else this.maxVehicles = counts[2];
@@ -125,6 +124,16 @@ export class TrafficManager {
 
   resetTraffic() {
     this.isRemoteControlled = false;
+    if (this.roadMode === 'track') {
+      this.maxVehicles = 0;
+      for (let i = 0; i < this.vehicles.length; i++) {
+        const car = this.vehicles[i];
+        car.active = false;
+        car.mesh.visible = false;
+        car.z = -9999;
+      }
+      return;
+    }
     for (let i = 0; i < this.vehicles.length; i++) {
       const car = this.vehicles[i];
       car.active = i < this.maxVehicles;
@@ -472,6 +481,18 @@ export class TrafficManager {
   }
 
   update(dt, playerSpeedKmh, playerX, callbacks, world = null, mpContext = null) {
+    if (this.roadMode === 'track') {
+      for (let i = 0; i < this.vehicles.length; i++) {
+        const car = this.vehicles[i];
+        if (car.active || car.mesh.visible) {
+          car.active = false;
+          car.mesh.visible = false;
+          car.z = -9999;
+        }
+      }
+      return;
+    }
+
     const nowSec = performance.now() / 1000;
     const blinkState = Math.floor(nowSec * 3.5) % 2 === 0;
     const isConnected = Boolean(mpContext?.connected);
@@ -765,6 +786,14 @@ export class TrafficManager {
   }
 
   exportSyncState(hostWorldDistM, weatherKey = null) {
+    if (this.roadMode === 'track') {
+      return {
+        densityMode: this.densityMode,
+        roadMode: this.roadMode,
+        weatherKey,
+        cars: [],
+      };
+    }
     const activeCount = Math.min(this.vehicles.length, this.maxVehicles + 4);
     return {
       densityMode: this.densityMode,
@@ -845,6 +874,7 @@ export class TrafficManager {
     this._radarPool ??= [];
     const list = this._radarSnapshot;
     list.length = 0;
+    if (this.roadMode === 'track') return list;
     let poolIdx = 0;
 
     for (let i = 0; i < this.vehicles.length; i++) {

@@ -94,19 +94,18 @@ export const ZONE_CYCLE_LENGTH = 15000;
 // İstanbul Park Grand Prix Circuit: 4000m Lap Definition with C2-continuous turns
 export const TRACK_LAP_LENGTH = 4000.0;
 export const TRACK_SECTIONS = [
-  { name: 'Ana Düzlük (Start/Finish)', code: 'MAIN', start: 0, len: 500, cStart: 0, deltaC: 0 },
-  { name: '1. Viraj (Sola İniş)', code: 'T1', start: 500, len: 300, cStart: 0, deltaC: -70 },
-  { name: '2. Viraj (Sağa Çıkış)', code: 'T2', start: 800, len: 250, cStart: -70, deltaC: 45 },
-  { name: 'Ara Düzlük', code: 'STR1', start: 1050, len: 150, cStart: -25, deltaC: 0 },
-  { name: '3. Viraj (Hızlı Sağ)', code: 'T3', start: 1200, len: 180, cStart: -25, deltaC: 50 },
-  { name: '4. Viraj (S-Viraj Solu)', code: 'T4', start: 1380, len: 180, cStart: 25, deltaC: -55 },
-  { name: '8. Viraj Yaklaşımı', code: 'STR2', start: 1560, len: 240, cStart: -30, deltaC: 0 },
-  { name: 'Efsanevi 8. Viraj (4 Apeks)', code: 'T8', start: 1800, len: 800, cStart: -30, deltaC: -150 },
-  { name: 'Arka Düzlük (DRS & 260 KM/S)', code: 'BACK', start: 2600, len: 600, cStart: -180, deltaC: 0 },
-  { name: '12. Viraj (Şikan Frenajı)', code: 'T12', start: 3200, len: 180, cStart: -180, deltaC: 65 },
-  { name: '13. Viraj (Şikan Çıkışı)', code: 'T13', start: 3380, len: 170, cStart: -115, deltaC: -45 },
-  { name: 'Padok Bağlantısı', code: 'STR3', start: 3550, len: 150, cStart: -160, deltaC: 0 },
-  { name: '14. Son Viraj (Start-Finish Çıkışı)', code: 'T14', start: 3700, len: 300, cStart: -160, deltaC: 160 },
+  { name: 'Ana Düzlük (Start/Finish)', code: 'MAIN', start: 0, len: 600, cStart: 0, deltaC: 0 },
+  { name: '1. Viraj (Sola İniş)', code: 'T1', start: 600, len: 450, deltaC: -40, cStart: 0 },
+  { name: '2. Viraj (Sağa Çıkış)', code: 'T2', start: 1050, len: 400, deltaC: 30, cStart: -40 },
+  { name: 'Ara Düzlük', code: 'STR1', start: 1450, len: 150, cStart: -10, deltaC: 0 },
+  { name: '3. Viraj (Hızlı Sağ)', code: 'T3', start: 1600, len: 250, deltaC: 25, cStart: -10 },
+  { name: '4. Viraj (S-Viraj Solu)', code: 'T4', start: 1850, len: 250, deltaC: -30, cStart: 15 },
+  { name: '8. Viraj Yaklaşımı', code: 'STR2', start: 2100, len: 200, cStart: -15, deltaC: 0 },
+  { name: 'Efsanevi 8. Viraj (4 Apeks)', code: 'T8', start: 2300, len: 750, deltaC: -40, cStart: -15 },
+  { name: 'Arka Düzlük (DRS & 260 KM/S)', code: 'BACK', start: 3050, len: 350, deltaC: 0, cStart: -55 },
+  { name: '12. Viraj (Şikan Frenajı)', code: 'T12', start: 3400, len: 200, deltaC: 35, cStart: -55 },
+  { name: '13. Viraj (Şikan Çıkışı)', code: 'T13', start: 3600, len: 150, deltaC: -20, cStart: -20 },
+  { name: '14. Son Viraj (Start-Finish Çıkışı)', code: 'T14', start: 3750, len: 250, deltaC: 40, cStart: -40 },
 ];
 
 export function getTrackSectionAt(s) {
