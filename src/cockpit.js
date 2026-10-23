@@ -283,10 +283,6 @@ export class CarCockpit {
     // 'photo' = processed reference photo on the 2D overlay, '3d' = glTF interior (the game
     // switches to '3d' on startup; 'photo' stays the fallback while/if it fails to load)
     this.mode = 'photo';
-    this.carType = 'a8';
-    this.cockpitCache = new Map();
-    this.currentInteriorCar = null;
-    this.lastEyeAnchor = null;
     this.interior3d = null;
     this._interiorPromise = null;
     this._overlayCleared = false;
@@ -299,70 +295,29 @@ export class CarCockpit {
     return this.mode === '3d' && Boolean(this.interior3d);
   }
 
-  // Sets or swaps the car interior (e.g. 'a8' vs 'bmw'). Cached in memory after first load.
-  async setCarType(carType, eyeAnchor) {
-    if (!carType) return;
-    const key = carType.toLowerCase().includes('bmw') ? 'bmw' : 'a8';
-    this.carType = key;
-    if (eyeAnchor) this.lastEyeAnchor = eyeAnchor;
-    if (this.mode !== '3d') return;
-
-    if (this.currentInteriorCar === key && this.interior3d) {
-      this.interior3d.group.visible = true;
-      return;
-    }
-
-    // Hide / detach current interior
-    if (this.interior3d) {
-      this.interior3d.group.visible = false;
-      this.group.remove(this.interior3d.group);
-      this.interior3d = null;
-    }
-
-    if (this.cockpitCache.has(key)) {
-      this.interior3d = this.cockpitCache.get(key);
-      this.group.add(this.interior3d.group);
-      this.interior3d.group.visible = true;
-      this.currentInteriorCar = key;
-      return;
-    }
-
-    try {
-      const { loadCockpit3D } = await import('./cockpit3d.js');
-      const interior = await loadCockpit3D({
-        carType: key,
-        eyeAnchor: this.lastEyeAnchor || eyeAnchor,
-        mirrorTexture: this.mirrorRenderTarget.texture,
-        paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
-      });
-      this.cockpitCache.set(key, interior);
-      if (this.carType === key && this.mode === '3d') {
-        this.interior3d = interior;
-        this.group.add(interior.group);
-        interior.group.visible = true;
-        this.currentInteriorCar = key;
-      }
-    } catch (err) {
-      console.warn(`${key} 3D kokpit yüklenemedi:`, err);
-    }
-  }
-
   // Switches between the photo cockpit and the 3D interior. The 3D module + model are only
   // downloaded the first time it is enabled; on failure we stay on the photo cockpit.
-  async setMode(mode, eyeAnchor, carType) {
+  async setMode(mode, eyeAnchor) {
     this.mode = mode === '3d' ? '3d' : 'photo';
     this._overlayCleared = false;
-    if (eyeAnchor) this.lastEyeAnchor = eyeAnchor;
-    if (carType) this.carType = carType.toLowerCase().includes('bmw') ? 'bmw' : 'a8';
-
-    if (this.mode === '3d') {
-      await this.setCarType(this.carType || 'a8', eyeAnchor);
-      if (!this.interior3d) {
+    if (this.mode === '3d' && !this.interior3d) {
+      this._interiorPromise ??= import('./cockpit3d.js').then((m) =>
+        m.loadCockpit3D({
+          eyeAnchor,
+          mirrorTexture: this.mirrorRenderTarget.texture,
+          paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
+        })
+      );
+      try {
+        this.interior3d = await this._interiorPromise;
+        this.group.add(this.interior3d.group);
+      } catch (err) {
+        console.warn('3D kokpit yüklenemedi, fotoğraf kokpite dönülüyor:', err);
+        this._interiorPromise = null;
         this.mode = 'photo';
       }
-    } else {
-      if (this.interior3d) this.interior3d.group.visible = false;
     }
+    if (this.interior3d) this.interior3d.group.visible = this.mode === '3d';
     return this.mode;
   }
 
@@ -718,10 +673,7 @@ export class CarCockpit {
   paint3DScreen(name, ctx, w, h) {
     const s = this._screenState;
     if (!s) return;
-    if (name !== 'cluster') return;
-    if (this.carType === 'bmw') {
-      this.drawBmwClusterScreen(ctx, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
-    } else {
+    if (name === 'cluster') {
       this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
     }
   }
@@ -1373,178 +1325,6 @@ export class CarCockpit {
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.2, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  // BMW Live Cockpit: two open hexagon frames (speed left, revs right) whose edges light up with
-  // the value, the digital speed inside the left frame and the gear inside the right one
-  static bmwFrame(cx, cy, r, side) {
-    // Five corners of a hexagon with pointy sides, open towards the screen centre (side -1 = left
-    // frame, +1 = right frame), traced from the bottom to the top
-    return [60, 120, 180, 240, 300].map((deg) => {
-      const a = (deg * Math.PI) / 180;
-      return [cx - side * Math.cos(a) * r, cy + Math.sin(a) * r];
-    });
-  }
-
-  static tracePolyline(c, pts, t) {
-    const lens = [];
-    let total = 0;
-    for (let i = 1; i < pts.length; i++) {
-      const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-      lens.push(l);
-      total += l;
-    }
-    let left = total * Math.min(1, Math.max(0, t));
-    c.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length && left > 0; i++) {
-      const k = Math.min(1, left / lens[i - 1]);
-      c.lineTo(pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * k, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * k);
-      left -= lens[i - 1];
-    }
-  }
-
-  static polylinePoint(pts, t) {
-    const segs = pts.length - 1;
-    const f = Math.min(segs - 1e-6, Math.max(0, t * segs));
-    const i = Math.floor(f);
-    const k = f - i;
-    return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k];
-  }
-
-  getBmwClusterFace(w, h, scale) {
-    const key = `bmw|${w}x${h}@${scale.toFixed(2)}`;
-    if (this._bmwClusterFace?.key === key) return this._bmwClusterFace.canvas;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(w * scale);
-    canvas.height = Math.ceil(h * scale);
-    const c = canvas.getContext('2d');
-    c.scale(scale, scale);
-
-    const bg = c.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, '#070a10');
-    bg.addColorStop(1, '#020305');
-    c.fillStyle = bg;
-    c.fillRect(0, 0, w, h);
-
-    const r = h * 0.44;
-    const frames = [
-      { cx: w * 0.21, side: -1, max: 260, major: 20, label: 40, redFrom: null },
-      { cx: w * 0.79, side: 1, max: 8, major: 1, label: 1, redFrom: 6.5 },
-    ];
-    c.lineJoin = 'round';
-    for (const f of frames) {
-      const pts = CarCockpit.bmwFrame(f.cx, h * 0.5, r, f.side);
-      c.strokeStyle = 'rgba(148, 163, 184, 0.35)';
-      c.lineWidth = h * 0.012;
-      c.beginPath();
-      CarCockpit.tracePolyline(c, pts, 1);
-      c.stroke();
-
-      const inner = CarCockpit.bmwFrame(f.cx, h * 0.5, r * 0.86, f.side);
-      c.font = `600 ${h * 0.07}px system-ui, sans-serif`;
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      for (let v = 0; v <= f.max + 1e-6; v += f.major) {
-        const t = v / f.max;
-        const [x0, y0] = CarCockpit.polylinePoint(pts, t);
-        const [x1, y1] = CarCockpit.polylinePoint(inner, t);
-        const red = f.redFrom !== null && v >= f.redFrom;
-        c.strokeStyle = red ? '#ff3b4f' : '#94a3b8';
-        c.lineWidth = h * 0.01;
-        c.beginPath();
-        c.moveTo(x0, y0);
-        c.lineTo(x1, y1);
-        c.stroke();
-        if (Math.abs(v / f.label - Math.round(v / f.label)) < 1e-6) {
-          const [lx, ly] = CarCockpit.polylinePoint(CarCockpit.bmwFrame(f.cx, h * 0.5, r * 0.7, f.side), t);
-          c.fillStyle = red ? '#ff6b7a' : '#cbd5e1';
-          c.fillText(String(v), lx, ly);
-        }
-      }
-    }
-
-    // M tricolour stripe above the centre panel
-    const sw = w * 0.05;
-    ['#5fb4e6', '#1f3a93', '#e4002b'].forEach((col, i) => {
-      c.fillStyle = col;
-      c.fillRect(w / 2 - sw * 1.5 + i * sw, h * 0.1, sw * 0.85, h * 0.03);
-    });
-
-    this._bmwClusterFace = { key, canvas };
-    return canvas;
-  }
-
-  drawBmwClusterScreen(ctx, w, h, speedKmh, rpm, gear, highBeam, odometerKm) {
-    const accent = AMBIENT_COLORS[this.ambientKey]?.css || '#00f0ff';
-    const scale = Math.max(1, ctx.getTransform().a);
-    ctx.save();
-    ctx.drawImage(this.getBmwClusterFace(w, h, scale), 0, 0, w, h);
-
-    const r = h * 0.44;
-    const cy = h * 0.5;
-    const speedPts = CarCockpit.bmwFrame(w * 0.21, cy, r, -1);
-    const revPts = CarCockpit.bmwFrame(w * 0.79, cy, r, 1);
-    const revNorm = Math.min(1, rpm / 8000);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    for (const [pts, t, color] of [
-      [speedPts, Math.min(1, speedKmh / 260), accent],
-      [revPts, revNorm, rpm > 6500 ? '#ff3b4f' : '#f97316'],
-    ]) {
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.35;
-      ctx.lineWidth = h * 0.07;
-      ctx.beginPath();
-      CarCockpit.tracePolyline(ctx, pts, t);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = h * 0.025;
-      ctx.beginPath();
-      CarCockpit.tracePolyline(ctx, pts, t);
-      ctx.stroke();
-    }
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = `700 ${h * 0.26}px system-ui, sans-serif`;
-    ctx.fillText(String(Math.round(speedKmh)), w * 0.235, cy);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `600 ${h * 0.075}px system-ui, sans-serif`;
-    ctx.fillText('km/h', w * 0.235, cy + h * 0.16);
-
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = `800 ${h * 0.24}px system-ui, sans-serif`;
-    ctx.fillText(`D${gear}`, w * 0.765, cy);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `600 ${h * 0.07}px system-ui, sans-serif`;
-    ctx.fillText('x1000/min', w * 0.765, cy + h * 0.16);
-
-    // Centre panel: mode, odometer and a lane bar in the ambient colour
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = `700 ${h * 0.09}px system-ui, sans-serif`;
-    ctx.fillText('SPORT', w / 2, h * 0.32);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `600 ${h * 0.075}px system-ui, sans-serif`;
-    ctx.fillText(`${Math.floor(odometerKm)} km`, w / 2, h * 0.84);
-    ctx.strokeStyle = accent;
-    ctx.globalAlpha = 0.8;
-    ctx.lineWidth = h * 0.015;
-    ctx.beginPath();
-    ctx.moveTo(w * 0.455, h * 0.72);
-    ctx.lineTo(w * 0.475, h * 0.44);
-    ctx.moveTo(w * 0.545, h * 0.72);
-    ctx.lineTo(w * 0.525, h * 0.44);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    if (highBeam) {
-      ctx.fillStyle = '#3b82f6';
-      ctx.font = `800 ${h * 0.1}px system-ui, sans-serif`;
-      ctx.fillText('≡D', w / 2, h * 0.2);
-    }
-    ctx.restore();
   }
 
   drawUpperMmiScreen(ctx, x, y, w, h, nearbyCars, speedKmh, combo, score, lateralG) {

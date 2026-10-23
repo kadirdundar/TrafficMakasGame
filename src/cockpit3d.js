@@ -3,124 +3,50 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-// 3D Cockpit Module supporting both Audi A8 (D5) and BMW (G30 M Sport / M8 Cockpit).
-// Lightweight, highly optimized, 60 FPS, with interactive steering, live digital gauge screens,
-// dynamic rear-view mirrors, and ambient cabin contour illumination.
+// 3D Audi A8 (D5) cockpit (beta), alternative to the photo cockpit.
+// Source: "Audi A8 Custom 2018" by everhard (Sketchfab, CC BY 4.0). Only the front cabin plus
+// what is visible through the glass (hood, A-pillars, wing mirrors) is kept: 324k -> 64k
+// triangles, ~20 draw calls, ~1.1 MB. The steering wheel is a separate node whose pivot/axis
+// are stored in its glTF extras; the mirror glass nodes get the live rear-view render target.
+// Dynamically imported only when the player switches to the 3D cockpit.
 
-const COCKPIT_CONFIGS = {
-  a8: {
-    modelUrl: `${import.meta.env.BASE_URL}models/a8-cockpit.glb`,
-    scale: 1.0816,
-    rotationY: 0,
-    defaultEye: [-0.36, 0.33, -0.02],
-    wheelRadius: 0.155,
-    steerSign: -1,
-    softMaterials: new Set(['a8texture3', 'a8texture5', 'a8texture7', 'a8texture10']),
-    screens: {
-      cluster: {
-        tl: [-0.4689, 0.1873, -0.7588],
-        tr: [-0.196, 0.1873, -0.7588],
-        bl: [-0.4689, 0.0827, -0.7473],
-        br: [-0.196, 0.0827, -0.7473],
-        n: [0, 0.11, 0.994],
-        logical: [200, 77],
-        px: [512, 196],
-      },
-    },
-    ledPaths: [
-      [[-0.648, 0.098, -0.64], [-0.656, 0.092, -0.3], [-0.652, 0.096, -0.04], [-0.639, 0.105, 0.05]],
-      [[0.648, 0.098, -0.64], [0.656, 0.092, -0.3], [0.652, 0.096, -0.04], [0.639, 0.105, 0.05]],
-    ],
-    glassOut: new THREE.Vector3(0, 0.86, -0.51).normalize(),
-    glassUp: new THREE.Vector3(-0.093, 0.46, 0.884).normalize(),
-    wiperPivots: [[-0.335, 0.2, -1.053], [0.125, 0.19, -1.097]],
-    wiperLen: 0.62,
-    floor: { w: 1.7, h: 1.5, y: -0.4, z: -0.45 },
-  },
-  bmw: {
-    modelUrl: `${import.meta.env.BASE_URL}models/bmw-cockpit.glb`,
-    scale: 1.0,
-    rotationY: Math.PI,
-    // Eye ~0.55 m behind and 0.3 m above the wheel hub, as in the A8 (the headrest sits at z -0.6)
-    defaultEye: [-0.397, 1.18, 0.46],
-    wheelRadius: 0.18,
-    steerSign: 1,
-    softMaterials: new Set([
-      'm8f92_Interior',
-      'm8f92_InteriorA',
-      'm8f92_InteriorColor2',
-      'm8f92_InteriorColourZone',
-      'm8f92_InteriorTillingColourZone',
-    ]),
-    screens: {
-      cluster: {
-        tl: [0.543, 0.967, 0.360],
-        tr: [0.250, 0.967, 0.360],
-        bl: [0.543, 0.864, 0.328],
-        br: [0.250, 0.864, 0.328],
-        n: [0, 0.15, -0.98],
-        logical: [200, 77],
-        px: [512, 196],
-      },
-    },
-    ledPaths: [
-      // Door trims along the seam above the quilted inserts, and the passenger half of the dash
-      [[0.727, 0.872, -0.56], [0.731, 0.872, -0.3], [0.735, 0.872, -0.05], [0.728, 0.876, 0.1]],
-      [[-0.727, 0.872, -0.56], [-0.731, 0.872, -0.3], [-0.735, 0.872, -0.05], [-0.728, 0.876, 0.1]],
-      [[-0.28, 0.802, 0.205], [-0.45, 0.802, 0.23], [-0.6, 0.802, 0.244], [-0.68, 0.802, 0.228]],
-    ],
-    // Fiona Red leather + soft-touch black dash (the exterior model's cabin is red as well)
-    tints: {
-      m8f92_InteriorColor2: { color: 0x5a1815, roughness: 0.62 },
-      m8f92_InteriorColourZone: { color: 0x6a1d19, roughness: 0.7 },
-      m8f92_InteriorTillingColourZone: { color: 0x6a1d19, roughness: 0.7 },
-      m8f92_Coloured: { color: 0x17181b, roughness: 0.55, metalness: 0.1 },
-      m8f92_Carbon1: { color: 0x0d0d0f, roughness: 0.35, metalness: 0.2 },
-      // Hood and wings seen through the windshield: deep metallic paint like the A8's
-      m8f92_CarPaint: { color: 0x07090c, roughness: 0.25, metalness: 0.8, clearcoat: 1 },
-    },
-    glassOut: new THREE.Vector3(0, 0.82, 0.57).normalize(),
-    glassUp: new THREE.Vector3(0, 0.57, -0.82).normalize(),
-    wiperPivots: [[0.40, 0.96, 0.68], [-0.10, 0.96, 0.70]],
-    wiperLen: 0.60,
-    floor: { w: 1.8, h: 1.6, y: 0.22, z: 0.05 },
-    // The source model has no interior A-pillar trims or headliner: from the seat you only see the
-    // back of the thin outer body skin. Rebuild both: a trim along the windshield's side edge
-    // (traced from the windshield glass, left side; mirrored for the right) and a back-face
-    // colour for the roof skin.
-    pillarEdge: [
-      [0.69, 1.0, 0.52],
-      [0.683, 1.045, 0.433],
-      [0.675, 1.078, 0.367],
-      [0.66, 1.114, 0.297],
-      [0.642, 1.151, 0.222],
-      [0.624, 1.188, 0.147],
-      [0.607, 1.218, 0.087],
-      [0.585, 1.243, 0.035],
-      [0.56, 1.262, 0.0],
-    ],
-    pillarSpan: [0.085, -0.015, -0.055], // windshield edge -> side window edge (left side)
-    trimColor: 0x4a4c52, // anthracite Alcantara
-    skinMesh: 'm8f92_body001_m8f92_Coloured_0',
-    hideVariants: [
-      'keyvany',
-      'cs',
-      'mirror_l2',
-      'mirror_r2',
-      'mirror_l_cf',
-      'mirror_r_cf',
-      'mirror_l_blk',
-      'mirror_r_blk',
-      'bodyroof_black',
-      'm5f90',
-      'engine',
-    ],
+const MODEL_URL = `${import.meta.env.BASE_URL}models/a8-cockpit.glb`;
+// The source model is ~92% of a real A8 (4.78 m vs 5.17 m); scale it back to real size
+const MODEL_SCALE = 1.0816;
+const WHEEL_RADIUS = 0.155;
+// Night: let the cabin textures glow slightly so the dashboard stays readable
+const CABIN_NIGHT_GLOW = 0.22;
+
+// Carpet (a8texture3), seats (a8texture5), leather dash/doors/wheel rim (a8texture7), headliner/pillars (a8texture10)
+const SOFT_MATERIALS = new Set(['a8texture3', 'a8texture5', 'a8texture7', 'a8texture10']);
+
+// --- Geometry measured on the source model (model space, metres) by raycasting from the eye ---
+
+// Display surfaces: live canvases are drawn on quads 2 mm in front of them. `logical` is the
+// size the 2D painters lay out in (close to the photo cockpit's on-screen size), so their
+// fixed-pixel details keep the same proportions; `px` is the texture resolution.
+const SCREENS = {
+  cluster: {
+    tl: [-0.4689, 0.1873, -0.7588], tr: [-0.196, 0.1873, -0.7588],
+    bl: [-0.4689, 0.0827, -0.7473], br: [-0.196, 0.0827, -0.7473],
+    n: [0, 0.11, 0.994], logical: [200, 77], px: [512, 196],
   },
 };
-
 const SCREEN_REPAINT_MS = 80; // ~12 Hz is plenty for gauges and keeps texture uploads cheap
-const CABIN_NIGHT_GLOW = 0.22;
-const WIPER_REST = THREE.MathUtils.degToRad(22);
+
+// Ambient contour lighting along the door trims
+const LED_PATHS = [
+  [[-0.648, 0.098, -0.64], [-0.656, 0.092, -0.3], [-0.652, 0.096, -0.04], [-0.639, 0.105, 0.05]],
+  [[0.648, 0.098, -0.64], [0.656, 0.092, -0.3], [0.652, 0.096, -0.04], [0.639, 0.105, 0.05]],
+];
+
+// Windshield (glass itself is not rendered): outward normal, "up the glass" direction, and the
+// two wiper pivots just below the visible bottom edge (hidden behind the dashboard top)
+const GLASS_OUT = new THREE.Vector3(0, 0.86, -0.51).normalize();
+const GLASS_UP = new THREE.Vector3(-0.093, 0.46, 0.884).normalize();
+const WIPER_PIVOTS = [[-0.335, 0.2, -1.053], [0.125, 0.19, -1.097]];
+const WIPER_LEN = 0.62;
+const WIPER_REST = THREE.MathUtils.degToRad(22); // from "pointing left" toward "up the glass"
 const WIPER_SWEEP = THREE.MathUtils.degToRad(79);
 
 // Portrait phones: slide the seat back/up a little so the wheel does not fill the screen
@@ -149,10 +75,10 @@ function createScreen(def) {
   return { mesh, canvas, ctx: canvas.getContext('2d'), texture, logical: def.logical };
 }
 
-function createLedStrips(paths) {
+function createLedStrips() {
   const core = [];
   const glow = [];
-  for (const path of paths) {
+  for (const path of LED_PATHS) {
     const curve = new THREE.CatmullRomCurve3(path.map((p) => new THREE.Vector3().fromArray(p)));
     const segs = Math.max(4, path.length * 6);
     core.push(new THREE.TubeGeometry(curve, segs, 0.0018, 5, false));
@@ -173,58 +99,14 @@ function createLedStrips(paths) {
   return { coreMesh, glowMesh, coreMat, glowMat };
 }
 
-// A-pillar trim: a padded strip whose cross-section bows into the cabin, swept along the edge
-function createPillarTrim(edge, span, side, material) {
-  const curve = new THREE.CatmullRomCurve3(edge.map(([x, y, z]) => new THREE.Vector3(x * side, y, z)));
-  const spanV = new THREE.Vector3(span[0] * side, span[1], span[2]);
-  const ACROSS = 6;
-  const ALONG = 24;
-  const positions = [];
-  const p = new THREE.Vector3();
-  const t = new THREE.Vector3();
-  const bulge = new THREE.Vector3();
-  for (let i = 0; i <= ALONG; i++) {
-    curve.getPointAt(i / ALONG, p);
-    curve.getTangentAt(i / ALONG, t);
-    // Bow towards the cabin: perpendicular to the edge and the span, pointing inwards / down
-    bulge.crossVectors(t, spanV).normalize();
-    if (bulge.x * side > 0 || bulge.y > 0) bulge.negate();
-    // The pillar narrows where it runs into the roof
-    const width = 1 - 0.55 * Math.max(0, (i / ALONG - 0.6) / 0.4);
-    for (let j = 0; j <= ACROSS; j++) {
-      const k = (j / ACROSS) * width;
-      positions.push(
-        p.x + spanV.x * k + bulge.x * 0.03 * Math.sin((Math.PI * k) / width) - side * 0.006,
-        p.y + spanV.y * k + bulge.y * 0.03 * Math.sin((Math.PI * k) / width) - 0.006,
-        p.z + spanV.z * k + bulge.z * 0.03 * Math.sin((Math.PI * k) / width) - 0.004
-      );
-    }
-  }
-  const index = [];
-  for (let i = 0; i < ALONG; i++) {
-    for (let j = 0; j < ACROSS; j++) {
-      const a = i * (ACROSS + 1) + j;
-      const b = a + ACROSS + 1;
-      index.push(a, b, a + 1, a + 1, b, b + 1);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(index);
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.name = side > 0 ? 'pillar_trim_L' : 'pillar_trim_R';
-  return mesh;
-}
-
-function createWiper(pivotPos, glassOut, wiperLen) {
-  const arm = new THREE.BoxGeometry(wiperLen, 0.012, 0.008).translate(wiperLen / 2, 0, 0);
-  const blade = new THREE.BoxGeometry(wiperLen * 0.72, 0.02, 0.012).translate(wiperLen * 0.62, -0.006, 0.006);
+function createWiper(pivotPos) {
+  const arm = new THREE.BoxGeometry(WIPER_LEN, 0.012, 0.008).translate(WIPER_LEN / 2, 0, 0);
+  const blade = new THREE.BoxGeometry(WIPER_LEN * 0.72, 0.02, 0.012).translate(WIPER_LEN * 0.62, -0.006, 0.006);
   const mesh = new THREE.Mesh(
     mergeGeometries([arm, blade]),
     new THREE.MeshStandardMaterial({ color: 0x0b0c0f, roughness: 0.55, metalness: 0.3 })
   );
-  mesh.position.fromArray(pivotPos).addScaledVector(glassOut, 0.015);
+  mesh.position.fromArray(pivotPos).addScaledVector(GLASS_OUT, 0.015);
   mesh.visible = false;
   return mesh;
 }
@@ -251,134 +133,51 @@ function applyMirror(obj, texture, u0, u1) {
   });
 }
 
-export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, paintScreen }) {
-  const key = carType?.toLowerCase().includes('bmw') ? 'bmw' : 'a8';
-  const cfg = COCKPIT_CONFIGS[key] || COCKPIT_CONFIGS.a8;
-
+export async function loadCockpit3D({ eyeAnchor, mirrorTexture, paintScreen }) {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-  const gltf = await loader.loadAsync(cfg.modelUrl);
+  const gltf = await loader.loadAsync(MODEL_URL);
   const model = gltf.scene;
 
-  // Apply base rotation and scaling
-  if (cfg.rotationY) model.rotation.y = cfg.rotationY;
-  model.scale.setScalar(cfg.scale);
-
-  // Position the model so driver's eye aligns directly with the camera's eyeAnchor
-  const eye = new THREE.Vector3().fromArray(cfg.defaultEye);
-  if (key === 'bmw') {
-    model.position.copy(eyeAnchor).sub(eye);
-  } else {
-    model.position.copy(eyeAnchor).addScaledVector(eye, -cfg.scale);
-  }
+  // Put the model's driver eye point exactly on the camera's preset position
+  const eye = new THREE.Vector3().fromArray(model.userData.eye || [-0.36, 0.33, -0.02]);
+  model.scale.setScalar(MODEL_SCALE);
+  model.position.copy(eyeAnchor).addScaledVector(eye, -MODEL_SCALE);
   model.updateMatrixWorld(true);
   const basePosition = model.position.clone();
 
-  // Steering wheel setup
-  let wheel = model.getObjectByName('steering_wheel');
-  let pivotPos = [0, 0, 0];
-  let pivotAxis = [0, 0, 1];
-
-  if (key === 'bmw') {
-    // Hide windshield glass mesh so exterior world is rendered crisp & vibrant
-    const ws = model.getObjectByName('m8f92_windshield_m8f92_glass_0');
-    if (ws) ws.visible = false;
-
-    // A faint self-glow keeps the trim readable against the road at night
-    const trimMat = new THREE.MeshStandardMaterial({
-      color: cfg.trimColor,
-      emissive: cfg.trimColor,
-      emissiveIntensity: 0.25,
-      roughness: 0.95,
-      side: THREE.DoubleSide,
-    });
-    model.add(
-      createPillarTrim(cfg.pillarEdge, cfg.pillarSpan, 1, trimMat),
-      createPillarTrim(cfg.pillarEdge, cfg.pillarSpan, -1, trimMat)
-    );
-    // The roof / pillar skin is only ever seen from inside the cabin: dress it as the headliner
-    const skin = model.getObjectByName(cfg.skinMesh);
-    if (skin) skin.material = trimMat;
-
-    // Hide overlapping aftermarket / variant parts
-    if (cfg.hideVariants) {
-      model.traverse((o) => {
-        if (o.isMesh) {
-          const n = o.name.toLowerCase();
-          if (cfg.hideVariants.some((h) => n.includes(h))) {
-            o.visible = false;
-          }
-        }
-      });
-    }
-
-    // BMW Steering Wheel: group all steer meshes under a column pivot
-    const pLocal = new THREE.Vector3(0.3971, 0.8735, 0.0882);
-    pivotPos = pLocal.toArray();
-    pivotAxis = [0, 0.339, -0.941];
-
-    const wheelGroup = new THREE.Group();
-    wheelGroup.name = 'steering_wheel';
-    wheelGroup.position.copy(pLocal);
-    model.add(wheelGroup);
-    model.updateMatrixWorld(true);
-
-    const steerMeshes = [];
-    model.traverse((o) => {
-      if (o.isMesh && o.name.toLowerCase().includes('steer') && !o.name.toLowerCase().includes('steeringbox')) {
-        steerMeshes.push(o);
-      }
-    });
-    steerMeshes.forEach((m) => wheelGroup.attach(m));
-    wheel = wheelGroup;
-  } else if (wheel) {
-    pivotPos = wheel.userData.pivot || [-0.338, 0.118, -0.493];
-    pivotAxis = wheel.userData.axis || [0.007, 0.386, 0.922];
-  }
-
+  // Steering wheel: re-parent under a pivot on the column axis
+  const wheel = model.getObjectByName('steering_wheel');
   const pivot = new THREE.Group();
   const baseQuat = new THREE.Quaternion();
   if (wheel) {
-    pivot.position.fromArray(pivotPos);
-    baseQuat.setFromUnitVectors(Z_AXIS, new THREE.Vector3().fromArray(pivotAxis).normalize());
+    const { pivot: p = [0, 0, 0], axis = [0, 0, 1] } = wheel.userData;
+    pivot.position.fromArray(p);
+    baseQuat.setFromUnitVectors(Z_AXIS, new THREE.Vector3().fromArray(axis).normalize());
     pivot.quaternion.copy(baseQuat);
     model.add(pivot);
     model.updateMatrixWorld(true);
     pivot.attach(wheel);
   }
 
-  // Live dynamic mirrors (rear-view camera render target)
-  if (key === 'bmw') {
-    const center = model.getObjectByName('m8f92_intmirror002_mirror001_0');
-    if (center) applyMirror(center, mirrorTexture, 0, 1);
-    const left =
-      model.getObjectByName('m8f92_mirror_L_mirror001_0') ||
-      model.getObjectByName('m8f92_mirror_L002_mirror001_0');
-    if (left) applyMirror(left, mirrorTexture, 0.55, 1);
-    const right = model.getObjectByName('m8f92_mirror_R002_mirror001_0');
-    if (right) applyMirror(right, mirrorTexture, 0, 0.45);
-  } else {
-    const mirror = (name, u0, u1) => {
-      const obj = model.getObjectByName(name);
-      if (obj) applyMirror(obj, mirrorTexture, u0, u1);
-    };
-    mirror('mirror_center', 0, 1);
-    mirror('mirror_left', 0.55, 1);
-    mirror('mirror_right', 0, 0.45);
-  }
+  // Live mirrors (all three share the rear-view camera render target)
+  const mirror = (name, u0, u1) => {
+    const obj = model.getObjectByName(name);
+    if (obj) applyMirror(obj, mirrorTexture, u0, u1);
+  };
+  mirror('mirror_center', 0, 1);
+  mirror('mirror_left', 0.55, 1);
+  mirror('mirror_right', 0, 0.45);
 
-  // Cabin floor plane to close footwell
-  if (cfg.floor) {
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(cfg.floor.w, cfg.floor.h)
-        .rotateX(-Math.PI / 2)
-        .translate(0, cfg.floor.y, cfg.floor.z),
-      new THREE.MeshStandardMaterial({ color: 0x101113, roughness: 1, metalness: 0 })
-    );
-    model.add(floor);
-  }
+  // The source model has no cabin floor (only the underbody shell, which faces down):
+  // close the footwell with a dark carpet plane so the road never shows through
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.7, 1.5).rotateX(-Math.PI / 2).translate(0, -0.4, -0.45),
+    new THREE.MeshStandardMaterial({ color: 0x101113, roughness: 1, metalness: 0 })
+  );
+  model.add(floor);
 
-  // Live virtual instrument cluster screens
-  const screens = Object.entries(cfg.screens).map(([name, def]) => {
+  // Live virtual cockpit (the center MMI screens keep the model's own artwork)
+  const screens = Object.entries(SCREENS).map(([name, def]) => {
     const screen = createScreen(def);
     screen.name = name;
     model.add(screen.mesh);
@@ -386,34 +185,30 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
   });
   let lastPaint = -Infinity;
 
-  // Ambient LED contour strips
-  const leds = createLedStrips(cfg.ledPaths);
+  // Ambient LED contour strips (core + additive glow, 2 draw calls in total)
+  const leds = createLedStrips();
   model.add(leds.coreMesh, leds.glowMesh);
   const ledColor = new THREE.Color();
   let lastLedKey = '';
 
-  // Windshield wipers
-  const restDir = new THREE.Vector3(-1, 0, 0).addScaledVector(cfg.glassOut, cfg.glassOut.x).normalize();
-  const upDir = cfg.glassUp.clone().addScaledVector(restDir, -cfg.glassUp.dot(restDir)).normalize();
-  const wipers = cfg.wiperPivots.map((p) => createWiper(p, cfg.glassOut, cfg.wiperLen));
+  // Windshield wipers: rotate inside the glass plane around their pivots
+  const restDir = new THREE.Vector3(-1, 0, 0).addScaledVector(GLASS_OUT, GLASS_OUT.x).normalize();
+  const upDir = GLASS_UP.clone().addScaledVector(restDir, -GLASS_UP.dot(restDir)).normalize();
+  const wipers = WIPER_PIVOTS.map(createWiper);
   model.add(...wipers);
 
   const cabinMats = new Set();
   model.traverse((o) => {
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
-    const tint = cfg.tints?.[o.material.name];
-    if (tint) {
-      const { color, ...props } = tint;
-      o.material.color.setHex(color);
-      for (const [k, v] of Object.entries(props)) if (k in o.material) o.material[k] = v;
-    } else if (cfg.softMaterials.has(o.material.name)) {
+    // Source exports carpet/leather/trim with metalness ~0.9-1.0 (they mirror the sky like
+    // chrome); make the soft materials dielectric
+    if (SOFT_MATERIALS.has(o.material.name)) {
       o.material.metalness = 0.05;
       o.material.roughness = 0.78;
-      if (o.material.name === 'a8texture3') o.material.color.setScalar(0.4);
+      if (o.material.name === 'a8texture3') o.material.color.setScalar(0.4); // darker carpet
     }
     if (o.material.map) {
-      // Night glow follows the leather tint instead of the white detail map
-      o.material.emissive.set(tint ? tint.color : 0xffffff);
+      o.material.emissive.set(0xffffff);
       o.material.emissiveMap = o.material.map;
       o.material.emissiveIntensity = 0;
       cabinMats.add(o.material);
@@ -423,10 +218,8 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
   let lastNight = null;
   let lastAngle = NaN;
   let lastAspect = NaN;
-
   return {
     group: model,
-    carType: key,
     update({
       steerAngle = 0,
       night = false,
@@ -470,23 +263,25 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
         w.visible = wipersVisible;
         if (!wipersVisible) continue;
         _x.copy(restDir).multiplyScalar(Math.cos(angle)).addScaledVector(upDir, Math.sin(angle));
-        _y.crossVectors(cfg.glassOut, _x);
-        w.quaternion.setFromRotationMatrix(_m.makeBasis(_x, _y, cfg.glassOut));
+        _y.crossVectors(GLASS_OUT, _x);
+        w.quaternion.setFromRotationMatrix(_m.makeBasis(_x, _y, GLASS_OUT));
       }
 
       if (steerAngle !== lastAngle) {
         lastAngle = steerAngle;
-        pivot.quaternion.copy(baseQuat).multiply(_spin.setFromAxisAngle(Z_AXIS, cfg.steerSign * steerAngle));
+        // Positive steer = clockwise as seen by the driver = negative turn about the column axis
+        pivot.quaternion.copy(baseQuat).multiply(_spin.setFromAxisAngle(Z_AXIS, -steerAngle));
       }
       if (night !== lastNight) {
         lastNight = night;
         cabinMats.forEach((m) => (m.emissiveIntensity = night ? CABIN_NIGHT_GLOW : 0));
       }
     },
+    // Screen-space circle of the wheel rim (CSS px) for mouse/touch steering
     getWheelScreenBounds(camera) {
       pivot.updateWorldMatrix(true, false);
       _v.setFromMatrixPosition(pivot.matrixWorld).project(camera);
-      _w.set(cfg.wheelRadius, 0, 0).applyMatrix4(pivot.matrixWorld).project(camera);
+      _w.set(WHEEL_RADIUS, 0, 0).applyMatrix4(pivot.matrixWorld).project(camera);
       const cx = (_v.x * 0.5 + 0.5) * window.innerWidth;
       const cy = (-_v.y * 0.5 + 0.5) * window.innerHeight;
       const rx = (_w.x * 0.5 + 0.5) * window.innerWidth;

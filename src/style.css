@@ -1083,12 +1083,6 @@
     min-inline-size: 0;
   }
 
-  .car-select-group {
-    inline-size: 100%;
-    max-inline-size: 240px;
-    margin-block-end: 2px;
-  }
-
   .car-title {
     display: flex;
     flex-direction: column;
