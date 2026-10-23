@@ -44,6 +44,8 @@ class OtobanMakasGame {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.sound = new SoundEngine();
+    this.hudEls = {};
+    this.hudCache = {};
 
     // Three.js Core Setup
     this.scene = new THREE.Scene();
@@ -1925,6 +1927,8 @@ class OtobanMakasGame {
   // Writes to the DOM only when a value actually changed: the HUD is refreshed every frame,
   // and redundant textContent/style writes still force style recalculation
   setHudText(id, value) {
+    this.hudEls ??= {};
+    this.hudCache ??= {};
     const el = this.hudEls[id] ?? (this.hudEls[id] = document.getElementById(id));
     if (el && this.hudCache[id] !== value) {
       this.hudCache[id] = value;
@@ -1933,6 +1937,8 @@ class OtobanMakasGame {
   }
 
   setHudStyle(id, prop, value) {
+    this.hudEls ??= {};
+    this.hudCache ??= {};
     const el = this.hudEls[id] ?? (this.hudEls[id] = document.getElementById(id));
     const key = `${id}.${prop}`;
     if (el && this.hudCache[key] !== value) {
