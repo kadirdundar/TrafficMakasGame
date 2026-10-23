@@ -96,13 +96,15 @@ class StudioEnvironment {
 
 export class A8Showroom {
   // canvas: where the garage is drawn; stage: the empty layout box the car is framed into
-  constructor(canvas, stage, { paintHex, accent = '#00f0ff', onReady } = {}) {
+  constructor(canvas, stage, { paintHex, accent = '#00f0ff', carType = 'a8', onReady } = {}) {
     this.canvas = canvas;
     this.stage = stage;
     this.onReady = onReady;
     this.active = false;
     this.raf = 0;
     this.car = null;
+    this.reflection = null;
+    this.carType = carType;
     this.paintHex = paintHex;
     this.lightsOn = false;
     this.autoRotate = true;
@@ -240,16 +242,29 @@ export class A8Showroom {
     shadow.renderOrder = 3;
   }
 
-  async loadCar() {
+  async loadCar(type = this.carType || 'a8') {
+    this.carType = type;
+    if (this.car) {
+      this.scene.remove(this.car.group);
+      this.car = null;
+    }
+    if (this.reflection) {
+      this.scene.remove(this.reflection);
+      this.reflection = null;
+    }
     try {
-      const { loadA8PeerCar } = await import('./peerA8.js');
-      const car = await loadA8PeerCar({ paintHex: this.paintHex });
+      const isBmw = this.carType.toLowerCase().includes('bmw') || this.carType.toLowerCase().includes('m4');
+      const loader = isBmw
+        ? (await import('./peerBMW.js')).loadBmwPeerCar
+        : (await import('./peerA8.js')).loadA8PeerCar;
+      const car = await loader({ paintHex: this.paintHex });
       this.car = car;
       this.scene.add(car.group);
 
       // Mirror image under the semi-transparent floor gives the glossy-floor reflection
       const reflection = car.group.clone();
       reflection.scale.y = -1;
+      this.reflection = reflection;
       this.scene.add(reflection);
 
       car.setLights({ night: this.lightsOn });
@@ -259,6 +274,11 @@ export class A8Showroom {
       console.warn('Garaj modeli yüklenemedi', err);
       this.onReady?.(false);
     }
+  }
+
+  async switchCar(carType) {
+    if (this.carType === carType && this.car) return;
+    await this.loadCar(carType);
   }
 
   setActive(active) {
