@@ -1532,13 +1532,25 @@ class OtobanMakasGame {
 
     // Lateral velocity follows nose heading + front tire cornering force + highway curve centrifugal drift
     const curveKappa = this.world.getCurrentCurvature(); // + = right curve ahead, - = left curve ahead
-    const maxDrift = 1.35;
-    const rawCentrifugal = -curveKappa * speedMs * (this.traffic.roadMode === 'track' ? 8.0 : 21.0);
-    const centrifugalDriftVel = Math.max(-maxDrift, Math.min(maxDrift, rawCentrifugal));
+    let centrifugalDriftVel;
+    let steerPower;
+    if (this.traffic.roadMode === 'track') {
+      // In track mode: sharp corners push the car to the outside!
+      // The car DOES NOT turn by itself; player MUST steer into the apex to stay on track!
+      const driftMagnitude = -curveKappa * speedMs * 30.0;
+      centrifugalDriftVel = Math.max(-5.8, Math.min(5.8, driftMagnitude));
+      // Responsive racing steering authority to actively carve the turn and hit the apex
+      steerPower = 5.8 + speedRatio * 2.8;
+    } else {
+      // Highway mode: gentle highway drift
+      const maxDrift = 1.35;
+      centrifugalDriftVel = Math.max(-maxDrift, Math.min(maxDrift, -curveKappa * speedMs * 21.0));
+      steerPower = 4.6 + speedRatio * 2.0;
+    }
 
     const steerLatVel =
-      Math.sin(this.headingAngle) * speedMs * 0.62 +
-      this.steerInput * (4.6 + speedRatio * 2.0) * Math.min(1, this.speedKmh / 40); // no sideways creep when standing
+      Math.sin(this.headingAngle) * speedMs * (this.traffic.roadMode === 'track' ? 0.95 : 0.62) +
+      this.steerInput * steerPower * Math.min(1, this.speedKmh / 35); // no sideways creep when standing
     const desiredLatVel = steerLatVel + centrifugalDriftVel;
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering

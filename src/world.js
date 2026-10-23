@@ -91,21 +91,20 @@ export const ROAD_HALF_WIDTHS = { highway: ROAD_HALF_WIDTH, twoway: 4.6, track: 
 
 export const ZONE_CYCLE_LENGTH = 15000;
 
-// İstanbul Park Grand Prix Circuit: 4000m Lap Definition with C2-continuous turns
+// İstanbul Park Grand Prix Circuit: 4000m Lap Definition with C2-continuous sharp turns
 export const TRACK_LAP_LENGTH = 4000.0;
 export const TRACK_SECTIONS = [
-  { name: 'Ana Düzlük (Start/Finish)', code: 'MAIN', start: 0, len: 600, cStart: 0, deltaC: 0 },
-  { name: '1. Viraj (Sola İniş)', code: 'T1', start: 600, len: 450, deltaC: -40, cStart: 0 },
-  { name: '2. Viraj (Sağa Çıkış)', code: 'T2', start: 1050, len: 400, deltaC: 30, cStart: -40 },
-  { name: 'Ara Düzlük', code: 'STR1', start: 1450, len: 150, cStart: -10, deltaC: 0 },
-  { name: '3. Viraj (Hızlı Sağ)', code: 'T3', start: 1600, len: 250, deltaC: 25, cStart: -10 },
-  { name: '4. Viraj (S-Viraj Solu)', code: 'T4', start: 1850, len: 250, deltaC: -30, cStart: 15 },
-  { name: '8. Viraj Yaklaşımı', code: 'STR2', start: 2100, len: 200, cStart: -15, deltaC: 0 },
-  { name: 'Efsanevi 8. Viraj (4 Apeks)', code: 'T8', start: 2300, len: 750, deltaC: -40, cStart: -15 },
-  { name: 'Arka Düzlük (DRS & 260 KM/S)', code: 'BACK', start: 3050, len: 350, deltaC: 0, cStart: -55 },
-  { name: '12. Viraj (Şikan Frenajı)', code: 'T12', start: 3400, len: 200, deltaC: 35, cStart: -55 },
-  { name: '13. Viraj (Şikan Çıkışı)', code: 'T13', start: 3600, len: 150, deltaC: -20, cStart: -20 },
-  { name: '14. Son Viraj (Start-Finish Çıkışı)', code: 'T14', start: 3750, len: 250, deltaC: 40, cStart: -40 },
+  { name: 'Ana Düzlük (Start/Finish)', code: 'MAIN', start: 0, len: 500, cStart: 0, deltaC: 0 },
+  { name: '1. Viraj (Sert Sola İniş)', code: 'T1', start: 500, len: 300, deltaC: -80, cStart: 0 },
+  { name: '2. Viraj (Sert Sağa Çıkış)', code: 'T2', start: 800, len: 300, deltaC: 65, cStart: -80 },
+  { name: 'Ara Düzlük', code: 'STR1', start: 1100, len: 250, cStart: -15, deltaC: 0 },
+  { name: '3. Viraj (S-Viraj Solu)', code: 'T3', start: 1350, len: 200, deltaC: -60, cStart: -15 },
+  { name: '4. Viraj (S-Viraj Sağı)', code: 'T4', start: 1550, len: 200, deltaC: 60, cStart: -75 },
+  { name: '8. Viraj Yaklaşımı', code: 'STR2', start: 1750, len: 250, cStart: -15, deltaC: 0 },
+  { name: 'Efsanevi 8. Viraj (4 Apeks)', code: 'T8', start: 2000, len: 700, deltaC: -110, cStart: -15 },
+  { name: 'Arka Düzlük (DRS & 260 KM/S)', code: 'BACK', start: 2700, len: 600, cStart: -125, deltaC: 0 },
+  { name: '12. Viraj (Sert Saç Tokası)', code: 'T12', start: 3300, len: 300, deltaC: 80, cStart: -125 },
+  { name: '14. Son Viraj (Start-Finish Çıkışı)', code: 'T14', start: 3600, len: 400, deltaC: 45, cStart: -45 },
 ];
 
 export function getTrackSectionAt(s) {
@@ -1637,9 +1636,9 @@ export class HighwayWorld {
           if (seg.trackFinishLine) seg.trackFinishLine.visible = u < 25 || u > 3975;
           if (seg.trackGantry) seg.trackGantry.visible = u < 25 || u > 3975;
           if (seg.trackPit) seg.trackPit.visible = u >= 25 && u < 450;
-          if (seg.trackGrandstand) seg.trackGrandstand.visible = (u >= 25 && u < 450) || (u >= 1800 && u < 2500);
-          if (seg.trackBrakeBoards) seg.trackBrakeBoards.visible = (u >= 350 && u < 490) || (u >= 3050 && u < 3190);
-          if (seg.trackTires) seg.trackTires.visible = (u >= 500 && u < 850) || (u >= 1800 && u < 2600) || (u >= 3200 && u < 3450);
+          if (seg.trackGrandstand) seg.trackGrandstand.visible = (u >= 25 && u < 450) || (u >= 2000 && u < 2700);
+          if (seg.trackBrakeBoards) seg.trackBrakeBoards.visible = (u >= 380 && u < 490) || (u >= 3180 && u < 3290);
+          if (seg.trackTires) seg.trackTires.visible = (u >= 500 && u < 800) || (u >= 2000 && u < 2700) || (u >= 3300 && u < 3600);
           if (seg.trackFloodlight) seg.trackFloodlight.visible = (seg.segIndex % 3 === 0);
         }
       }
