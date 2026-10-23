@@ -1485,14 +1485,23 @@ class OtobanMakasGame {
     // Friends in the room show up on the Audi MMI Radar, and driving side by side with any of
     // them at speed scores a Tandem Makas
     const nowSec = performance.now() / 1000;
-    for (const peer of this.multiplayer.connected ? this.multiplayer.getRemotePlayers() : []) {
-      radarCars.push({
-        x: peer.x,
-        relX: peer.x - this.playerX,
-        relZ: peer.relZ,
-        isPeer: true,
-        color: peer.style.tag,
-      });
+    this._peerRadarPool ??= [];
+    let peerPoolIdx = 0;
+    const remotePlayers = this.multiplayer.connected ? this.multiplayer.getRemotePlayers() : [];
+    for (let i = 0; i < remotePlayers.length; i++) {
+      const peer = remotePlayers[i];
+      let pItem = this._peerRadarPool[peerPoolIdx];
+      if (!pItem) {
+        pItem = { x: 0, relX: 0, relZ: 0, isPeer: true, color: null };
+        this._peerRadarPool[peerPoolIdx] = pItem;
+      }
+      peerPoolIdx++;
+      pItem.x = peer.x;
+      pItem.relX = peer.x - this.playerX;
+      pItem.relZ = peer.relZ;
+      pItem.isPeer = true;
+      pItem.color = peer.style.tag;
+      radarCars.push(pItem);
 
       if (
         this.speedKmh >= 115 &&
@@ -1516,9 +1525,14 @@ class OtobanMakasGame {
     }
 
     // Proximity warning indicator if closing fast on a car ahead
-    const dangerAhead = radarCars.some(
-      (c) => c.relZ < 0 && c.relZ > -22 && Math.abs(c.relX) < 1.75
-    );
+    let dangerAhead = false;
+    for (let i = 0; i < radarCars.length; i++) {
+      const c = radarCars[i];
+      if (c.relZ < 0 && c.relZ > -22 && Math.abs(c.relX) < 1.75) {
+        dangerAhead = true;
+        break;
+      }
+    }
     const indDanger = document.getElementById('ind-danger');
     if (indDanger) indDanger.classList.toggle('active', dangerAhead);
 

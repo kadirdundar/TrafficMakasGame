@@ -262,7 +262,7 @@ export class CarCockpit {
     this.mirrorCtx = this.mirrorCanvas.getContext('2d');
     this.resizeMirror();
 
-    this.mirrorCamera = new THREE.PerspectiveCamera(52, 2.0, 0.5, 220);
+    this.mirrorCamera = new THREE.PerspectiveCamera(52, 2.0, 0.5, 150);
     this.group.add(this.mirrorCamera);
     this.mirrorCamera.position.set(0, 1.35, 1.8);
     this.mirrorCamera.rotation.set(0, Math.PI, 0);
@@ -734,7 +734,17 @@ export class CarCockpit {
     const prevTarget = this.renderer.getRenderTarget();
     this.renderer.setRenderTarget(this.mirrorRenderTarget);
     this.renderer.clear();
+
+    // PERFORMANCE: Hide 3D cockpit interior during rear mirror pass so Three.js
+    // skips frustum culling and draw calls for the front cabin and screens
+    const interiorWasVisible = this.interior3d?.group?.visible;
+    if (this.interior3d?.group) this.interior3d.group.visible = false;
+
     this.renderer.render(scene, this.mirrorCamera);
+
+    if (this.interior3d?.group && interiorWasVisible) {
+      this.interior3d.group.visible = true;
+    }
     if (this.is3D) {
       // The 3D mirror glass samples the render target directly: no GPU->CPU readback
       this.renderer.setRenderTarget(prevTarget);

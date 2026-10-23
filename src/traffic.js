@@ -820,13 +820,28 @@ export class TrafficManager {
   }
 
   getRadarSnapshot(playerX) {
-    const list = this.vehicles
-      .filter((v) => v.active)
-      .map((v) => ({
-        x: v.x,
-        relX: v.x - playerX,
-        relZ: v.z,
-      }));
+    this._radarSnapshot ??= [];
+    this._radarPool ??= [];
+    const list = this._radarSnapshot;
+    list.length = 0;
+    let poolIdx = 0;
+
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i];
+      if (!v.active) continue;
+      let item = this._radarPool[poolIdx];
+      if (!item) {
+        item = { x: 0, relX: 0, relZ: 0, isPeer: false, color: null };
+        this._radarPool[poolIdx] = item;
+      }
+      poolIdx++;
+      item.x = v.x;
+      item.relX = v.x - playerX;
+      item.relZ = v.z;
+      item.isPeer = false;
+      item.color = null;
+      list.push(item);
+    }
     list.playerX = playerX;
     return list;
   }

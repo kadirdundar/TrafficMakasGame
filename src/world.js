@@ -75,6 +75,11 @@ export const WEATHER_PRESETS = {
   },
 };
 
+for (const p of Object.values(WEATHER_PRESETS)) {
+  p.ambientColorObj = new THREE.Color(p.ambientColor);
+  p.dirColorObj = new THREE.Color(p.dirColor);
+}
+
 // 4 Highway Lanes: X centers at -5.4, -1.8, +1.8, +5.4 (each lane is 3.6m wide; total carriageway = 14.4m + shoulders = 17.6m)
 export const LANE_CENTERS = [-5.4, -1.8, 1.8, 5.4];
 export const ROAD_HALF_WIDTH = 8.4;
@@ -225,6 +230,8 @@ function createTunnelTileTexture() {
   return tex;
 }
 
+const _reusableProfile = { c: 0, d1: 0, d2: 0 };
+
 export class HighwayWorld {
   constructor(scene) {
     this.scene = scene;
@@ -242,6 +249,8 @@ export class HighwayWorld {
     this.scrollOffset = 0;
     this.worldDistM = 0;
     this.curvableGeometries = [];
+    this._zOffsetCache = new Map();
+    this._prevMaxCurveOffset = 0;
 
     this.sceneryItems = [];
     this.lampFixtures = [];
@@ -276,7 +285,10 @@ export class HighwayWorld {
 
     // On the 1050m straightaway: road is 100% straight!
     if (u <= straightLen) {
-      return { c: baseC, d1: 0.0, d2: 0.0 };
+      _reusableProfile.c = baseC;
+      _reusableProfile.d1 = 0.0;
+      _reusableProfile.d2 = 0.0;
+      return _reusableProfile;
     }
 
     // Inside the 450m smooth curve zone:
@@ -284,22 +296,66 @@ export class HighwayWorld {
     const omega = (Math.PI * 2.0) / curveLen;
     const wt = omega * t;
 
-    const c = baseC + dir * amp * (t / curveLen - Math.sin(wt) / (Math.PI * 2.0));
-    const d1 = dir * (amp / curveLen) * (1.0 - Math.cos(wt));
-    const d2 = dir * ((amp * omega) / curveLen) * Math.sin(wt);
-    return { c, d1, d2 };
+    _reusableProfile.c = baseC + dir * amp * (t / curveLen - Math.sin(wt) / (Math.PI * 2.0));
+    _reusableProfile.d1 = dir * (amp / curveLen) * (1.0 - Math.cos(wt));
+    _reusableProfile.d2 = dir * ((amp * omega) / curveLen) * Math.sin(wt);
+    return _reusableProfile;
   }
 
   evalRoadCenterX(s) {
-    return this.evalRoadProfile(s).c;
+    const segLen = 1500.0;
+    const straightLen = 1050.0;
+    const curveLen = 450.0;
+    const amp = 85.0;
+
+    const segIdx = Math.floor(s / segLen);
+    const u = s - segIdx * segLen;
+    const isEven = (segIdx & 1) === 0;
+    const baseC = isEven ? 0.0 : amp;
+
+    if (u <= straightLen) return baseC;
+
+    const dir = isEven ? 1.0 : -1.0;
+    const t = u - straightLen;
+    const omega = (Math.PI * 2.0) / curveLen;
+    const wt = omega * t;
+    return baseC + dir * amp * (t / curveLen - Math.sin(wt) / (Math.PI * 2.0));
   }
 
   evalRoadDeriv1(s) {
-    return this.evalRoadProfile(s).d1;
+    const segLen = 1500.0;
+    const straightLen = 1050.0;
+    const curveLen = 450.0;
+    const amp = 85.0;
+
+    const segIdx = Math.floor(s / segLen);
+    const u = s - segIdx * segLen;
+
+    if (u <= straightLen) return 0.0;
+
+    const dir = (segIdx & 1) === 0 ? 1.0 : -1.0;
+    const t = u - straightLen;
+    const omega = (Math.PI * 2.0) / curveLen;
+    const wt = omega * t;
+    return dir * (amp / curveLen) * (1.0 - Math.cos(wt));
   }
 
   evalRoadDeriv2(s) {
-    return this.evalRoadProfile(s).d2;
+    const segLen = 1500.0;
+    const straightLen = 1050.0;
+    const curveLen = 450.0;
+    const amp = 85.0;
+
+    const segIdx = Math.floor(s / segLen);
+    const u = s - segIdx * segLen;
+
+    if (u <= straightLen) return 0.0;
+
+    const dir = (segIdx & 1) === 0 ? 1.0 : -1.0;
+    const t = u - straightLen;
+    const omega = (Math.PI * 2.0) / curveLen;
+    const wt = omega * t;
+    return dir * ((amp * omega) / curveLen) * Math.sin(wt);
   }
 
   // Lateral X offset of the highway centerline at scene coordinate z (z=0 is player, z<0 is ahead)
@@ -330,11 +386,14 @@ export class HighwayWorld {
 
   registerCurvableGeometry(geo) {
     const pos = geo.attributes.position;
-    const baseX = new Float32Array(pos.count);
-    for (let i = 0; i < pos.count; i++) {
+    const count = pos.count;
+    const baseX = new Float32Array(count);
+    const baseZ = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
       baseX[i] = pos.getX(i);
+      baseZ[i] = pos.getZ(i);
     }
-    const item = { geo, baseX, originalX: baseX.slice() };
+    const item = { geo, baseX, baseZ, originalX: baseX.slice() };
     this.curvableGeometries.push(item);
     return item;
   }
@@ -1017,15 +1076,42 @@ export class HighwayWorld {
     }
 
     // Deform subdivided road, ground, and concrete Jersey barriers along the 3D highway curve
-    for (const item of this.curvableGeometries) {
+    const s0 = this.worldDistM;
+    const c0 = this.evalRoadCenterX(s0);
+    const d0 = this.evalRoadDeriv1(s0);
+    const zCache = this._zOffsetCache;
+    zCache.clear();
+
+    let maxAbsOffset = 0;
+    for (let j = 0; j < this.curvableGeometries.length; j++) {
+      const item = this.curvableGeometries[j];
       const pos = item.geo.attributes.position;
+      const arr = pos.array;
       const baseX = item.baseX;
-      for (let i = 0; i < pos.count; i++) {
-        const z = pos.getZ(i);
-        pos.setX(i, baseX[i] + this.getCurveOffsetAtZ(z));
+      const baseZ = item.baseZ;
+      const count = pos.count;
+
+      for (let i = 0; i < count; i++) {
+        const z = baseZ[i];
+        let off = zCache.get(z);
+        if (off === undefined) {
+          off = this.evalRoadCenterX(s0 - z) - c0 + z * d0;
+          zCache.set(z, off);
+          const absOff = Math.abs(off);
+          if (absOff > maxAbsOffset) maxAbsOffset = absOff;
+        }
+        arr[i * 3] = baseX[i] + off;
       }
-      pos.needsUpdate = true;
     }
+
+    // Only upload vertex buffers to GPU if the road is actually curved or just returned to straight
+    const isCurved = maxAbsOffset > 0.0001;
+    if (isCurved || this._prevMaxCurveOffset > 0.0001) {
+      for (let j = 0; j < this.curvableGeometries.length; j++) {
+        this.curvableGeometries[j].geo.attributes.position.needsUpdate = true;
+      }
+    }
+    this._prevMaxCurveOffset = maxAbsOffset;
 
     // Move roadside poles, barriers, buildings & overhead signs toward player (+Z) and follow the curve
     const totalSpan = this.sceneryItems.length * 20; // 360m loop
@@ -1075,16 +1161,16 @@ export class HighwayWorld {
     } else if (playerZone === 'bridge') {
       if (this.groundMesh) this.groundMesh.visible = false;
       if (this.rainSystem) this.rainSystem.visible = Boolean(preset.rain);
-      this.ambientLight.color.lerp(new THREE.Color(preset.ambientColor), dt * 3.5);
+      this.ambientLight.color.lerp(preset.ambientColorObj, dt * 3.5);
       this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, preset.ambientIntensity, dt * 3.5);
-      this.hemiLight.color.lerp(new THREE.Color(preset.dirColor), dt * 3.5);
+      this.hemiLight.color.lerp(preset.dirColorObj, dt * 3.5);
       this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, preset.dirIntensity, dt * 3.5);
     } else {
       if (this.groundMesh) this.groundMesh.visible = true;
       if (this.rainSystem) this.rainSystem.visible = Boolean(preset.rain);
-      this.ambientLight.color.lerp(new THREE.Color(preset.ambientColor), dt * 3.5);
+      this.ambientLight.color.lerp(preset.ambientColorObj, dt * 3.5);
       this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, preset.ambientIntensity, dt * 3.5);
-      this.hemiLight.color.lerp(new THREE.Color(preset.dirColor), dt * 3.5);
+      this.hemiLight.color.lerp(preset.dirColorObj, dt * 3.5);
       this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, preset.dirIntensity, dt * 3.5);
     }
 
@@ -1097,13 +1183,18 @@ export class HighwayWorld {
     // Update falling rain streaks if Rainy weather is active
     if (this.rainSystem && this.rainSystem.visible) {
       const pos = this.rainSystem.geometry.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        let y = pos.getY(i) - 18 * dt;
-        let z = pos.getZ(i) + speedMs * dt * 0.85;
+      const arr = pos.array;
+      const count = pos.count;
+      const dy = 18 * dt;
+      const dz = speedMs * dt * 0.85;
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        let y = arr[idx + 1] - dy;
+        let z = arr[idx + 2] + dz;
         if (y < 0) y = 14;
         if (z > 10) z -= 140;
-        pos.setY(i, y);
-        pos.setZ(i, z);
+        arr[idx + 1] = y;
+        arr[idx + 2] = z;
       }
       pos.needsUpdate = true;
     }
