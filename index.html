@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-BjzujMch.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-Bb8J0z7h.css">
+  <script type="module" crossorigin src="./assets/index-DSyVaSwX.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Cr4MQAW1.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -51,6 +51,15 @@
         <span class="stat-label">ARAÇ DURUMU</span>
         <div class="health-bar-wrap">
           <div id="hud-health-bar" class="health-bar-fill"></div>
+        </div>
+      </div>
+      <!-- Track Lap Timing Card (Visible in Track Mode) -->
+      <div id="hud-track-card" class="stat-card track-card hidden">
+        <span class="stat-label" id="hud-track-turn">İSTANBUL PARK</span>
+        <div class="track-hud-row">
+          <span id="hud-lap-badge" class="track-badge">TUR 1</span>
+          <span id="hud-lap-time" class="stat-value track-time">00:00.0</span>
+          <small id="hud-lap-best" class="track-best-label" title="En iyi tur süresi">EN İYİ: --:--</small>
         </div>
       </div>
       <!-- Live Friends Card (Visible when connected): one row per friend, filled in by main.js -->
@@ -201,13 +210,13 @@
             <button type="button" id="garage-flash" class="chip" aria-label="Selektör" title="Selektör yak">≡O<span class="chip-text"> Selektör</span></button>
             <button type="button" id="garage-spin" class="chip toggle" aria-pressed="true" aria-label="Otomatik döndür" title="Otomatik döndür">⟳<span class="chip-text"> Döndür</span></button>
           </div>
-          <div class="paint-row" id="garage-paint-group" title="Online'da arkadaşların seni oda sırana göre bu renklerden birinde görür">
-            <span class="paint-label">Online boya</span>
-            <button type="button" class="paint-swatch active" data-paint="0" style="--sw-color: #0e6f9c" aria-label="Navarra Mavisi"></button>
-            <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #8f1020" aria-label="Tango Kırmızısı"></button>
-            <button type="button" class="paint-swatch" data-paint="2" style="--sw-color: #e4e8ec" aria-label="Buzul Beyazı"></button>
-            <button type="button" class="paint-swatch" data-paint="3" style="--sw-color: #17191f" aria-label="Mitos Siyahı"></button>
-            <span id="garage-paint-name" class="paint-name">Navarra Mavisi</span>
+          <div class="paint-row" id="garage-paint-group" title="Audi A8 gövde rengi seçimi (Online oturumlarda da görünür)">
+            <span class="paint-label">A8 Rengi</span>
+            <button type="button" class="paint-swatch active" data-paint="0" style="--sw-color: #0c0e12" aria-label="Mitos Siyahı"></button>
+            <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #33383f" aria-label="Daytona Gri"></button>
+            <button type="button" class="paint-swatch" data-paint="2" style="--sw-color: #0d1c33" aria-label="Navarra Mavisi"></button>
+            <button type="button" class="paint-swatch" data-paint="3" style="--sw-color: #eff2f6" aria-label="Buzul Beyazı"></button>
+            <span id="garage-paint-name" class="paint-name">Mitos Siyahı</span>
           </div>
         </div>
 
@@ -268,10 +277,11 @@
             </div>
 
             <div class="panel-section">
-              <h3>Yol Tipi</h3>
+              <h3>Yol Tipi / Pist</h3>
               <div class="segmented-control" id="road-mode-group">
                 <button type="button" class="seg-btn active" data-road="highway">Otoban (4 Şerit)</button>
                 <button type="button" class="seg-btn" data-road="twoway">Gidiş-Geliş (Sollama)</button>
+                <button type="button" class="seg-btn" data-road="track">🏁 Pist (İstanbul Park)</button>
               </div>
             </div>
 
@@ -362,6 +372,7 @@
               <li><span class="guide-icon">⚡</span><div><strong>Yakın Makas</strong>100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div></li>
               <li><span class="guide-icon">🔦</span><div><strong>Selektör Tepkisi</strong>Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div></li>
               <li><span class="guide-icon">↔️</span><div><strong>Gidiş-Geliş Yolu</strong>Karşı şeride çıkıp sollama yap; karşıdan gelen yaklaştıkça puan artar, son anda dönersen bonus! Kafa kafaya çarpışma ağır hasar verir.</div></li>
+              <li><span class="guide-icon">🏁</span><div><strong>İstanbul Park Yarış Pisti</strong>Virajlı yarış pistinde apexleri yakala, efsanevi 8. Viraj'ı tam gaz dön ve arkadaşlarınla pistte yarışarak en iyi tur süresini yap!</div></li>
               <li><span class="guide-icon">🌉</span><div><strong>Köprü & Tünel Geçişleri</strong>Avrasya Tüneli'nde yankılanan V8 egzozuyla, 15 Temmuz Şehitler Köprüsü'nde Boğaz üzerinde makas at!</div></li>
               <li><span class="guide-icon">👥</span><div><strong>4 Kişilik P2P Mod</strong>Arkadaşlarınla aynı trafikte makas at, dikiz aynasından selektörlerini gör!</div></li>
             </ul>
