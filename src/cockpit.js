@@ -283,6 +283,10 @@ export class CarCockpit {
     // 'photo' = processed reference photo on the 2D overlay, '3d' = glTF interior (the game
     // switches to '3d' on startup; 'photo' stays the fallback while/if it fails to load)
     this.mode = 'photo';
+    this.carType = 'a8';
+    this.cockpitCache = new Map();
+    this.currentInteriorCar = null;
+    this.lastEyeAnchor = null;
     this.interior3d = null;
     this._interiorPromise = null;
     this._overlayCleared = false;
@@ -295,29 +299,70 @@ export class CarCockpit {
     return this.mode === '3d' && Boolean(this.interior3d);
   }
 
+  // Sets or swaps the car interior (e.g. 'a8' vs 'bmw'). Cached in memory after first load.
+  async setCarType(carType, eyeAnchor) {
+    if (!carType) return;
+    const key = carType.toLowerCase().includes('bmw') ? 'bmw' : 'a8';
+    this.carType = key;
+    if (eyeAnchor) this.lastEyeAnchor = eyeAnchor;
+    if (this.mode !== '3d') return;
+
+    if (this.currentInteriorCar === key && this.interior3d) {
+      this.interior3d.group.visible = true;
+      return;
+    }
+
+    // Hide / detach current interior
+    if (this.interior3d) {
+      this.interior3d.group.visible = false;
+      this.group.remove(this.interior3d.group);
+      this.interior3d = null;
+    }
+
+    if (this.cockpitCache.has(key)) {
+      this.interior3d = this.cockpitCache.get(key);
+      this.group.add(this.interior3d.group);
+      this.interior3d.group.visible = true;
+      this.currentInteriorCar = key;
+      return;
+    }
+
+    try {
+      const { loadCockpit3D } = await import('./cockpit3d.js');
+      const interior = await loadCockpit3D({
+        carType: key,
+        eyeAnchor: this.lastEyeAnchor || eyeAnchor,
+        mirrorTexture: this.mirrorRenderTarget.texture,
+        paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
+      });
+      this.cockpitCache.set(key, interior);
+      if (this.carType === key && this.mode === '3d') {
+        this.interior3d = interior;
+        this.group.add(interior.group);
+        interior.group.visible = true;
+        this.currentInteriorCar = key;
+      }
+    } catch (err) {
+      console.warn(`${key} 3D kokpit yüklenemedi:`, err);
+    }
+  }
+
   // Switches between the photo cockpit and the 3D interior. The 3D module + model are only
   // downloaded the first time it is enabled; on failure we stay on the photo cockpit.
-  async setMode(mode, eyeAnchor) {
+  async setMode(mode, eyeAnchor, carType) {
     this.mode = mode === '3d' ? '3d' : 'photo';
     this._overlayCleared = false;
-    if (this.mode === '3d' && !this.interior3d) {
-      this._interiorPromise ??= import('./cockpit3d.js').then((m) =>
-        m.loadCockpit3D({
-          eyeAnchor,
-          mirrorTexture: this.mirrorRenderTarget.texture,
-          paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
-        })
-      );
-      try {
-        this.interior3d = await this._interiorPromise;
-        this.group.add(this.interior3d.group);
-      } catch (err) {
-        console.warn('3D kokpit yüklenemedi, fotoğraf kokpite dönülüyor:', err);
-        this._interiorPromise = null;
+    if (eyeAnchor) this.lastEyeAnchor = eyeAnchor;
+    if (carType) this.carType = carType.toLowerCase().includes('bmw') ? 'bmw' : 'a8';
+
+    if (this.mode === '3d') {
+      await this.setCarType(this.carType || 'a8', eyeAnchor);
+      if (!this.interior3d) {
         this.mode = 'photo';
       }
+    } else {
+      if (this.interior3d) this.interior3d.group.visible = false;
     }
-    if (this.interior3d) this.interior3d.group.visible = this.mode === '3d';
     return this.mode;
   }
 

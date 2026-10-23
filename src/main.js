@@ -913,7 +913,11 @@ class OtobanMakasGame {
   // The 3D interior is the only cockpit. While its model downloads (or if every attempt
   // fails) the photo cockpit stays on screen as a fallback so the game remains playable.
   async loadCockpit3D(attempt = 1) {
-    const applied = await this.cockpit.setMode('3d', CAMERA_PRESETS[0].offset);
+    const applied = await this.cockpit.setMode(
+      '3d',
+      CAMERA_PRESETS[this.cameraPresetIndex || 0].offset,
+      this.selectedCar
+    );
     if (applied !== '3d' && attempt < 3) {
       setTimeout(() => this.loadCockpit3D(attempt + 1), attempt * 2000);
     }
@@ -959,6 +963,10 @@ class OtobanMakasGame {
 
     if (switchShowroom) {
       this.showroom?.switchCar(carId);
+    }
+
+    if (this.cockpit) {
+      this.cockpit.setCarType(carId, CAMERA_PRESETS[this.cameraPresetIndex || 0].offset);
     }
 
     if (this.multiplayer) {
