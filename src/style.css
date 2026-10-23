@@ -2048,6 +2048,48 @@
     border: 1px solid rgba(255, 42, 75, 0.5);
     color: #ff6b81;
   }
+
+  /* Live Racing Circuit / Track Lap Timing HUD Card */
+  .track-card {
+    border-color: rgba(225, 29, 72, 0.55);
+    background: rgba(24, 8, 14, 0.85);
+    box-shadow: 0 0 16px rgba(225, 29, 72, 0.22);
+    min-inline-size: 160px;
+    gap: 3px;
+  }
+
+  .track-hud-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .track-badge {
+    font-size: 0.65rem;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #e11d48;
+    color: #ffffff;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .track-time {
+    font-family: ui-monospace, monospace;
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: #38bdf8;
+    letter-spacing: 0.04em;
+  }
+
+  .track-best-label {
+    font-size: 0.62rem;
+    color: #94a3b8;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
   /* Live 2-Player HUD Card */
   .mp-hud-card {
     border-color: rgba(16, 185, 129, 0.55);
@@ -2262,6 +2304,19 @@
   }
 
   .stat-value {
+    font-size: 0.88rem !important;
+  }
+
+  .track-card {
+    min-inline-size: auto !important;
+    padding-block: 2px !important;
+    padding-inline: 7px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 5px !important;
+  }
+
+  .track-time {
     font-size: 0.88rem !important;
   }
 

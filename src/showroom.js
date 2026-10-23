@@ -96,7 +96,7 @@ class StudioEnvironment {
 
 export class A8Showroom {
   // canvas: where the garage is drawn; stage: the empty layout box the car is framed into
-  constructor(canvas, stage, { paintHex, accent = '#00f0ff', onReady } = {}) {
+  constructor(canvas, stage, { paintHex = 0x0c0e12, accent = '#00f0ff', onReady } = {}) {
     this.canvas = canvas;
     this.stage = stage;
     this.onReady = onReady;

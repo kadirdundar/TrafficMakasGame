@@ -56,7 +56,12 @@ export class TrafficManager {
 
   setDensity(mode) {
     this.densityMode = mode;
-    const counts = this.roadMode === 'twoway' ? [8, 12, 16] : [12, 18, 24];
+    const counts =
+      this.roadMode === 'twoway'
+        ? [8, 12, 16]
+        : this.roadMode === 'track'
+        ? [8, 14, 20]
+        : [12, 18, 24];
     if (mode === 'normal') this.maxVehicles = counts[0];
     else if (mode === 'heavy') this.maxVehicles = counts[1];
     else this.maxVehicles = counts[2];
@@ -131,6 +136,14 @@ export class TrafficManager {
   }
 
   getLaneTargetSpeed(lane, spec) {
+    if (this.roadMode === 'track') {
+      // Racing circuit / Track Day: Cars drive fast and aggressively across all lanes
+      const trackBaseSpeeds = [172, 154, 138, 122];
+      const base = trackBaseSpeeds[lane] ?? 145;
+      const typeOffset = spec.type === 'sport' ? 14 : spec.type === 'sedan' ? 6 : -4;
+      return base + typeOffset + (Math.random() * 8 - 4);
+    }
+
     // Lane 0 (Far Left Fast Lane): ~136 - 156 km/h
     // Lane 1 (Left-Center Lane):   ~112 - 128 km/h
     // Lane 2 (Right-Center Lane):  ~92 - 106 km/h
@@ -147,16 +160,24 @@ export class TrafficManager {
       return;
     }
     car.dir = 1;
-    // Trucks & vans stay in right lanes (2 or 3); sport/sedans prefer left lanes (0, 1, 2)
     let lane = Math.floor(Math.random() * 4);
-    if (car.spec.type === 'truck') {
-      lane = Math.random() < 0.8 ? 3 : 2;
-    } else if (car.spec.type === 'van') {
-      lane = Math.random() < 0.6 ? 3 : 2;
-    } else if (car.spec.type === 'sport') {
-      lane = Math.random() < 0.72 ? 0 : 1;
-    } else if (car.spec.type === 'sedan') {
-      lane = Math.random() < 0.45 ? 0 : Math.random() < 0.75 ? 1 : 2;
+    if (this.roadMode === 'track') {
+      if (car.spec.type === 'sport') {
+        lane = Math.random() < 0.65 ? 0 : 1;
+      } else if (car.spec.type === 'truck') {
+        lane = 3;
+      }
+    } else {
+      // Trucks & vans stay in right lanes (2 or 3); sport/sedans prefer left lanes (0, 1, 2)
+      if (car.spec.type === 'truck') {
+        lane = Math.random() < 0.8 ? 3 : 2;
+      } else if (car.spec.type === 'van') {
+        lane = Math.random() < 0.6 ? 3 : 2;
+      } else if (car.spec.type === 'sport') {
+        lane = Math.random() < 0.72 ? 0 : 1;
+      } else if (car.spec.type === 'sedan') {
+        lane = Math.random() < 0.45 ? 0 : Math.random() < 0.75 ? 1 : 2;
+      }
     }
 
     // Choose a Z position ahead of the leading player (-165m to -300m ahead of frontAnchorZ)

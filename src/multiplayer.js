@@ -30,10 +30,10 @@ const CONNECT_TIMEOUT_MS = 4000;
 
 // Per-slot paint & nameplate colour so every friend is recognisable (slot 0 = host)
 export const SLOT_STYLES = [
-  { paint: 0x0e6f9c, tag: '#10b981' },
-  { paint: 0x8f1020, tag: '#f59e0b' },
-  { paint: 0xe4e8ec, tag: '#38bdf8' },
-  { paint: 0x17191f, tag: '#e879f9' },
+  { paint: 0x0c0e12, tag: '#10b981' }, // Mitos Siyahı (Host / Default A8)
+  { paint: 0x33383f, tag: '#f59e0b' }, // Daytona Gri
+  { paint: 0x0d1c33, tag: '#38bdf8' }, // Navarra Mavisi (Derin Gece Mavisi)
+  { paint: 0xeff2f6, tag: '#e879f9' }, // Buzul Beyazı
 ];
 
 // Everyone launches side by side, one lane each
