@@ -1408,20 +1408,20 @@ class OtobanMakasGame {
       rawSteer = this.touchSteerValue;
     }
 
-    // Progressive Speed-Sensitive Power Steering (Audi Dynamic Steering - Executive Sedan Tuning):
-    // - Composed, progressive response: heavy, stable, calm feel at high speed
-    // - Smooth caster self-aligning torque without twitching or jitter
+    // Progressive Speed-Sensitive Power Steering (Audi Dynamic Steering):
+    // - Counter-steering (reversing direction) is extra crisp so driver can catch slides
+    // - Self-centering caster return scales with forward speed when keys are released
     const speedRatio = Math.min(1, Math.max(0, (this.speedKmh - 50) / 210));
     const isCentering = Math.abs(rawSteer) < 0.02;
     const isCounterSteer = rawSteer * this.steerInput < -0.04;
 
     let steerRate;
     if (isCentering) {
-      steerRate = 6.2 + speedRatio * 3.0; // Composed, natural caster self-aligning torque
+      steerRate = 8.5 + speedRatio * 5.0; // Natural caster self-aligning torque
     } else if (isCounterSteer) {
-      steerRate = 8.6 - speedRatio * 1.8; // Controlled counter-steer response during makas transitions
+      steerRate = 13.5 - speedRatio * 2.5; // Quick counter-steer response during makas transitions
     } else {
-      steerRate = 6.8 - speedRatio * 2.0; // Progressive, weighted executive turn-in (calm & stately)
+      steerRate = 10.5 - speedRatio * 2.5; // Quick turn-in, still a little heavier at 200+ km/h
     }
     this.steerInput = THREE.MathUtils.lerp(this.steerInput, rawSteer, Math.min(1, dt * steerRate));
 
@@ -1430,10 +1430,6 @@ class OtobanMakasGame {
     const maxSpeed = 260;
     const minSpeed = 0;
 
-    // Progressive throttle filter: simulates torque converter and dual-clutch smooth engagement
-    // eliminating arcade digital snatch on keypresses
-    this.appliedThrottle = THREE.MathUtils.lerp(this.appliedThrottle || 0, throttle, Math.min(1, dt * 5.0));
-
     // Resistance grows with the square of speed (aero drag) plus a small rolling term,
     // so the car pulls hard in town but has to fight the air past ~200 km/h.
     const AERO_DRAG = 0.00027; // km/h/s per (km/h)^2
@@ -1441,11 +1437,11 @@ class OtobanMakasGame {
     const resistance = AERO_DRAG * this.speedKmh * this.speedKmh + ROLLING_DRAG;
 
     let accelKmhPerSec = 0;
-    if (this.appliedThrottle > 0.01) {
-      // Refined Audi A8 60 TFSI 4.0 V8 Twin-Turbo Quattro:
-      // Authoritative, serene and effortless acceleration curve (~4.8 s 0→100 km/h)
-      const ENGINE_POWER = 3500;
-      const TRACTION_LIMIT = 23;
+    if (throttle > 0) {
+      // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
+      // ~3.3 s 0→100, ~5.6 s 100→200, ~12.5 s 200→240
+      const ENGINE_POWER = 4200;
+      const TRACTION_LIMIT = 33;
       const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
 
       let effectiveThrust;
@@ -1461,17 +1457,16 @@ class OtobanMakasGame {
       }
 
       // Part throttle settles at a cruising speed: ~125 km/h at 15%, ~185 km/h at 50%
-      accelKmhPerSec = effectiveThrust * this.appliedThrottle - resistance;
+      accelKmhPerSec = effectiveThrust * throttle - resistance;
     } else if (brake > 0) {
-      // Composed, progressive executive braking (~1.2 G maximum emergency stop)
-      accelKmhPerSec = -44 * brake;
+      accelKmhPerSec = -115 * brake; // Strong Brembo sport brakes
     } else {
-      // Off throttle: serene executive coasting (ZF 8HP Segeln mode with low rolling drag)
-      accelKmhPerSec = -(2.2 + resistance * 0.82);
+      // Off throttle: engine braking + drag (bleeds speed faster at 200+), rolling to a stop
+      accelKmhPerSec = -(6 + resistance);
     }
 
     // Slight cornering scrub when carving aggressively at high G
-    const corneringDrag = Math.abs(this.lateralG) * 3.2;
+    const corneringDrag = Math.abs(this.lateralG) * 4.2;
     accelKmhPerSec -= corneringDrag;
 
     const prevSpeed = this.speedKmh;
@@ -1479,7 +1474,7 @@ class OtobanMakasGame {
     this.longitudinalG = THREE.MathUtils.lerp(
       this.longitudinalG,
       (this.speedKmh - prevSpeed) / (Math.max(0.001, dt) * 90),
-      Math.min(1, dt * 8)
+      Math.min(1, dt * 12)
     );
 
     // 3. Audi A8 8-speed tiptronic (ZF 8HP) & RPM from the real drivetrain ratios.
@@ -1491,7 +1486,7 @@ class OtobanMakasGame {
     const downshiftRpm = 1150 + throttle * 2200;
     const shiftClockSec = performance.now() / 1000;
 
-    if (shiftClockSec - this.lastShiftAt > 0.45) {
+    if (shiftClockSec - this.lastShiftAt > 0.4) {
       let targetGear = this.gear;
       if (targetGear < 8 && rpmInGear(targetGear) > upshiftRpm) {
         targetGear += 1;
@@ -1513,18 +1508,18 @@ class OtobanMakasGame {
     }
 
     const targetRpm = Math.max(A8_IDLE_RPM, rpmInGear(this.gear));
-    this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 9));
+    this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 10));
 
-    // 4. Realistic Lateral Vehicle Dynamics (Smooth Yaw, Composed Tire Grip & Autobahn Poise)
+    // 4. Realistic Lateral Vehicle Dynamics (Smooth Yaw, Tire Grip & Rock-Solid Straight-Line Stability)
     const speedMs = this.speedKmh / 3.6;
     const wetFactor = this.world.weatherKey === 'rain' ? 0.85 : 1.0;
 
-    // Target chassis heading angle (calm, subtle angles suitable for an executive limousine)
-    const maxHeadingAngle = 0.11 - speedRatio * 0.045; // ~6.3 deg at low speed, ~3.7 deg at 260 km/h
+    // Target chassis heading angle (narrows at high speed for stability)
+    const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 260 km/h
     const targetHeading = this.steerInput * maxHeadingAngle;
 
-    // Smooth, critically damped yaw response (rock-solid stability, zero twitching)
-    const headingRate = isCentering ? 7.2 + speedRatio * 2.4 : (5.4 + speedRatio * 1.6) * wetFactor;
+    // Critically damped yaw response (no oscillation/fishtailing when driving straight)
+    const headingRate = isCentering ? 11.5 + speedRatio * 3.5 : (8.2 + speedRatio * 2.0) * wetFactor;
     this.headingAngle = THREE.MathUtils.lerp(
       this.headingAngle,
       targetHeading,
@@ -1535,20 +1530,20 @@ class OtobanMakasGame {
     }
     this.yawRate = (targetHeading - this.headingAngle) * headingRate;
 
-    // Lateral velocity follows natural heading + composed all-wheel steering assistance + curve drift
+    // Lateral velocity follows nose heading + front tire cornering force + highway curve centrifugal drift
     const curveKappa = this.world.getCurrentCurvature(); // + = right curve ahead, - = left curve ahead
     const maxDrift = 1.35;
-    const rawCentrifugal = -curveKappa * speedMs * (this.traffic.roadMode === 'track' ? 8.0 : 18.0);
+    const rawCentrifugal = -curveKappa * speedMs * (this.traffic.roadMode === 'track' ? 8.0 : 21.0);
     const centrifugalDriftVel = Math.max(-maxDrift, Math.min(maxDrift, rawCentrifugal));
 
     const steerLatVel =
-      Math.sin(this.headingAngle) * speedMs * 0.82 +
-      this.steerInput * (2.2 + speedRatio * 1.1) * Math.min(1, this.speedKmh / 35); // calm, progressive sideways glide
+      Math.sin(this.headingAngle) * speedMs * 0.62 +
+      this.steerInput * (4.6 + speedRatio * 2.0) * Math.min(1, this.speedKmh / 40); // no sideways creep when standing
     const desiredLatVel = steerLatVel + centrifugalDriftVel;
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
-      ? 8.5 * wetFactor
-      : (6.6 - speedRatio * 1.2) * wetFactor;
+      ? 12.5 * wetFactor
+      : (9.2 - speedRatio * 1.4) * wetFactor;
     this.lateralVel = THREE.MathUtils.lerp(
       this.lateralVel,
       desiredLatVel,
@@ -1559,10 +1554,10 @@ class OtobanMakasGame {
     }
     this.playerX += this.lateralVel * dt;
 
-    // Smooth lateral G-force
+    // Smooth lateral G-force (includes steady cornering load inside highway curves, 0 on straightaways)
     const latAccelG = (this.lateralVel - prevLatVel) / (Math.max(0.001, dt) * 24.0);
     const rawLatG = (this.lateralVel - centrifugalDriftVel * 0.75) / 9.8 + latAccelG * 0.25;
-    this.lateralG = THREE.MathUtils.lerp(this.lateralG, rawLatG, Math.min(1, dt * 9));
+    this.lateralG = THREE.MathUtils.lerp(this.lateralG, rawLatG, Math.min(1, dt * 12));
     if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralG) < 0.005) {
       this.lateralG = 0;
     }
@@ -1571,19 +1566,18 @@ class OtobanMakasGame {
     const maxLateralX = this.world.roadHalfWidth - 1.05;
     if (Math.abs(this.playerX) > maxLateralX) {
       this.playerX = Math.sign(this.playerX) * maxLateralX;
-      this.lateralVel *= -0.25;
-      this.headingAngle *= 0.25;
-      this.rollVel += -Math.sign(this.playerX) * 0.15;
-      this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
+      this.lateralVel *= -0.3;
+      this.headingAngle *= 0.3;
+      this.rollVel += -Math.sign(this.playerX) * 0.2;
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
       // Slight speed scrub on barrier scrape
-      this.speedKmh = Math.max(0, this.speedKmh - 24 * dt);
+      this.speedKmh = Math.max(0, this.speedKmh - 28 * dt);
     }
 
-    // 5. Audi Predictive Active Air Suspension (Refined, Level, Serene Ride)
-    // Active suspension counteracts body roll and pitch to maintain executive composure
-    const targetRoll = THREE.MathUtils.clamp(-this.lateralG * 0.018, -0.026, 0.026);
-    const rollSpring = 120.0;
-    const rollDamping = 28.0; // Critically damped, zero wobble
+    // 5. Critically Damped Suspension Dynamics (Smooth Weight Transfer, Zero Straight-Line Bounce)
+    const targetRoll = THREE.MathUtils.clamp(-this.lateralG * 0.028, -0.042, 0.042);
+    const rollSpring = 110.0;
+    const rollDamping = 24.0; // Critically damped (> 2*sqrt(110)) so it never oscillates when straight
     const rollAccel = (targetRoll - this.bodyRoll) * rollSpring - this.rollVel * rollDamping;
     this.rollVel += rollAccel * dt;
     this.bodyRoll += this.rollVel * dt;
@@ -1595,13 +1589,15 @@ class OtobanMakasGame {
     // Only pitch during active throttle or braking; dead-flat when cruising straight
     const activeLongG = throttle > 0 || brake > 0 ? this.longitudinalG : 0;
 
-    // Felt acceleration: smooth, cushioned build-up
-    const feltTarget = THREE.MathUtils.clamp(activeLongG * (1 + this.speedKmh / 140), -0.45, 0.45);
-    this.accelFeel += (feltTarget - this.accelFeel) * Math.min(1, dt * (feltTarget > this.accelFeel ? 2.5 : 4.0));
+    // Felt acceleration: the real G is small at motorway speeds (the car pulls realistically
+    // there), so it is boosted as the speed rises. It builds up and eases off smoothly and drives
+    // the seat push, the nose lift and the widening view below.
+    const feltTarget = THREE.MathUtils.clamp(activeLongG * (1 + this.speedKmh / 120), -0.6, 0.6);
+    this.accelFeel += (feltTarget - this.accelFeel) * Math.min(1, dt * (feltTarget > this.accelFeel ? 3 : 5));
 
-    const targetPitch = THREE.MathUtils.clamp(this.accelFeel * 0.007, -0.014, 0.012);
-    const pitchSpring = 105.0;
-    const pitchDamping = 25.0; // Critically damped
+    const targetPitch = THREE.MathUtils.clamp(this.accelFeel * 0.011, -0.022, 0.018);
+    const pitchSpring = 95.0;
+    const pitchDamping = 22.0; // Critically damped
     const pitchAccel = (targetPitch - this.bodyPitch) * pitchSpring - this.pitchVel * pitchDamping;
     this.pitchVel += pitchAccel * dt;
     this.bodyPitch += this.pitchVel * dt;
@@ -1610,26 +1606,27 @@ class OtobanMakasGame {
     this.cockpit.group.position.x = this.playerX;
     this.cockpit.group.rotation.set(0, 0, 0);
 
-    // 6. Executive Cabin Camera Isolation (Stable, Calm Horizon, Gentle Fluid Motion)
+    // 6. Driver Head Camera Movement (Rock-solid on straightaways, natural lean in turns)
     const preset = CAMERA_PRESETS[this.cameraPresetIndex];
-    const shakeX = (Math.random() - 0.5) * 0.012 * this.shakeIntensity;
-    const shakeY = (Math.random() - 0.5) * 0.012 * this.shakeIntensity;
+    const shakeX = (Math.random() - 0.5) * 0.024 * this.shakeIntensity;
+    const shakeY = (Math.random() - 0.5) * 0.024 * this.shakeIntensity;
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 2.8);
 
-    this.camera.position.x = preset.offset.x - this.lateralG * 0.014 + shakeX;
+    this.camera.position.x = preset.offset.x - this.lateralG * 0.022 + shakeX;
     this.camera.position.y = preset.offset.y + shakeY;
     // Pushed back into the seat under acceleration, thrown forward under braking (+Z is backward)
-    this.camera.position.z = preset.offset.z + this.accelFeel * 0.038;
+    this.camera.position.z = preset.offset.z + this.accelFeel * 0.06;
 
-    // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean with calm damping
-    this.camera.rotation.y = -this.headingAngle * 0.32;
-    this.camera.rotation.z = this.bodyRoll * 0.48;
-    this.camera.rotation.x = this.bodyPitch * 0.42;
+    // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean
+    this.camera.rotation.y = -this.headingAngle * 0.52;
+    this.camera.rotation.z = this.bodyRoll * 0.75;
+    this.camera.rotation.x = this.bodyPitch * 0.65;
 
-    // Controlled Autobahn FOV dynamics: calm and cinematic without dizziness
-    const speedFovBoost = Math.max(0, (this.speedKmh - 110) / 200) * 6.5;
-    const accelFovKick = this.accelFeel * 2.8;
-    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost + accelFovKick, dt * 4.5);
+    // Speed-based FOV warp for intense sense of speed above 140 km/h, widening a little more
+    // while the car pulls (and narrowing a little under braking)
+    const speedFovBoost = Math.max(0, (this.speedKmh - 100) / 200) * 11;
+    const accelFovKick = this.accelFeel * 5;
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost + accelFovKick, dt * 6);
     this.camera.updateProjectionMatrix();
 
     // 7. Continuous High-Speed Scoring & Combo Decay

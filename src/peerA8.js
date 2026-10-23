@@ -29,7 +29,7 @@ function glowQuads(points, w, h, facingFront, material) {
   return mesh;
 }
 
-export async function loadA8PeerCar({ paintHex = 0x0c0e12 } = {}) {
+export async function loadA8PeerCar({ paintHex = 0x0e6f9c } = {}) {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(MODEL_URL);
   const model = gltf.scene;
@@ -50,11 +50,11 @@ export async function loadA8PeerCar({ paintHex = 0x0c0e12 } = {}) {
 
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: paintHex,
-    metalness: 0.86,
-    roughness: 0.17,
+    metalness: 0.82,
+    roughness: 0.22,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.035,
-    envMapIntensity: 1.35,
+    clearcoatRoughness: 0.05,
+    envMapIntensity: 1.2,
   });
 
   const headMats = [];
@@ -67,14 +67,6 @@ export async function loadA8PeerCar({ paintHex = 0x0c0e12 } = {}) {
     const name = mat.name || '';
     if (name === 'paint') {
       o.material = bodyMat;
-    } else if (name === 'chrome' || name === 'badge') {
-      mat.metalness = 0.98;
-      mat.roughness = 0.12;
-      mat.envMapIntensity = 1.4;
-    } else if (name === 'glass') {
-      mat.roughness = 0.06;
-      mat.metalness = 0.1;
-      mat.envMapIntensity = 1.5;
     } else if (name.startsWith('head')) {
       mat.emissive.set(0xffffff);
       mat.emissiveMap = mat.map;

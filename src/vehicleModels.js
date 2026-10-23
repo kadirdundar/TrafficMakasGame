@@ -940,7 +940,7 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
 // Online friend's car: A8-style flagship saloon with its own light materials
 // (braking / high-beam / night are driven by the peer's synced state)
 // ---------------------------------------------------------------------------------------------
-export function createLuxurySedan({ paintHex = 0x0c0e12, metalness = 0.86, roughness = 0.17 } = {}) {
+export function createLuxurySedan({ paintHex = 0x0e6f9c, metalness = 0.82, roughness = 0.2 } = {}) {
   const m = shared();
   const geo = getStyleGeometry(LUXURY_SPEC, 'luxury', false, 'multi');
 

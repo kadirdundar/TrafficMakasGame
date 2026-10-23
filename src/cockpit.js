@@ -794,16 +794,16 @@ export class CarCockpit {
       bodyPitch = 0,
     } = state;
 
-    // Realistic highway steering wheel angle (Executive Audi Limousine dynamic steering):
-    // Lane changes & makas maneuvers in an A8 use subtle, composed wheel inputs (~24° to 36°),
-    // smoothly damped by speed-sensitive electromechanical power steering.
+    // Realistic highway steering wheel angle:
+    // On a real highway (90-260 km/h), lane changes & makas maneuvers use ~25° to 38° (0.45 - 0.66 rad),
+    // not full parking-lot lock. Angle also tightens slightly as speed increases.
     const speedFactor = Math.min(1, Math.max(0, ((speedKmh || 90) - 60) / 200));
-    const maxWheelRad = 0.64 - speedFactor * 0.22; // ~37° at low speed, ~24° at 260 km/h
+    const maxWheelRad = 0.85 - speedFactor * 0.25; // ~49° at low speed, ~34° at 260 km/h
     const targetWheelAngle = steerInput * maxWheelRad;
     this.currentSteerVisual = THREE.MathUtils.lerp(
       this.currentSteerVisual,
       targetWheelAngle,
-      Math.min(1, dt * 8.5)
+      Math.min(1, dt * 16)
     );
 
     // Animate wipers
