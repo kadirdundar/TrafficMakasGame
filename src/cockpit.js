@@ -674,19 +674,7 @@ export class CarCockpit {
     const s = this._screenState;
     if (!s) return;
     if (name === 'cluster') {
-      this.drawVirtualCockpitScreen(
-        ctx,
-        0,
-        0,
-        w,
-        h,
-        s.speedKmh,
-        s.rpm,
-        s.gear,
-        s.highBeam,
-        s.odometerKm,
-        s.limiterActive
-      );
+      this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
     }
   }
 
@@ -988,8 +976,7 @@ export class CarCockpit {
       rpm,
       gear,
       highBeam,
-      odometerKm,
-      state.limiterActive
+      odometerKm
     );
 
     // 5. Draw Live High-DPI Upper MMI Touch Screen (srcX: 271..337, srcY: 139..166)
@@ -1168,7 +1155,7 @@ export class CarCockpit {
   // Audi Virtual Cockpit: tachometer (left), speedometer (right), digital speed in the middle.
   // Faces, ticks and numbers never change, so they are drawn once into a cached canvas; each
   // repaint only adds the arcs, needles and readouts.
-  drawVirtualCockpitScreen(ctx, x, y, w, h, speedKmh, rpm, gear, highBeam, odometerKm, limiterActive = false) {
+  drawVirtualCockpitScreen(ctx, x, y, w, h, speedKmh, rpm, gear, highBeam, odometerKm) {
     const accent = AMBIENT_COLORS[this.ambientKey]?.css || '#00f0ff';
     const scale = Math.max(1, ctx.getTransform().a);
     const layout = {
@@ -1182,10 +1169,8 @@ export class CarCockpit {
     ctx.drawImage(this.getClusterFace(w, h, scale), x, y, w, h);
 
     const { r, tach, speedo, centerX } = layout;
-    const tachColor = rpm > 6500 || limiterActive ? '#ff3b4f' : accent;
-    const speedoColor = limiterActive ? '#ff3b4f' : accent;
-    this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), tachColor);
-    this.drawClusterNeedle(ctx, speedo.cx, speedo.cy, r, Math.min(1, speedKmh / 260), speedoColor);
+    this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), rpm > 6500 ? '#ff3b4f' : accent);
+    this.drawClusterNeedle(ctx, speedo.cx, speedo.cy, r, Math.min(1, speedKmh / 260), accent);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1197,11 +1182,10 @@ export class CarCockpit {
 
     // Speed in the middle, between the dials
     ctx.font = `800 ${h * 0.3}px system-ui, sans-serif`;
-    ctx.fillStyle = limiterActive ? '#ff3b4f' : '#f8fafc';
     ctx.fillText(String(Math.round(speedKmh)), centerX, y + h * 0.52);
-    ctx.fillStyle = limiterActive ? '#ff3b4f' : '#94a3b8';
+    ctx.fillStyle = '#94a3b8';
     ctx.font = `600 ${h * 0.09}px system-ui, sans-serif`;
-    ctx.fillText(limiterActive ? 'LIMIT 260' : 'km/h', centerX, y + h * 0.7);
+    ctx.fillText('km/h', centerX, y + h * 0.7);
     ctx.fillText(`${Math.floor(odometerKm)} km`, centerX, y + h * 0.88);
 
     if (highBeam) {
