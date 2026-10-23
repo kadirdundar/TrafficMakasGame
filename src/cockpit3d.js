@@ -84,6 +84,24 @@ const COCKPIT_CONFIGS = {
     wiperPivots: [[0.40, 0.96, 0.68], [-0.10, 0.96, 0.70]],
     wiperLen: 0.60,
     floor: { w: 1.8, h: 1.6, y: 0.22, z: 0.05 },
+    // The source model has no interior A-pillar trims or headliner: from the seat you only see the
+    // back of the thin outer body skin. Rebuild both: a trim along the windshield's side edge
+    // (traced from the windshield glass, left side; mirrored for the right) and a back-face
+    // colour for the roof skin.
+    pillarEdge: [
+      [0.69, 1.0, 0.52],
+      [0.683, 1.045, 0.433],
+      [0.675, 1.078, 0.367],
+      [0.66, 1.114, 0.297],
+      [0.642, 1.151, 0.222],
+      [0.624, 1.188, 0.147],
+      [0.607, 1.218, 0.087],
+      [0.585, 1.243, 0.035],
+      [0.56, 1.262, 0.0],
+    ],
+    pillarSpan: [0.085, -0.015, -0.055], // windshield edge -> side window edge (left side)
+    trimColor: 0x4a4c52, // anthracite Alcantara
+    skinMesh: 'm8f92_body001_m8f92_Coloured_0',
     hideVariants: [
       'keyvany',
       'cs',
@@ -155,6 +173,50 @@ function createLedStrips(paths) {
   return { coreMesh, glowMesh, coreMat, glowMat };
 }
 
+// A-pillar trim: a padded strip whose cross-section bows into the cabin, swept along the edge
+function createPillarTrim(edge, span, side, material) {
+  const curve = new THREE.CatmullRomCurve3(edge.map(([x, y, z]) => new THREE.Vector3(x * side, y, z)));
+  const spanV = new THREE.Vector3(span[0] * side, span[1], span[2]);
+  const ACROSS = 6;
+  const ALONG = 24;
+  const positions = [];
+  const p = new THREE.Vector3();
+  const t = new THREE.Vector3();
+  const bulge = new THREE.Vector3();
+  for (let i = 0; i <= ALONG; i++) {
+    curve.getPointAt(i / ALONG, p);
+    curve.getTangentAt(i / ALONG, t);
+    // Bow towards the cabin: perpendicular to the edge and the span, pointing inwards / down
+    bulge.crossVectors(t, spanV).normalize();
+    if (bulge.x * side > 0 || bulge.y > 0) bulge.negate();
+    // The pillar narrows where it runs into the roof
+    const width = 1 - 0.55 * Math.max(0, (i / ALONG - 0.6) / 0.4);
+    for (let j = 0; j <= ACROSS; j++) {
+      const k = (j / ACROSS) * width;
+      positions.push(
+        p.x + spanV.x * k + bulge.x * 0.03 * Math.sin((Math.PI * k) / width) - side * 0.006,
+        p.y + spanV.y * k + bulge.y * 0.03 * Math.sin((Math.PI * k) / width) - 0.006,
+        p.z + spanV.z * k + bulge.z * 0.03 * Math.sin((Math.PI * k) / width) - 0.004
+      );
+    }
+  }
+  const index = [];
+  for (let i = 0; i < ALONG; i++) {
+    for (let j = 0; j < ACROSS; j++) {
+      const a = i * (ACROSS + 1) + j;
+      const b = a + ACROSS + 1;
+      index.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = side > 0 ? 'pillar_trim_L' : 'pillar_trim_R';
+  return mesh;
+}
+
 function createWiper(pivotPos, glassOut, wiperLen) {
   const arm = new THREE.BoxGeometry(wiperLen, 0.012, 0.008).translate(wiperLen / 2, 0, 0);
   const blade = new THREE.BoxGeometry(wiperLen * 0.72, 0.02, 0.012).translate(wiperLen * 0.62, -0.006, 0.006);
@@ -220,6 +282,22 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
     // Hide windshield glass mesh so exterior world is rendered crisp & vibrant
     const ws = model.getObjectByName('m8f92_windshield_m8f92_glass_0');
     if (ws) ws.visible = false;
+
+    // A faint self-glow keeps the trim readable against the road at night
+    const trimMat = new THREE.MeshStandardMaterial({
+      color: cfg.trimColor,
+      emissive: cfg.trimColor,
+      emissiveIntensity: 0.25,
+      roughness: 0.95,
+      side: THREE.DoubleSide,
+    });
+    model.add(
+      createPillarTrim(cfg.pillarEdge, cfg.pillarSpan, 1, trimMat),
+      createPillarTrim(cfg.pillarEdge, cfg.pillarSpan, -1, trimMat)
+    );
+    // The roof / pillar skin is only ever seen from inside the cabin: dress it as the headliner
+    const skin = model.getObjectByName(cfg.skinMesh);
+    if (skin) skin.material = trimMat;
 
     // Hide overlapping aftermarket / variant parts
     if (cfg.hideVariants) {
