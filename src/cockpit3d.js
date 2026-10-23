@@ -41,7 +41,8 @@ const COCKPIT_CONFIGS = {
     modelUrl: `${import.meta.env.BASE_URL}models/bmw-cockpit.glb`,
     scale: 1.0,
     rotationY: Math.PI,
-    defaultEye: [-0.397, 1.18, 0.22],
+    // Eye ~0.55 m behind and 0.3 m above the wheel hub, as in the A8 (the headrest sits at z -0.6)
+    defaultEye: [-0.397, 1.18, 0.46],
     wheelRadius: 0.18,
     steerSign: 1,
     softMaterials: new Set([
@@ -63,10 +64,21 @@ const COCKPIT_CONFIGS = {
       },
     },
     ledPaths: [
-      [[0.74, 0.81, -0.35], [0.745, 0.80, 0.0], [0.74, 0.79, 0.35]],
-      [[-0.74, 0.81, -0.35], [-0.745, 0.80, 0.0], [-0.74, 0.79, 0.35]],
-      [[0.55, 0.84, 0.28], [0.25, 0.84, 0.27], [0.0, 0.85, 0.25], [-0.25, 0.84, 0.27], [-0.55, 0.84, 0.28]],
+      // Door trims along the seam above the quilted inserts, and the passenger half of the dash
+      [[0.727, 0.872, -0.56], [0.731, 0.872, -0.3], [0.735, 0.872, -0.05], [0.728, 0.876, 0.1]],
+      [[-0.727, 0.872, -0.56], [-0.731, 0.872, -0.3], [-0.735, 0.872, -0.05], [-0.728, 0.876, 0.1]],
+      [[-0.28, 0.802, 0.205], [-0.45, 0.802, 0.23], [-0.6, 0.802, 0.244], [-0.68, 0.802, 0.228]],
     ],
+    // Fiona Red leather + soft-touch black dash (the exterior model's cabin is red as well)
+    tints: {
+      m8f92_InteriorColor2: { color: 0x5a1815, roughness: 0.62 },
+      m8f92_InteriorColourZone: { color: 0x6a1d19, roughness: 0.7 },
+      m8f92_InteriorTillingColourZone: { color: 0x6a1d19, roughness: 0.7 },
+      m8f92_Coloured: { color: 0x17181b, roughness: 0.55, metalness: 0.1 },
+      m8f92_Carbon1: { color: 0x0d0d0f, roughness: 0.35, metalness: 0.2 },
+      // Hood and wings seen through the windshield: deep metallic paint like the A8's
+      m8f92_CarPaint: { color: 0x07090c, roughness: 0.25, metalness: 0.8, clearcoat: 1 },
+    },
     glassOut: new THREE.Vector3(0, 0.82, 0.57).normalize(),
     glassUp: new THREE.Vector3(0, 0.57, -0.82).normalize(),
     wiperPivots: [[0.40, 0.96, 0.68], [-0.10, 0.96, 0.70]],
@@ -83,6 +95,7 @@ const COCKPIT_CONFIGS = {
       'mirror_r_blk',
       'bodyroof_black',
       'm5f90',
+      'engine',
     ],
   },
 };
@@ -310,13 +323,19 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
   const cabinMats = new Set();
   model.traverse((o) => {
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
-    if (cfg.softMaterials.has(o.material.name)) {
+    const tint = cfg.tints?.[o.material.name];
+    if (tint) {
+      const { color, ...props } = tint;
+      o.material.color.setHex(color);
+      for (const [k, v] of Object.entries(props)) if (k in o.material) o.material[k] = v;
+    } else if (cfg.softMaterials.has(o.material.name)) {
       o.material.metalness = 0.05;
       o.material.roughness = 0.78;
       if (o.material.name === 'a8texture3') o.material.color.setScalar(0.4);
     }
     if (o.material.map) {
-      o.material.emissive.set(0xffffff);
+      // Night glow follows the leather tint instead of the white detail map
+      o.material.emissive.set(tint ? tint.color : 0xffffff);
       o.material.emissiveMap = o.material.map;
       o.material.emissiveIntensity = 0;
       cabinMats.add(o.material);
