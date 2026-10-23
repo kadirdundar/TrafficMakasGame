@@ -39,8 +39,8 @@ const COCKPIT_CONFIGS = {
   bmw: {
     modelUrl: `${import.meta.env.BASE_URL}models/bmw-m4-cockpit.glb`,
     scale: 1.0,
-    defaultEye: [-0.434, 1.18, 0.02],
-    wheelRadius: 0.18,
+    defaultEye: [-0.375, 1.12, 0.12],
+    wheelRadius: 0.185,
     steerSign: -1,
     softMaterials: new Set([
       'm4car_interior1.007',
@@ -50,21 +50,21 @@ const COCKPIT_CONFIGS = {
     ]),
     screens: {
       cluster: {
-        tl: [-0.58, 0.98, -0.78],
-        tr: [-0.32, 0.98, -0.75],
-        bl: [-0.58, 0.84, -0.74],
-        br: [-0.32, 0.84, -0.71],
-        n: [0.05, 0.28, 0.96],
-        logical: [200, 77],
-        px: [512, 196],
+        tl: [-0.525, 0.985, -0.585],
+        tr: [-0.185, 0.985, -0.575],
+        bl: [-0.525, 0.852, -0.630],
+        br: [-0.185, 0.852, -0.620],
+        n: [0.02, 0.35, 0.93],
+        logical: [240, 95],
+        px: [1024, 400],
       },
     },
     ledPaths: [
       // Left and right door trims
-      [[-0.95, 0.85, -0.55], [-0.95, 0.85, -0.2], [-0.95, 0.85, 0.1]],
-      [[0.95, 0.85, -0.55], [0.95, 0.85, -0.2], [0.95, 0.85, 0.1]],
+      [[-0.73, 0.93, -0.25], [-0.73, 0.90, -0.05], [-0.73, 0.85, 0.15]],
+      [[0.73, 0.93, -0.25], [0.73, 0.90, -0.05], [0.73, 0.85, 0.15]],
       // Dashboard ambient contour line
-      [[-0.15, 0.88, -0.72], [0.20, 0.88, -0.72], [0.55, 0.88, -0.72]],
+      [[-0.10, 0.88, -0.60], [0.22, 0.88, -0.60], [0.55, 0.88, -0.60]],
     ],
     glassOut: new THREE.Vector3(0, 0.82, -0.57).normalize(),
     glassUp: new THREE.Vector3(0, 0.57, 0.82).normalize(),
@@ -230,9 +230,21 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
   const wipers = cfg.wiperPivots.map((p) => createWiper(p, cfg.glassOut, cfg.wiperLen));
   model.add(...wipers);
 
+  // Cabin interior fill light for day & night clarity
+  const cabinLight = new THREE.PointLight(0xfff5ea, 1.3, 2.5, 0.8);
+  cabinLight.position.set(-0.35, 1.15, -0.15);
+  model.add(cabinLight);
+
   const cabinMats = new Set();
   model.traverse((o) => {
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
+    if (o.material.map) {
+      o.material.map.anisotropy = 16;
+      o.material.map.generateMipmaps = true;
+      o.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+      o.material.map.magFilter = THREE.LinearFilter;
+      o.material.map.needsUpdate = true;
+    }
     if (cfg.softMaterials.has(o.material.name)) {
       o.material.metalness = 0.05;
       o.material.roughness = 0.78;
@@ -241,7 +253,7 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
     if (o.material.map) {
       o.material.emissive.set(0xffffff);
       o.material.emissiveMap = o.material.map;
-      o.material.emissiveIntensity = 0;
+      o.material.emissiveIntensity = 0.05;
       cabinMats.add(o.material);
     }
   });
@@ -305,7 +317,8 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
       }
       if (night !== lastNight) {
         lastNight = night;
-        cabinMats.forEach((m) => (m.emissiveIntensity = night ? CABIN_NIGHT_GLOW : 0));
+        cabinLight.intensity = night ? 0.15 : 1.3;
+        cabinMats.forEach((m) => (m.emissiveIntensity = night ? CABIN_NIGHT_GLOW : 0.05));
       }
     },
     // Screen-space circle of the wheel rim (CSS px) for mouse/touch steering

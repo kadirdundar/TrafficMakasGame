@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<body style="margin:0;background:#222">
+<!-- Raw source model preview (dev only): /tools/model-preview/raw.html?file=/model-kaynak/x.glb&rot=1&scale=2.8&ext=x,y,z&look=x,y,z&fov=60 -->
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const W = innerWidth, H = innerHeight;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.2;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x6a8fbf);
+scene.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xfff2e0, 2.0); sun.position.set(-5, 10, -8); scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x404040, 0.8));
+const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(q.get('file'));
+const g = new THREE.Group(); g.add(gltf.scene);
+if (q.get('rot') === '1') g.rotation.y = Math.PI;
+g.scale.setScalar(+(q.get('scale') || 1));
+scene.add(g);
+if (q.get('hide')) { const hs = q.get('hide').split(','); gltf.scene.traverse((o) => { if (o.isMesh && hs.some((h) => o.name.includes(h) || o.parent?.name.includes(h))) o.visible = false; }); }
+if (q.get('only')) { const hs = q.get('only').split(','); gltf.scene.traverse((o) => { if (o.isMesh) o.visible = hs.some((h) => o.name === h || o.parent?.name === h); }); }
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 60), W / H, 0.01, 1000);
+const [x, y, z] = (q.get('ext') || '-0.43,1.18,0.1').split(',').map(Number); cam.position.set(x, y, z);
+const [a, b, c] = (q.get('look') || '-0.43,1.0,-1').split(',').map(Number); cam.lookAt(a, b, c);
+r.render(scene, cam);
+const info = {};
+if (q.get('pick')) {
+  const rc = new THREE.Raycaster(); scene.updateMatrixWorld(true);
+  for (const p of q.get('pick').split(';')) {
+    const [px, py] = p.split(',').map(Number);
+    rc.setFromCamera(new THREE.Vector2(px / W * 2 - 1, -(py / H) * 2 + 1), cam);
+    info[p] = rc.intersectObject(g, true).filter((h) => h.object.visible).slice(0, 3).map((h) =>
+      `${h.object.name}[${h.object.material.name}] uv=${h.uv ? (h.uv.x * 1024).toFixed(0) + ',' + (h.uv.y * 1024).toFixed(0) : '-'} p=${h.point.toArray().map((v) => v.toFixed(3)).join(',')} d=${h.distance.toFixed(2)}`);
+  }
+}
+window.__info = info;
+window.__done = true;
+</script>
+</body>
+</html>

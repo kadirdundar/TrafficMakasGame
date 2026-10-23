@@ -51,15 +51,15 @@ async function loadSourceWorldMatrices() {
   });
 }
 
-// Convert all textures in the document to WebP
-async function compressTexturesToWebP(doc) {
+// Convert textures in the document to high-quality WebP
+async function compressTexturesToWebP(doc, quality = 90) {
   const textures = doc.getRoot().listTextures();
-  console.log(`Compressing ${textures.length} textures to WebP...`);
+  console.log(`Compressing ${textures.length} textures to WebP (quality ${quality})...`);
   for (const tex of textures) {
     const img = tex.getImage();
     if (!img) continue;
     try {
-      const webpBuf = await sharp(img).webp({ quality: 85, effort: 4 }).toBuffer();
+      const webpBuf = await sharp(img).webp({ quality, effort: 4 }).toBuffer();
       tex.setImage(webpBuf);
       tex.setMimeType('image/webp');
     } catch (err) {
@@ -117,18 +117,20 @@ async function buildCockpitModel(matrices) {
   const doc = await io.read(INPUT_PATH);
   const root = doc.getRoot();
 
+  // Retain only valid cockpit nodes.
+  // Note: Object_56 (windshield/glass) is intentionally omitted so the windshield aperture
+  // is crystal clear and unobstructed by dark tinted glass.
   const COCKPIT_NODES = new Set([
-    'Object_35',  // steering wheel
-    'Object_62',  // interior seats, dashboard, console, floor, pedals
-    'Object_154', // carbon interior details
+    'Object_35',  // steering wheel & steering column
+    'Object_62',  // interior seats, dashboard, console, pedals, curved display
+    'Object_154', // carbon fiber interior details, seatbacks, console trim
     'Object_86',  // driver door inner card
     'Object_93',  // passenger door inner card
     'Object_88',  // driver door window frame & mirror
     'Object_95',  // passenger door window frame & mirror
     'Object_82',  // driver door outer skin
     'Object_91',  // passenger door outer skin
-    'Object_64',  // dashboard structure, cowl, pillar casing
-    'Object_56',  // glass
+    'Object_64',  // dashboard structure, cowl, vents
     'Object_52',  // body roof, A-pillars
     'Object_60',  // hood (power dome seen through windshield)
     'Object_148', // carbon roof
@@ -152,77 +154,171 @@ async function buildCockpitModel(matrices) {
     }
   });
 
-  // Bake world transforms into mesh geometries
+  // Split Object_35 into steering_wheel and steering_column
   let swMesh = null;
   let swNode = null;
+  let columnMesh = null;
+  let columnNode = null;
 
+  const o35Node = root.listNodes().find((n) => n.getName() === 'Object_35');
+  if (o35Node && o35Node.getMesh()) {
+    const wm = matrices.get('Object_35');
+    const prim = o35Node.getMesh().listPrimitives()[0];
+    const posAcc = prim.getAttribute('POSITION');
+    const normAcc = prim.getAttribute('NORMAL');
+    const uvAcc = prim.getAttribute('TEXCOORD_0');
+    const idx = prim.getIndices().getArray();
+    const mat = prim.getMaterial();
+    const N = posAcc.getCount();
+
+    // Compute transformed vertex positions
+    const P = new Float32Array(N * 3);
+    const Norms = new Float32Array(N * 3);
+    const v = new THREE.Vector3();
+    const nv = new THREE.Vector3();
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(wm);
+
+    for (let i = 0; i < N; i++) {
+      v.fromArray(posAcc.getElement(i, [0, 0, 0])).applyMatrix4(wm);
+      P[i * 3] = v.x;
+      P[i * 3 + 1] = v.y;
+      P[i * 3 + 2] = v.z;
+
+      if (normAcc) {
+        nv.fromArray(normAcc.getElement(i, [0, 0, 0])).applyMatrix3(normalMatrix).normalize();
+        Norms[i * 3] = nv.x;
+        Norms[i * 3 + 1] = nv.y;
+        Norms[i * 3 + 2] = nv.z;
+      }
+    }
+
+    // Connected components to separate static steering column from rotating wheel
+    const parent = new Int32Array(N).map((_, i) => i);
+    const find = (a) => { while (parent[a] !== a) a = parent[a] = parent[parent[a]]; return a; };
+    const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+    const key = new Map();
+    for (let i = 0; i < N; i++) {
+      const k = `${Math.round(P[i * 3] * 2000)},${Math.round(P[i * 3 + 1] * 2000)},${Math.round(P[i * 3 + 2] * 2000)}`;
+      if (key.has(k)) uni(i, key.get(k)); else key.set(k, i);
+    }
+    for (let t = 0; t < idx.length; t += 3) { uni(idx[t], idx[t + 1]); uni(idx[t], idx[t + 2]); }
+
+    const compMinZ = new Map();
+    for (let t = 0; t < idx.length; t += 3) {
+      const r = find(idx[t]);
+      const cur = compMinZ.get(r) ?? 999;
+      let mz = cur;
+      for (let k = 0; k < 3; k++) mz = Math.min(mz, P[idx[t + k] * 3 + 2]);
+      compMinZ.set(r, mz);
+    }
+
+    const wheelIndices = [];
+    const columnIndices = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      const r = find(idx[t]);
+      if (compMinZ.get(r) < -0.50) {
+        columnIndices.push(idx[t], idx[t + 1], idx[t + 2]);
+      } else {
+        wheelIndices.push(idx[t], idx[t + 1], idx[t + 2]);
+      }
+    }
+
+    // Wheel pivot and column axis
+    // Hub center: X = -0.3745, Y = 0.880, Z = -0.335
+    // Column axis: normal pointing out of hub towards driver [0.005, 0.368, 0.930]
+    const pivot = [-0.3745, 0.880, -0.335];
+    const axis = [0.005, 0.368, 0.930];
+
+    // Helper to build a primitive from index array and vertex data
+    function buildSubPrim(indices, shiftPivot = false) {
+      const oldToNew = new Map();
+      const newPos = [];
+      const newNorm = [];
+      const newUv = [];
+      const newIndices = [];
+
+      for (const oldIdx of indices) {
+        if (!oldToNew.has(oldIdx)) {
+          const nIdx = newPos.length / 3;
+          oldToNew.set(oldIdx, nIdx);
+
+          let px = P[oldIdx * 3];
+          let py = P[oldIdx * 3 + 1];
+          let pz = P[oldIdx * 3 + 2];
+          if (shiftPivot) {
+            px -= pivot[0];
+            py -= pivot[1];
+            pz -= pivot[2];
+          }
+          newPos.push(px, py, pz);
+          newNorm.push(Norms[oldIdx * 3], Norms[oldIdx * 3 + 1], Norms[oldIdx * 3 + 2]);
+          const u = uvAcc ? uvAcc.getElement(oldIdx, [0, 0]) : [0, 0];
+          newUv.push(u[0], u[1]);
+        }
+        newIndices.push(oldToNew.get(oldIdx));
+      }
+
+      const p = doc.createPrimitive();
+      p.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(new Float32Array(newPos)));
+      p.setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(new Float32Array(newNorm)));
+      p.setAttribute('TEXCOORD_0', doc.createAccessor().setType('VEC2').setArray(new Float32Array(newUv)));
+      p.setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(newIndices)));
+      if (mat) p.setMaterial(mat);
+      return p;
+    }
+
+    // Create wheel mesh (vertices centered on pivot)
+    swMesh = doc.createMesh('MeshSteeringWheel').addPrimitive(buildSubPrim(wheelIndices, true));
+    swNode = o35Node;
+    swNode.setName('steering_wheel');
+    swNode.setMesh(swMesh);
+    swNode.setTranslation(pivot);
+    swNode.setRotation([0, 0, 0, 1]);
+    swNode.setScale([1, 1, 1]);
+    swNode.setExtras({
+      pivot,
+      axis,
+      radius: 0.185,
+    });
+
+    // Create static column mesh (vertices in world space)
+    columnMesh = doc.createMesh('MeshSteeringColumn').addPrimitive(buildSubPrim(columnIndices, false));
+    columnNode = doc.createNode('steering_column');
+    columnNode.setMesh(columnMesh);
+    columnNode.setTranslation([0, 0, 0]);
+    columnNode.setRotation([0, 0, 0, 1]);
+    columnNode.setScale([1, 1, 1]);
+
+    console.log(`Split Object_35 -> Wheel (${wheelIndices.length / 3} tris) at pivot [${pivot.join(', ')}] & Column (${columnIndices.length / 3} tris)`);
+  }
+
+  // Bake world transforms into all other meshes
   root.listNodes().forEach((n) => {
     const nodeName = n.getName();
+    if (nodeName === 'steering_wheel' || nodeName === 'steering_column') return;
     const mesh = n.getMesh();
     if (!mesh) return;
 
     const m = matrices.get(nodeName);
     if (!m) return;
 
-    if (nodeName === 'Object_35') {
-      swMesh = mesh;
-      swNode = n;
-      transformMesh(mesh, Array.from(m.elements));
-    } else {
-      transformMesh(mesh, Array.from(m.elements));
-      n.setTranslation([0, 0, 0]);
-      n.setRotation([0, 0, 0, 1]);
-      n.setScale([1, 1, 1]);
-    }
+    transformMesh(mesh, Array.from(m.elements));
+    n.setTranslation([0, 0, 0]);
+    n.setRotation([0, 0, 0, 1]);
+    n.setScale([1, 1, 1]);
   });
-
-  // Calculate steering wheel hub center in world coordinates
-  if (swMesh && swNode) {
-    let min = [Infinity, Infinity, Infinity];
-    let max = [-Infinity, -Infinity, -Infinity];
-    swMesh.listPrimitives().forEach((p) => {
-      const pos = p.getAttribute('POSITION');
-      const pmin = pos.getMin([]);
-      const pmax = pos.getMax([]);
-      for (let i = 0; i < 3; i++) {
-        if (pmin[i] < min[i]) min[i] = pmin[i];
-        if (pmax[i] > max[i]) max[i] = pmax[i];
-      }
-    });
-
-    const pivot = [
-      (min[0] + max[0]) / 2,
-      (min[1] + max[1]) / 2,
-      (min[2] + max[2]) / 2,
-    ];
-
-    console.log('Steering wheel pivot point:', pivot.map((v) => v.toFixed(4)));
-
-    // Shift steering wheel mesh vertices so pivot is at local (0, 0, 0)
-    const shiftMat = new THREE.Matrix4().makeTranslation(-pivot[0], -pivot[1], -pivot[2]);
-    transformMesh(swMesh, Array.from(shiftMat.elements));
-
-    // Place swNode at pivot
-    swNode.setName('steering_wheel');
-    swNode.setTranslation(pivot);
-    swNode.setRotation([0, 0, 0, 1]);
-    swNode.setScale([1, 1, 1]);
-    swNode.setExtras({
-      pivot,
-      axis: [0, 0.42, -0.91], // steering column vector sloping toward driver (+Y, -Z)
-      radius: 0.18,
-    });
-  }
 
   // Create clean flat scene root
   const defaultScene = root.listScenes()[0] || doc.createScene();
   const cockpitRoot = doc.createNode('CockpitRoot');
   defaultScene.addChild(cockpitRoot);
 
+  if (columnNode) cockpitRoot.addChild(columnNode);
+
   // Store driver eye in scene extras
-  // Driver eye is ~0.52m behind wheel hub (-0.503 -> 0.02m) and ~0.36m above (0.815 -> 1.18m)
+  // Driver sits at X = -0.375 (directly behind wheel center -0.3745), Y = 1.12, Z = 0.12
   defaultScene.setExtras({
-    eye: [-0.434, 1.18, 0.02],
+    eye: [-0.375, 1.12, 0.12],
   });
 
   // Mirror glass material (will be overridden by CarCockpit.applyMirror with render target)
@@ -251,20 +347,20 @@ async function buildCockpitModel(matrices) {
   const rightMirrorNode = doc.createNode('mirror_right').setMesh(rightMirrorMesh);
   cockpitRoot.addChild(rightMirrorNode);
 
-  // Interior rearview mirror quad
+  // Center rear-view mirror quad
   const centerMirrorMesh = createQuadMesh(doc, 'MirrorCenterMesh', mirrorMat, [
-    [-0.11, 1.23, -0.38],
-    [0.11, 1.23, -0.38],
-    [0.11, 1.30, -0.38],
-    [-0.11, 1.30, -0.38],
+    [-0.13, 1.20, -0.38],
+    [0.13, 1.20, -0.38],
+    [0.13, 1.28, -0.38],
+    [-0.13, 1.28, -0.38],
   ]);
   const centerMirrorNode = doc.createNode('mirror_center').setMesh(centerMirrorMesh);
   cockpitRoot.addChild(centerMirrorNode);
 
-  // Close the footwell with a floor plane so the road never shows through
+  // Footwell floor plane
   const floorMat = doc.createMaterial('FootwellFloor')
-    .setBaseColorFactor([0.06, 0.07, 0.08, 1])
-    .setRoughnessFactor(1.0)
+    .setBaseColorFactor([0.08, 0.08, 0.09, 1.0])
+    .setRoughnessFactor(0.9)
     .setMetallicFactor(0.0);
   const floorMesh = createQuadMesh(doc, 'FloorMesh', floorMat, [
     [-0.85, 0.32, -0.2],
@@ -282,8 +378,29 @@ async function buildCockpitModel(matrices) {
     }
   });
 
-  // WebP compression on textures
-  await compressTexturesToWebP(doc);
+  // Fix PBR material properties directly in glTF so interior is clear, matte and realistic
+  root.listMaterials().forEach((m) => {
+    const name = m.getName() || '';
+    if (name.includes('interior1.008') || name.includes('interior1.007')) {
+      m.setMetallicFactor(0.04);
+      m.setRoughnessFactor(0.72);
+    } else if (name.includes('plast1.005')) {
+      m.setMetallicFactor(0.05);
+      m.setRoughnessFactor(0.80);
+    } else if (name.includes('InteriorA')) {
+      m.setMetallicFactor(0.05);
+      m.setRoughnessFactor(0.60);
+    } else if (name.includes('Carbon1M')) {
+      m.setMetallicFactor(0.25);
+      m.setRoughnessFactor(0.22);
+    } else if (name.includes('hood1') || name.includes('body1') || name.includes('PAINT')) {
+      m.setMetallicFactor(0.85);
+      m.setRoughnessFactor(0.22);
+    }
+  });
+
+  // WebP compression on textures with high quality
+  await compressTexturesToWebP(doc, 90);
 
   await doc.transform(
     prune(),
@@ -345,7 +462,7 @@ async function buildExteriorModel(matrices) {
   await doc.transform(join());
 
   // WebP compression on textures
-  await compressTexturesToWebP(doc);
+  await compressTexturesToWebP(doc, 85);
 
   await doc.transform(
     prune(),

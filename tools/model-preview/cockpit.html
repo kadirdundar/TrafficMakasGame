@@ -39,7 +39,7 @@ cam.position.copy(eye);
 if (q.get('ext')) { const [x,y,z]=q.get('ext').split(',').map(Number); cam.position.set(x,y,z); const [a,b,c]=(q.get('look')||'0,1.1,-0.5').split(',').map(Number); cam.lookAt(a,b,c); }
 else cam.setViewOffset(W,H,0,Math.round(H*P[4]),W,H);
 cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
-ck.update({ steerAngle: 0, night, aspect: W/H });
+ck.update({ steerAngle: +(q.get('steer')||0), night, aspect: W/H });
 if (q.get('hl')) { ck.group.traverse(o => { if (o.isMesh && o.name.toLowerCase().includes(q.get('hl').toLowerCase())) o.material = new THREE.MeshBasicMaterial({color:0xff00ff, side:THREE.DoubleSide}); }); }
 r.render(scene, cam);
 const info = {};
