@@ -183,8 +183,8 @@ class OtobanMakasGame {
 
     const params = new URLSearchParams(window.location.search);
     if (params.has('fps')) this.toggleFpsMeter();
-    if (params.has('tunel')) this.multiplayer.localWorldDistM = 1040;
-    if (params.has('kopru')) this.multiplayer.localWorldDistM = 2540;
+    if (params.has('tunel')) this.multiplayer.localWorldDistM = 5440;
+    if (params.has('kopru')) this.multiplayer.localWorldDistM = 12440;
 
     this.bindEvents();
     this.setupAppMode();

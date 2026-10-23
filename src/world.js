@@ -85,12 +85,12 @@ export const ROAD_HALF_WIDTH = 8.4;
 export const ROAD_MODES = ['highway', 'twoway'];
 export const ROAD_HALF_WIDTHS = { highway: ROAD_HALF_WIDTH, twoway: 4.6 };
 
-export const ZONE_CYCLE_LENGTH = 3600;
+export const ZONE_CYCLE_LENGTH = 15000;
 
 export function getZoneAt(trackDistM) {
   const s = ((trackDistM % ZONE_CYCLE_LENGTH) + ZONE_CYCLE_LENGTH) % ZONE_CYCLE_LENGTH;
-  if (s >= 1100 && s < 1900) return 'tunnel';
-  if (s >= 2600 && s < 3600) return 'bridge';
+  if (s >= 5500 && s < 6700) return 'tunnel';
+  if (s >= 12500 && s < 14000) return 'bridge';
   return 'highway';
 }
 
@@ -1051,10 +1051,10 @@ export class HighwayWorld {
       if (seg.bridgeGroup) seg.bridgeGroup.visible = isBridge;
 
       if (isTunnel) {
-        const isPortal = (s >= 1100 && s < 1120) || (s >= 1880 && s < 1900);
+        const isPortal = (s >= 5500 && s < 5520) || (s >= 6680 && s < 6700);
         if (seg.portalGroup) seg.portalGroup.visible = isPortal;
       } else if (isBridge) {
-        const isPylon = (s >= 2620 && s < 2640) || (s >= 3120 && s < 3140);
+        const isPylon = (s >= 12520 && s < 12540) || (s >= 13420 && s < 13440);
         if (seg.pylonGroup) seg.pylonGroup.visible = isPylon;
       }
     }
