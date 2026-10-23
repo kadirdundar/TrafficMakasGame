@@ -5,3 +5,6 @@ dist/
 
 # Raw 3D model sources (only the optimized public/models/*.glb ships)
 model-kaynak/
+
+# Raw audio sources (optimized assets ship from public/radio/)
+HüzünRadyosu/

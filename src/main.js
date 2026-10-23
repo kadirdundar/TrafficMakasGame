@@ -5,6 +5,7 @@ import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, WEATHER_PRESETS } from './
 import { TrafficManager } from './traffic.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { A8Showroom } from './showroom.js';
+import { RadioPlayer } from './radio.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -59,6 +60,18 @@ class OtobanMakasGame {
     this.cockpit = new CarCockpit(this.renderer);
     this.scene.add(this.cockpit.group);
     this.traffic = new TrafficManager(this.scene);
+    this.radio = new RadioPlayer({
+      onTrackChange: (track) => {
+        this.showMakasNotification(`📻 HÜZÜN RADYOSU: ${track.title}`, 0, 'gold');
+        this.syncRadioUI();
+      },
+      onStateChange: (isPlaying) => {
+        this.syncRadioUI();
+        if (!isPlaying) {
+          this.showMakasNotification('📻 RADYO KAPATILDI', 0, 'normal');
+        }
+      },
+    });
     this.multiplayer = new MultiplayerManager(this.scene, this.traffic, {
       onStatusChange: (status) => this.syncMultiplayerUI(status),
       onMatchReady: ({ remoteName, slot }) => {
@@ -260,6 +273,12 @@ class OtobanMakasGame {
       if (code === 'KeyC') {
         this.applyCameraPreset(this.cameraPresetIndex + 1);
       }
+      if (code === 'KeyK') {
+        this.toggleRadio();
+      }
+      if (code === 'KeyN') {
+        this.nextRadioTrack();
+      }
       if (code === 'KeyM') {
         this.toggleSound();
       }
@@ -333,6 +352,10 @@ class OtobanMakasGame {
 
     document.getElementById('btn-camera')?.addEventListener('click', () => {
       this.applyCameraPreset(this.cameraPresetIndex + 1);
+    });
+
+    document.getElementById('btn-radio')?.addEventListener('click', () => {
+      this.toggleRadio();
     });
 
     document.getElementById('btn-sound')?.addEventListener('click', () => {
@@ -902,6 +925,40 @@ class OtobanMakasGame {
     const muted = this.sound.toggleMute();
     const icon = document.getElementById('sound-icon');
     if (icon) icon.textContent = muted ? '🔇' : '🔊';
+    this.radio.setMuted(muted);
+  }
+
+  toggleRadio() {
+    this.sound.init();
+    const playing = this.radio.toggle();
+    if (playing && this.radio.currentTrack) {
+      this.showMakasNotification(`📻 HÜZÜN RADYOSU: ${this.radio.currentTrack.title}`, 0, 'gold');
+    }
+    this.syncRadioUI();
+  }
+
+  nextRadioTrack() {
+    this.sound.init();
+    const track = this.radio.next();
+    if (track) {
+      this.showMakasNotification(`📻 HÜZÜN RADYOSU: ${track.title}`, 0, 'gold');
+    }
+    this.syncRadioUI();
+  }
+
+  syncRadioUI() {
+    const icon = document.getElementById('radio-icon');
+    const label = document.getElementById('radio-label');
+    const btn = document.getElementById('btn-radio');
+    if (this.radio.isPlaying) {
+      if (icon) icon.textContent = '🎵';
+      if (label) label.textContent = this.radio.currentTrack ? this.radio.currentTrack.title : 'Çalıyor';
+      btn?.classList.add('active');
+    } else {
+      if (icon) icon.textContent = '📻';
+      if (label) label.textContent = 'Hüzün FM';
+      btn?.classList.remove('active');
+    }
   }
 
   togglePauseMenu() {
@@ -1553,6 +1610,10 @@ class OtobanMakasGame {
         bodyRoll: this.bodyRoll,
         bodyPitch: this.bodyPitch,
         cabinNight: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
+        radio: {
+          active: this.radio.isPlaying,
+          title: this.radio.currentTrack?.title || '',
+        },
       },
       radarCars
     );
@@ -1790,6 +1851,10 @@ class OtobanMakasGame {
           odometerKm: this.odometerKm,
           lateralG: 0,
           cabinNight: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
+          radio: {
+            active: this.radio.isPlaying,
+            title: this.radio.currentTrack?.title || '',
+          },
         },
         radarCars
       );

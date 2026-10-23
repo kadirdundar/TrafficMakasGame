@@ -777,6 +777,7 @@ export class CarCockpit {
   }
 
   update(dt, state, nearbyCars = []) {
+    this.radioState = state.radio || null;
     const {
       speedKmh,
       rpm,
@@ -1339,18 +1340,36 @@ export class CarCockpit {
 
     // Left Half: Audi MMI Quick Tiles
     const leftW = w * 0.54;
-    ctx.fillStyle = accent;
-    ctx.font = `800 ${Math.max(7, h * 0.16)}px system-ui, sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.fillText('● AUDI MMI NAVIGATION', x + 5, y + h * 0.24);
+    const isRadioPlaying = Boolean(this.radioState?.active);
 
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = `900 ${Math.max(8, h * 0.22)}px ui-monospace, monospace`;
-    ctx.fillText(`${Math.round(speedKmh)} KM/S`, x + 5, y + h * 0.56);
+    if (isRadioPlaying) {
+      ctx.fillStyle = '#ffae00';
+      ctx.font = `800 ${Math.max(7, h * 0.16)}px system-ui, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText('📻 HÜZÜN RADYOSU', x + 5, y + h * 0.24);
 
-    ctx.fillStyle = combo > 1 ? '#ffae00' : '#94a3b8';
-    ctx.font = `800 ${Math.max(7, h * 0.17)}px system-ui, sans-serif`;
-    ctx.fillText(`KOMBO: ${combo.toFixed(1)}x`, x + 5, y + h * 0.84);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = `800 ${Math.max(7.5, h * 0.20)}px system-ui, sans-serif`;
+      const title = (this.radioState?.title || 'Çalıyor...').toUpperCase();
+      ctx.fillText(title.length > 13 ? title.substring(0, 12) + '…' : title, x + 5, y + h * 0.56);
+
+      ctx.fillStyle = accent;
+      ctx.font = `700 ${Math.max(6.5, h * 0.15)}px system-ui, sans-serif`;
+      ctx.fillText(`KOMBO: ${combo.toFixed(1)}x`, x + 5, y + h * 0.84);
+    } else {
+      ctx.fillStyle = accent;
+      ctx.font = `800 ${Math.max(7, h * 0.16)}px system-ui, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText('● AUDI MMI NAVIGATION', x + 5, y + h * 0.24);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = `900 ${Math.max(8, h * 0.22)}px ui-monospace, monospace`;
+      ctx.fillText(`${Math.round(speedKmh)} KM/S`, x + 5, y + h * 0.56);
+
+      ctx.fillStyle = combo > 1 ? '#ffae00' : '#94a3b8';
+      ctx.font = `800 ${Math.max(7, h * 0.17)}px system-ui, sans-serif`;
+      ctx.fillText(`KOMBO: ${combo.toFixed(1)}x`, x + 5, y + h * 0.84);
+    }
 
     // Right Half: Live 4-Lane Highway Radar
     const rx = x + leftW + 2;
