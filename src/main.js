@@ -168,6 +168,12 @@ class OtobanMakasGame {
     this.accelFeel = 0; // felt acceleration that pushes the driver into the seat (see updatePhysics)
     this.shakeIntensity = 0;
 
+    // Electronic Vmax Speed Limiter (Kesici at 260 km/h)
+    this.limiterActive = false;
+    this.limiterTimer = 0;
+    this.limiterCut = false;
+    this.lastLimiterFire = 0;
+
     // Input State
     this.keys = {
       gas: false,
@@ -1325,7 +1331,7 @@ class OtobanMakasGame {
     let accelKmhPerSec = 0;
     if (throttle > 0) {
       // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
-      // ~3.3 s 0→100, ~5.6 s 100→200, ~12.5 s 200→240
+      // ~3.3 s 0→100, ~5.6 s 100→200, ~11.0 s 200→240
       const ENGINE_POWER = 4200;
       const TRACTION_LIMIT = 33;
       const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
@@ -1334,11 +1340,10 @@ class OtobanMakasGame {
       if (this.speedKmh < 235) {
         effectiveThrust = thrust;
       } else {
-        // Extended 240-260 km/h top-speed climb:
-        // Past 240 km/h, aerodynamic drag is immense. Climbing from 240 to 260 km/h takes
-        // ~29 seconds of clean, wide-open throttle, tapering down smoothly to the 260 km/h limiter.
+        // Muscular, sustained high-speed pull into the 260 km/h electronic governor
+        // (The Audi 4.0 TFSI V8 has immense power; it pulls firmly right into the 260 limiter)
         const progress235To260 = Math.min(1, Math.max(0, (this.speedKmh - 235) / 25));
-        const netFullThrottleAccel = 1.50 + (0.38 - 1.50) * Math.pow(progress235To260, 0.75);
+        const netFullThrottleAccel = THREE.MathUtils.lerp(2.20, 1.40, progress235To260);
         effectiveThrust = resistance + netFullThrottleAccel;
       }
 
@@ -1355,8 +1360,39 @@ class OtobanMakasGame {
     const corneringDrag = Math.abs(this.lateralG) * 4.2;
     accelKmhPerSec -= corneringDrag;
 
+    // Electronic Vmax Speed Limiter (Kesici at 260 km/h)
+    // When hitting the 260 km/h limiter, the ECU cuts fuel & spark at ~9.6 Hz,
+    // micro-oscillating speed (259.2 - 260.4 km/h), fluttering tachometer RPM,
+    // and firing machine-gun exhaust pops!
+    if (this.speedKmh >= 259.4 && throttle > 0.65) {
+      this.limiterActive = true;
+      this.limiterTimer += dt;
+      const period = 0.104; // ~9.6 Hz limiter bounce frequency
+      const cycle = (this.limiterTimer % period) / period;
+
+      // Phase < 0.44: Fuel & Ignition cut (instant power drop, needle drops)
+      // Phase >= 0.44: Spark returns (ignition surge, pop, speed punches back)
+      const isCut = cycle < 0.44;
+      this.limiterCut = isCut;
+
+      if (isCut) {
+        accelKmhPerSec = -18.0; // Rapid speed bleed during ignition cut
+      } else {
+        accelKmhPerSec = 16.0; // Power surge on spark resumption
+        if (this.limiterTimer - this.lastLimiterFire > 0.09) {
+          this.sound.playLimiterPop();
+          this.lastLimiterFire = this.limiterTimer;
+        }
+      }
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.16);
+    } else {
+      this.limiterActive = false;
+      this.limiterCut = false;
+      this.limiterTimer = 0;
+    }
+
     const prevSpeed = this.speedKmh;
-    this.speedKmh = Math.max(minSpeed, Math.min(maxSpeed, this.speedKmh + accelKmhPerSec * dt));
+    this.speedKmh = Math.max(minSpeed, Math.min(260.6, this.speedKmh + accelKmhPerSec * dt));
     this.longitudinalG = THREE.MathUtils.lerp(
       this.longitudinalG,
       (this.speedKmh - prevSpeed) / (Math.max(0.001, dt) * 90),
@@ -1387,14 +1423,17 @@ class OtobanMakasGame {
         }
       }
       if (targetGear !== this.gear) {
-        this.sound.triggerGearShift(targetGear > this.gear);
+        this.sound.triggerGearShift(targetGear > this.gear, throttle);
         this.gear = targetGear;
         this.lastShiftAt = shiftClockSec;
       }
     }
 
-    const targetRpm = Math.max(A8_IDLE_RPM, rpmInGear(this.gear));
-    this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 10));
+    let targetRpm = Math.max(A8_IDLE_RPM, rpmInGear(this.gear));
+    if (this.limiterActive && this.limiterCut) {
+      targetRpm -= 280; // Tachometer needle drops during ignition cut
+    }
+    this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * (this.limiterActive ? 28 : 10)));
 
     // 4. Realistic Lateral Vehicle Dynamics (Smooth Yaw, Tire Grip & Rock-Solid Straight-Line Stability)
     const speedMs = this.speedKmh / 3.6;
@@ -1671,11 +1710,20 @@ class OtobanMakasGame {
           active: this.radio.isPlaying,
           title: this.radio.currentTrack?.title || '',
         },
+        limiterActive: this.limiterActive,
       },
       radarCars
     );
 
-    this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, this.lateralG);
+    this.sound.updateEngine(
+      this.rpm,
+      throttle,
+      this.speedKmh,
+      this.paused,
+      this.lateralG,
+      this.limiterActive,
+      this.limiterCut
+    );
     this.updateHUD();
   }
 
