@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-b1PI4Z_b.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BfhS2yOz.css">
+  <script type="module" crossorigin src="./assets/index-ChGopdVm.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Bb8J0z7h.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -147,13 +147,16 @@
           <span>KORNA</span>
         </button>
       </div>
-      <button id="touch-brake" class="pedal-btn brake-pedal" type="button">
+      <button id="touch-brake" class="pedal-btn brake-pedal hidden" type="button" aria-label="Fren">
         <span class="pedal-label">FREN</span>
         <div class="pedal-ribs"></div>
       </button>
-      <button id="touch-gas" class="pedal-btn gas-pedal" type="button">
-        <span class="pedal-label">GAZ</span>
-        <div class="pedal-ribs"></div>
+      <button id="touch-gas" class="pedal-btn gas-pedal unified-drive-pedal" type="button" aria-label="Gaz (Yukarı) ve Fren (Aşağı)">
+        <div class="pedal-zone pedal-zone-gas">▲ GAZ</div>
+        <div class="pedal-center-indicator">
+          <span class="pedal-label">GAZ / FREN</span>
+        </div>
+        <div class="pedal-zone pedal-zone-brake">▼ FREN</div>
       </button>
     </div>
   </div>
@@ -372,7 +375,7 @@
               <span><kbd>T</kbd> <kbd>C</kbd></span><span>Hava · Kamera açısı</span>
               <span><kbd>Esc</kbd></span><span>Menü / Duraklat</span>
             </div>
-            <p class="panel-note">Dokunmatikte: direksiyonu parmağınla çevir, sağdaki pedalda parmağını yukarı kaydırdıkça gaz artar.</p>
+            <p class="panel-note">Dokunmatikte: direksiyonu parmağınla çevir; sağdaki pedalda yukarı ittikçe gaz, geriye/aşağı çektikçe fren yapar (elini kaldırmadan tek parmakla tam kontrol).</p>
           </section>
         </div>
 
