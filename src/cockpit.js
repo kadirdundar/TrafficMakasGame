@@ -795,10 +795,10 @@ export class CarCockpit {
     } = state;
 
     // Realistic highway steering wheel angle:
-    // On a real highway (90-240 km/h), lane changes & makas maneuvers use ~25° to 38° (0.45 - 0.66 rad),
+    // On a real highway (90-260 km/h), lane changes & makas maneuvers use ~25° to 38° (0.45 - 0.66 rad),
     // not full parking-lot lock. Angle also tightens slightly as speed increases.
-    const speedFactor = Math.min(1, Math.max(0, ((speedKmh || 90) - 60) / 180));
-    const maxWheelRad = 0.85 - speedFactor * 0.25; // ~49° at low speed, ~34° at 240 km/h
+    const speedFactor = Math.min(1, Math.max(0, ((speedKmh || 90) - 60) / 200));
+    const maxWheelRad = 0.85 - speedFactor * 0.25; // ~49° at low speed, ~34° at 260 km/h
     const targetWheelAngle = steerInput * maxWheelRad;
     this.currentSteerVisual = THREE.MathUtils.lerp(
       this.currentSteerVisual,

@@ -293,7 +293,7 @@ export class SoundEngine {
 
     const r = Math.max(IDLE_RPM * 0.9, Math.min(MAX_RPM * 1.03, rpm));
     const rpmNorm = clamp01((r - IDLE_RPM) / (MAX_RPM - IDLE_RPM));
-    const speedNorm = clamp01(speedKmh / 240);
+    const speedNorm = clamp01(speedKmh / 260);
 
     // Load follows the pedal with a little lag; boost builds more slowly (turbo spool)
     this.load += (throttle - this.load) * Math.min(1, dt * 4);

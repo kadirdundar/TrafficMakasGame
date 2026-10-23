@@ -1297,7 +1297,7 @@ class OtobanMakasGame {
     // Progressive Speed-Sensitive Power Steering (Audi Dynamic Steering):
     // - Counter-steering (reversing direction) is extra crisp so driver can catch slides
     // - Self-centering caster return scales with forward speed when keys are released
-    const speedRatio = Math.min(1, Math.max(0, (this.speedKmh - 50) / 190));
+    const speedRatio = Math.min(1, Math.max(0, (this.speedKmh - 50) / 210));
     const isCentering = Math.abs(rawSteer) < 0.02;
     const isCounterSteer = rawSteer * this.steerInput < -0.04;
 
@@ -1312,8 +1312,8 @@ class OtobanMakasGame {
     this.steerInput = THREE.MathUtils.lerp(this.steerInput, rawSteer, Math.min(1, dt * steerRate));
 
     // 2. Longitudinal Speed (KM/H)
-    // Top speed capped at 240 km/h; the car can roll to a full stop
-    const maxSpeed = 240;
+    // Top speed capped at 260 km/h; the car can roll to a full stop
+    const maxSpeed = 260;
     const minSpeed = 0;
 
     // Resistance grows with the square of speed (aero drag) plus a small rolling term,
@@ -1325,12 +1325,25 @@ class OtobanMakasGame {
     let accelKmhPerSec = 0;
     if (throttle > 0) {
       // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
-      // ~1.7 s 48→100, ~5.6 s 100→200, ~9 s 200→235 (power meets drag just above the limiter)
+      // ~3.3 s 0→100, ~5.6 s 100→200, ~12.5 s 200→240
       const ENGINE_POWER = 4200;
       const TRACTION_LIMIT = 33;
       const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
+
+      let effectiveThrust;
+      if (this.speedKmh < 235) {
+        effectiveThrust = thrust;
+      } else {
+        // Extended 240-260 km/h top-speed climb:
+        // Past 240 km/h, aerodynamic drag is immense. Climbing from 240 to 260 km/h takes
+        // ~29 seconds of clean, wide-open throttle, tapering down smoothly to the 260 km/h limiter.
+        const progress235To260 = Math.min(1, Math.max(0, (this.speedKmh - 235) / 25));
+        const netFullThrottleAccel = 1.50 + (0.38 - 1.50) * Math.pow(progress235To260, 0.75);
+        effectiveThrust = resistance + netFullThrottleAccel;
+      }
+
       // Part throttle settles at a cruising speed: ~125 km/h at 15%, ~185 km/h at 50%
-      accelKmhPerSec = thrust * throttle - resistance;
+      accelKmhPerSec = effectiveThrust * throttle - resistance;
     } else if (brake > 0) {
       accelKmhPerSec = -115 * brake; // Strong Brembo sport brakes
     } else {
@@ -1388,7 +1401,7 @@ class OtobanMakasGame {
     const wetFactor = this.world.weatherKey === 'rain' ? 0.85 : 1.0;
 
     // Target chassis heading angle (narrows at high speed for stability)
-    const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 240 km/h
+    const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 260 km/h
     const targetHeading = this.steerInput * maxHeadingAngle;
 
     // Critically damped yaw response (no oscillation/fishtailing when driving straight)
