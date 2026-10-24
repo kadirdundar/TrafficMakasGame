@@ -100,8 +100,9 @@ npx @gltf-transform/cli@4 webp tmp5.glb tmp6.glb
 npx @gltf-transform/cli@4 meshopt tmp6.glb public/models/arac.glb
 ```
 
-Sonuçta üçgen/malzeme sayısını ve sınır kutusunu kontrol et (`@gltf-transform/core` ile birkaç
-satırlık bir script ya da `npx @gltf-transform/cli@4 inspect`).
+Sonuçta üçgen/malzeme sayısını ve sınır kutusunu kontrol et:
+`node tools/inspect-glb.mjs <dosya.glb> [ölçek] [180°=1]` her mesh için malzeme, üçgen sayısı ve
+dünya koordinatında sınır kutusu yazar (ya da `npx @gltf-transform/cli@4 inspect`).
 
 ## 4. Dış model yükleyicisi (`src/peer<Arac>.js`)
 
@@ -141,13 +142,23 @@ Model hazır değilse BMW bloğundaki gibi `steer` adlı mesh'ler bir pivot grub
 `steerSign` ile pozitif direksiyon açısında A8 ile **aynı yöne** döndüğünü doğrula
 (önizlemede `steer` parametresi).
 
+Direksiyonun parçaları başka mesh'lerde de olabilir (BMW: karbon kollar ve vites pedalları karbon
+mesh'inde, logo iç mekân mesh'inde). Direksiyon diskinin tamamen içinde kalan bağlı parçaları
+direksiyon düğümüne taşı (`convert-m4.mjs` → "Wheel trim"); yoksa direksiyon dönerken yerinde
+kalırlar. Sinyal kolu gibi kolon parçaları diskin arkasındadır ve sabit kalmalıdır.
+
 ### 5.3 Ekranlar ve aynalar
 
 - `screens.cluster`: gösterge camının 4 köşesi (`tl/tr/bl/br`, sürücünün gördüğü yönde sol/sağ)
   ve normali `n`; değerleri gösterge mesh'inin sınır kutusundan al. Gösterge içeriği **markaya
   özel** çizilmeli (`paint3DScreen` içinde `carType` dalı); BMW'de Audi halkaları çizilmişti.
+- Gösterge dörtgeni modelin kendi gösterge camının **önünde** olmalı. Cam kavisliyse dörtgeni
+  kenarlardan ölç (kenarlar sürücüye daha yakındır); aksi halde dörtgen camın arkasında kalır ve
+  modelin sabit dokusu görünür (BMW'de "P" yazan statik gösterge göründü).
 - Aynalar: sadece ayna camı mesh'ine `applyMirror` uygulanır; sol ayna `u ∈ [0.55, 1]`, sağ
-  `[0, 0.45]`, iç ayna `[0, 1]`.
+  `[0, 0.45]`, iç ayna `[0, 1]`. Elle dörtgen yerleştirme; modelin kendi ayna camı üçgenlerini
+  ayır (BMW: atlastaki düz gri UV adası, `convert-m4.mjs` → `MIRRORS`). Elle konan dörtgenler
+  gövdenin arkasında kalıp aynaları "ölü" bıraktı.
 - three.js `GLTFLoader` düğüm adlarındaki `.` karakterini siler: `mirror_L.001` → `mirror_L001`.
 
 ### 5.4 Malzemeler (`tints`, `softMaterials`)
@@ -174,10 +185,26 @@ kabuğudur: neredeyse görünmez ve geceleri yolla aynı renktedir. Çözüm (`c
   hafif emissive) çevrilir.
 - Kaynak modelde iç kaplamalar varsa bunlara gerek yoktur; A8'de yoktur.
 
+### 5.6b Okunamayan küçük detaylar (`atlasPatches`, `satinPieces`)
+
+Oyundan çıkarılmış atlaslarda düğmeler, kapı açma kolu ve logolar birkaç düzine piksele sıkışır;
+sürücü koltuğundan gri leke gibi görünür. `src/cockpitDecals.js`:
+
+- `atlasPatches`: bir UV kutusuna düşen üçgenler kendi yüksek çözünürlüklü canvas'ına taşınır ve
+  keskin olarak yeniden çizilir (BMW: klima düğme şeridi, kapı kilit düğmeleri, direksiyon logosu).
+  Canvas atlasla aynı yerleşimdedir; ters eşlenmiş bölgeler için `flipV`, UV'si karışık logolar
+  için `project` (direksiyon eksenine düzlemsel izdüşüm) kullan.
+- `satinPieces`: tek bir bağlı parçaya (BMW: kapı açma kolu) metal malzeme verir.
+- UV kutularını `pick` modunun yazdığı `uv=` değerlerinden ölç; sonucu yakın kamerayla
+  (`ext`, `look`, `fov`) kontrol et.
+
 ### 5.7 Ambiyans LED'leri (`ledPaths`)
 
-Noktaları göz kararı verme; yüzeye ışın atarak ölç (`pick` modu ya da `Raycaster`) ve yüzeyin
-~0.5–1 cm önüne koy. Uygun yerler: kapı panelindeki dikiş çizgisi, torpidonun yolcu tarafındaki
+Model kendi ambiyans şeritlerini atlasta (ör. mavi) boyanmış olarak içeriyorsa tüp LED ekleme:
+o üçgenleri çevrimdışı `ambient_led` mesh'ine ayır (BMW: doku pikseli mavi olan üçgenler);
+`cockpit3d.js` bunları ambiyans rengiyle, atlastaki parlaklık geçişini maske olarak kullanarak
+yakar. Yoksa noktaları göz kararı verme; yüzeye ışın atarak ölç (`pick` modu ya da `Raycaster`)
+ve yüzeyin ~0.5–1 cm önüne koy. Uygun yerler: kapı panelindeki dikiş çizgisi, torpidonun yolcu tarafındaki
 kaplama birleşimi. Direksiyonun arkasından geçen bir LED havada asılı görünür.
 
 ## 6. Doğrulama: ekran görüntüsü almadan "bitti" deme
@@ -224,3 +251,10 @@ Kontrol listesi (A8 ile yan yana karşılaştır):
 | LED şerit havada | Noktalar göz kararı verilmiş | Işın atarak ölç (§5.7) |
 | Koltuklar bembeyaz | "ColourZone" detay haritaları renk bekliyor | `tints` |
 | Model adı ile model uyuşmuyor | Farklı kaynaklar karıştırılmış | §2.1 |
+| Göstergede canlı ekran yerine sabit doku | Ekran dörtgeni kavisli camın 1 cm arkasında | §5.3, kenarlardan ölç |
+| Aynalar canlı görüntü göstermiyor | Elle konan ayna dörtgenleri gövdenin arkasında | Modelin ayna camı üçgenlerini ayır |
+| LED'ler hiç görünmüyor | Tüp yolları göz kararı, geometrinin içinde | Modelin kendi şeritleri (`ambient_led`) |
+| Direksiyondaki karbon/logo dönmüyor | Parçalar başka mesh'lerde | Disk içindeki parçaları direksiyona taşı (§5.2) |
+| Logo camgöbeği yanıyor | Mavi çeyrekler LED şeridi sanıldı | Direksiyon parçalarını LED taramasından önce ayır |
+| Klima düğmeleri / kapı kolu seçilemiyor | Atlasta birkaç piksel | §5.6b |
+| Ayak boşluğu yolla aynı parlaklıkta | Gölge yok; zemin güneşi tam alıyor | Config `occlusion` (yüksekliğe göre karartma) |

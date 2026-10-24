@@ -2,6 +2,13 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import {
+  applyAtlasPatch,
+  applyPieceMaterial,
+  paintBmwClimateRow,
+  paintBmwDoorLocks,
+  paintBmwRoundel,
+} from './cockpitDecals.js';
 
 // 3D Cockpit Module supporting Audi A8 and BMW M4 (G82 VR46 Edition).
 // Lightweight, highly optimized, 60 FPS, with interactive steering, live digital gauge screens,
@@ -39,7 +46,7 @@ const COCKPIT_CONFIGS = {
   bmw: {
     modelUrl: `${import.meta.env.BASE_URL}models/bmw-m4-cockpit.glb`,
     scale: 1.0,
-    defaultEye: [-0.375, 1.12, 0.12],
+    defaultEye: [-0.375, 1.14, 0.185],
     wheelRadius: 0.185,
     steerSign: -1,
     softMaterials: new Set([
@@ -48,29 +55,65 @@ const COCKPIT_CONFIGS = {
       'BMW_M4CSLRewardRecycled_2022InteriorA_Material.011',
       'm4car_plast1.005',
     ]),
+    // Hood seen through the windshield: dark metallic paint instead of the pale livery atlas
+    paintMaterials: new Set(['m4car_hood1.006']),
     screens: {
+      // Measured on the model's own cluster glass (curved, so the quad sits just in front of it)
       cluster: {
-        tl: [-0.525, 0.985, -0.585],
-        tr: [-0.185, 0.985, -0.575],
-        bl: [-0.525, 0.852, -0.630],
-        br: [-0.185, 0.852, -0.620],
-        n: [0.02, 0.35, 0.93],
-        logical: [240, 95],
-        px: [1024, 400],
+        tl: [-0.524, 0.98, -0.588],
+        tr: [-0.207, 0.98, -0.588],
+        bl: [-0.524, 0.863, -0.561],
+        br: [-0.207, 0.863, -0.561],
+        n: [0, 0.19, 0.98],
+        logical: [240, 90],
+        px: [1024, 384],
       },
     },
-    ledPaths: [
-      // Left and right door trims
-      [[-0.73, 0.93, -0.25], [-0.73, 0.90, -0.05], [-0.73, 0.85, 0.15]],
-      [[0.73, 0.93, -0.25], [0.73, 0.90, -0.05], [0.73, 0.85, 0.15]],
-      // Dashboard ambient contour line
-      [[-0.10, 0.88, -0.60], [0.22, 0.88, -0.60], [0.55, 0.88, -0.60]],
-    ],
+    // The strips painted in the model's atlas are split into the 'ambient_led' mesh offline
+    ledPaths: [],
     glassOut: new THREE.Vector3(0, 0.82, -0.57).normalize(),
     glassUp: new THREE.Vector3(0, 0.57, 0.82).normalize(),
     wiperPivots: [[-0.42, 0.78, -1.02], [0.15, 0.78, -1.05]],
     wiperLen: 0.65,
     floor: null,
+    cabinNightGlow: 0.12,
+    // Fake cabin occlusion: the model is lit without shadows, so the footwell and lower door
+    // cards would be as bright as the dashboard top. Darken by model-space height instead.
+    occlusion: { y0: 0.3, y1: 0.95, min: 0.3 },
+    // Atlas areas too small to read from the seat, redrawn sharp (UV boxes measured on the atlas)
+    atlasPatches: [
+      {
+        meshes: ['Object_62'],
+        uv: [0.292, 0.389, 0.911, 0.932],
+        scale: 10,
+        background: false,
+        flipV: true,
+        surface: { roughness: 0.3, metalness: 0.25 },
+        paint: paintBmwClimateRow,
+      },
+      {
+        meshes: ['Object_86', 'Object_93'],
+        uv: [0.19, 0.32, 0.185, 0.226],
+        scale: 6,
+        paint: paintBmwDoorLocks,
+      },
+      {
+        meshes: ['steering_wheel'],
+        material: 'm4car_interior1.008',
+        uv: [0.905, 1, 0.122, 0.219],
+        scale: 5.5,
+        background: false,
+        project: { axis: [0.005, 0.368, 0.93] },
+        // Pulled forward in depth: the airbag cover is coplanar with the badge edge
+        surface: { roughness: 0.25, metalness: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 },
+        paint: paintBmwRoundel,
+      },
+    ],
+    // Door opener levers (one 131-triangle piece per door card), in satin aluminium
+    satinPieces: [
+      ['Object_86', [-0.7065, 0.855, -0.435]],
+      ['Object_93', [0.7065, 0.855, -0.435]],
+    ],
   },
 };
 COCKPIT_CONFIGS.m4 = COCKPIT_CONFIGS.bmw;
@@ -124,8 +167,9 @@ function createLedStrips(paths) {
     depthWrite: false,
     toneMapped: false,
   });
-  const coreMesh = new THREE.Mesh(mergeGeometries(core), coreMat);
-  const glowMesh = new THREE.Mesh(mergeGeometries(glow), glowMat);
+  const merged = (geos) => (geos.length ? mergeGeometries(geos) : new THREE.BufferGeometry());
+  const coreMesh = new THREE.Mesh(merged(core), coreMat);
+  const glowMesh = new THREE.Mesh(merged(glow), glowMat);
   glowMesh.renderOrder = 2;
   return { coreMesh, glowMesh, coreMat, glowMat };
 }
@@ -162,6 +206,40 @@ function applyMirror(obj, texture, u0, u1) {
   });
 }
 
+// Model-provided LED strips keep the brightness falloff painted in the atlas (its blue channel)
+// but take the ambient colour from the shared LED material.
+function createAtlasLedMaterial(coreMat, map) {
+  const mat = coreMat.clone();
+  mat.map = map;
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      'diffuseColor.rgb *= smoothstep(0.08, 0.45, texture2D(map, vMapUv).b);'
+    );
+  };
+  return mat;
+}
+
+// Multiplies a lit material's output by a height-based occlusion term in cockpit space.
+function addCabinOcclusion(material, uniforms) {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform mat4 cabinInverse;\nvarying float vCabinY;')
+      .replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\nvCabinY = (cabinInverse * modelMatrix * vec4(transformed, 1.0)).y;'
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 cabinOcclusion;\nvarying float vCabinY;')
+      .replace(
+        '#include <opaque_fragment>',
+        'outgoingLight *= mix(cabinOcclusion.z, 1.0, smoothstep(cabinOcclusion.x, cabinOcclusion.y, vCabinY));\n#include <opaque_fragment>'
+      );
+  };
+  material.customProgramCacheKey = () => 'cabin-occlusion';
+}
+
 export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, paintScreen }) {
   const key = (carType || 'a8').toLowerCase().includes('bmw') || (carType || '').toLowerCase().includes('m4') ? 'bmw' : 'a8';
   const cfg = COCKPIT_CONFIGS[key] || COCKPIT_CONFIGS.a8;
@@ -190,6 +268,10 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
     model.updateMatrixWorld(true);
     pivot.attach(wheel);
   }
+
+  for (const patch of cfg.atlasPatches || []) applyAtlasPatch(model, patch);
+  const satin = new THREE.MeshStandardMaterial({ color: 0xb4bac2, metalness: 1, roughness: 0.3 });
+  for (const [name, point] of cfg.satinPieces || []) applyPieceMaterial(model, name, point, satin);
 
   // Live mirrors
   const mirror = (name, u0, u1) => {
@@ -221,6 +303,13 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
   // Ambient LED contour strips
   const leds = createLedStrips(cfg.ledPaths);
   model.add(leds.coreMesh, leds.glowMesh);
+  // Strips that come with the model (split out of its atlas offline) share the LED colour
+  const atlasLedMats = [];
+  model.getObjectByName('ambient_led')?.traverse((m) => {
+    if (!m.isMesh) return;
+    m.material = m.material.map ? createAtlasLedMaterial(leds.coreMat, m.material.map) : leds.coreMat;
+    if (m.material !== leds.coreMat) atlasLedMats.push(m.material);
+  });
   const ledColor = new THREE.Color();
   let lastLedKey = '';
 
@@ -235,9 +324,24 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
   cabinLight.position.set(-0.35, 1.15, -0.15);
   model.add(cabinLight);
 
+  const paintMat = new THREE.MeshPhysicalMaterial({
+    color: 0x16191e,
+    metalness: 0.85,
+    roughness: 0.28,
+    clearcoat: 1,
+    clearcoatRoughness: 0.06,
+  });
+  const occlusion = cfg.occlusion && {
+    cabinInverse: { value: new THREE.Matrix4() },
+    cabinOcclusion: { value: new THREE.Vector3(cfg.occlusion.y0, cfg.occlusion.y1, cfg.occlusion.min) },
+  };
   const cabinMats = new Set();
   model.traverse((o) => {
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
+    if (cfg.paintMaterials?.has(o.material.name)) {
+      o.material = paintMat;
+      return;
+    }
     if (o.material.map) {
       o.material.map.anisotropy = 16;
       o.material.map.generateMipmaps = true;
@@ -250,6 +354,7 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
       o.material.roughness = 0.78;
       if (o.material.name === 'a8texture3') o.material.color.setScalar(0.4);
     }
+    if (occlusion) addCabinOcclusion(o.material, occlusion);
     if (o.material.map) {
       o.material.emissive.set(0xffffff);
       o.material.emissiveMap = o.material.map;
@@ -299,6 +404,7 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
         ledColor.setHex(ambientHex);
         leds.coreMat.color.copy(ledColor).multiplyScalar(1 + flash * 0.8);
         leds.glowMat.color.copy(ledColor);
+        atlasLedMats.forEach((m) => m.color.copy(leds.coreMat.color));
         leds.glowMat.opacity = (night ? 0.38 : 0.2) + flash * 0.4;
       }
 
@@ -311,6 +417,8 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
         w.quaternion.setFromRotationMatrix(_m.makeBasis(_x, _y, cfg.glassOut));
       }
 
+      if (occlusion) occlusion.cabinInverse.value.copy(model.matrixWorld).invert();
+
       if (steerAngle !== lastAngle) {
         lastAngle = steerAngle;
         pivot.quaternion.copy(baseQuat).multiply(_spin.setFromAxisAngle(Z_AXIS, cfg.steerSign * steerAngle));
@@ -318,7 +426,7 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
       if (night !== lastNight) {
         lastNight = night;
         cabinLight.intensity = night ? 0.15 : 1.3;
-        cabinMats.forEach((m) => (m.emissiveIntensity = night ? CABIN_NIGHT_GLOW : 0.05));
+        cabinMats.forEach((m) => (m.emissiveIntensity = night ? cfg.cabinNightGlow ?? CABIN_NIGHT_GLOW : 0.05));
       }
     },
     // Screen-space circle of the wheel rim (CSS px) for mouse/touch steering

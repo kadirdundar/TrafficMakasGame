@@ -18,6 +18,10 @@ const EXTERIOR_OUT = 'public/models/bmw-m4.glb';
 // Normalization factor: original model length is ~1.712m, real M4 length is 4.794m
 const SCALE = 2.80;
 
+// Steering wheel hub centre and column axis (towards the driver), in cockpit coordinates
+const WHEEL_PIVOT = [-0.3745, 0.880, -0.335];
+const WHEEL_AXIS = [0.005, 0.368, 0.930];
+
 async function loadSourceWorldMatrices() {
   const buf = fs.readFileSync(INPUT_PATH);
   const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
@@ -108,6 +112,48 @@ function createQuadMesh(doc, name, mat, corners) {
 
   mesh.addPrimitive(prim);
   return mesh;
+}
+
+// Moves the triangles of `prim` for which keep(a, b, c) returns true into a new primitive
+// (same material, only the used vertices). The source primitive keeps the rest.
+function splitTriangles(doc, prim, keep) {
+  const idxAcc = prim.getIndices();
+  const idx = idxAcc.getArray();
+  const stay = [];
+  const moved = [];
+  for (let t = 0; t < idx.length; t += 3) {
+    (keep(idx[t], idx[t + 1], idx[t + 2]) ? moved : stay).push(idx[t], idx[t + 1], idx[t + 2]);
+  }
+  if (!moved.length) return null;
+  idxAcc.setArray(new Uint32Array(stay));
+
+  const remap = new Map();
+  for (const i of moved) if (!remap.has(i)) remap.set(i, remap.size);
+  const out = doc.createPrimitive().setMaterial(prim.getMaterial());
+  for (const semantic of prim.listSemantics()) {
+    const src = prim.getAttribute(semantic);
+    const size = src.getElementSize();
+    const arr = new Float32Array(remap.size * size);
+    const el = [];
+    for (const [oldI, newI] of remap) {
+      src.getElement(oldI, el);
+      for (let k = 0; k < size; k++) arr[newI * size + k] = el[k];
+    }
+    out.setAttribute(semantic, doc.createAccessor().setType(src.getType()).setArray(arr));
+  }
+  out.setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(moved.map((i) => remap.get(i)))));
+  return out;
+}
+
+// Returns (u, v) => [r, g, b] for a texture, sampling with repeat wrapping.
+async function textureSampler(tex) {
+  const { data, info } = await sharp(Buffer.from(tex.getImage())).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return (u, v) => {
+    const x = Math.min(info.width - 1, Math.floor((u - Math.floor(u)) * info.width));
+    const y = Math.min(info.height - 1, Math.floor((v - Math.floor(v)) * info.height));
+    const i = (y * info.width + x) * 3;
+    return [data[i], data[i + 1], data[i + 2]];
+  };
 }
 
 async function buildCockpitModel(matrices) {
@@ -226,8 +272,8 @@ async function buildCockpitModel(matrices) {
     // Wheel pivot and column axis
     // Hub center: X = -0.3745, Y = 0.880, Z = -0.335
     // Column axis: normal pointing out of hub towards driver [0.005, 0.368, 0.930]
-    const pivot = [-0.3745, 0.880, -0.335];
-    const axis = [0.005, 0.368, 0.930];
+    const pivot = WHEEL_PIVOT;
+    const axis = WHEEL_AXIS;
 
     // Helper to build a primitive from index array and vertex data
     function buildSubPrim(indices, shiftPivot = false) {
@@ -316,51 +362,117 @@ async function buildCockpitModel(matrices) {
   if (columnNode) cockpitRoot.addChild(columnNode);
 
   // Store driver eye in scene extras
-  // Driver sits at X = -0.375 (directly behind wheel center -0.3745), Y = 1.12, Z = 0.12
+  // Driver eye: on the wheel centre line, 0.52 m behind and 0.26 m above the hub (recipe §5.1)
   defaultScene.setExtras({
-    eye: [-0.375, 1.12, 0.12],
+    eye: [-0.375, 1.14, 0.185],
   });
 
-  // Mirror glass material (will be overridden by CarCockpit.applyMirror with render target)
-  const mirrorMat = doc.createMaterial('MirrorMaterial')
-    .setRoughnessFactor(0.0)
-    .setMetallicFactor(1.0);
+  const nodeByName = (name) => root.listNodes().find((n) => n.getName() === name);
 
-  // Left wing mirror quad (facing back towards driver)
-  // bl, br, tr, tl
-  const leftMirrorMesh = createQuadMesh(doc, 'MirrorLeftMesh', mirrorMat, [
-    [-0.99, 0.89, -0.61],
-    [-0.85, 0.89, -0.63],
-    [-0.85, 0.99, -0.63],
-    [-0.99, 0.99, -0.61],
-  ]);
-  const leftMirrorNode = doc.createNode('mirror_left').setMesh(leftMirrorMesh);
-  cockpitRoot.addChild(leftMirrorNode);
+  // Wheel trim that lives in other meshes (carbon spokes and shift paddles in the carbon mesh,
+  // the BMW roundel and a spoke insert in the interior mesh) must turn with the wheel. Every
+  // connected piece lying completely inside the wheel's disc is moved into the wheel node.
+  // The turn-signal stalk sits further back (axial < -0.1 m) and stays put.
+  if (swMesh) {
+    const P = new THREE.Vector3().fromArray(WHEEL_PIVOT);
+    const A = new THREE.Vector3().fromArray(WHEEL_AXIS).normalize();
+    const v = new THREE.Vector3();
+    const inDisc = (pos, i) => {
+      v.fromArray(pos.getElement(i, [])).sub(P);
+      const d = v.dot(A);
+      return d > -0.1 && d < 0.02 && v.addScaledVector(A, -d).length() < 0.2;
+    };
+    for (const src of ['Object_62', 'Object_148']) {
+      const prim = nodeByName(src)?.getMesh()?.listPrimitives()[0];
+      if (!prim) continue;
+      const pos = prim.getAttribute('POSITION');
+      const idx = prim.getIndices().getArray();
+      const N = pos.getCount();
+      const parent = new Int32Array(N).map((_, i) => i);
+      const find = (a) => { while (parent[a] !== a) a = parent[a] = parent[parent[a]]; return a; };
+      const key = new Map();
+      for (let i = 0; i < N; i++) {
+        const k = pos.getElement(i, []).map((c) => Math.round(c * 4000)).join(',');
+        if (key.has(k)) parent[find(i)] = find(key.get(k)); else key.set(k, i);
+      }
+      for (let t = 0; t < idx.length; t += 3) {
+        parent[find(idx[t + 1])] = find(idx[t]);
+        parent[find(idx[t + 2])] = find(idx[t]);
+      }
+      const outside = new Set();
+      for (let i = 0; i < N; i++) if (!inDisc(pos, i)) outside.add(find(i));
+      const trim = splitTriangles(doc, prim, (a) => !outside.has(find(a)));
+      if (!trim) continue;
+      const tp = trim.getAttribute('POSITION');
+      const arr = tp.getArray().slice();
+      for (let i = 0; i < arr.length; i += 3) for (let k = 0; k < 3; k++) arr[i + k] -= WHEEL_PIVOT[k];
+      trim.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(arr));
+      swMesh.addPrimitive(trim);
+      console.log(`steering_wheel: +${trim.getIndices().getCount() / 3} tris from ${src}`);
+    }
+  }
 
-  // Right wing mirror quad
-  const rightMirrorMesh = createQuadMesh(doc, 'MirrorRightMesh', mirrorMat, [
-    [0.85, 0.89, -0.63],
-    [0.99, 0.89, -0.61],
-    [0.99, 0.99, -0.61],
-    [0.85, 0.99, -0.63],
-  ]);
-  const rightMirrorNode = doc.createNode('mirror_right').setMesh(rightMirrorMesh);
-  cockpitRoot.addChild(rightMirrorNode);
+  // Mirrors: the model's own mirror glass triangles become the live mirror surfaces
+  // (CarCockpit.applyMirror puts the render target on them). Selected by UV island, since the
+  // glass is mapped to a flat grey patch of the atlas; the right door mirror uses u + 1.
+  const frac = (x) => x - Math.floor(x);
+  const uvIn = (prim, box) => {
+    const uv = prim.getAttribute('TEXCOORD_0');
+    const e = [];
+    return (...ids) => ids.every((i) => {
+      uv.getElement(i, e);
+      return frac(e[0]) >= box[0] && frac(e[0]) <= box[1] && e[1] >= box[2] && e[1] <= box[3];
+    });
+  };
+  const MIRRORS = [
+    ['mirror_left', 'Object_88', [0.05, 0.14, 0.77, 0.83]],
+    ['mirror_right', 'Object_95', [0.05, 0.14, 0.77, 0.83]],
+    ['mirror_center', 'Object_62', [0.68, 0.71, 0.235, 0.255]],
+  ];
+  const mirrorMat = doc.createMaterial('MirrorMaterial').setRoughnessFactor(0.0).setMetallicFactor(1.0);
+  for (const [name, src, box] of MIRRORS) {
+    const prim = nodeByName(src)?.getMesh()?.listPrimitives()[0];
+    const glass = prim && splitTriangles(doc, prim, uvIn(prim, box));
+    if (!glass) { console.warn('Mirror glass not found:', name); continue; }
+    glass.setMaterial(mirrorMat);
+    cockpitRoot.addChild(doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(glass)));
+    console.log(`${name}: ${glass.getIndices().getCount() / 3} tris from ${src}`);
+  }
 
-  // Center rear-view mirror quad
-  const centerMirrorMesh = createQuadMesh(doc, 'MirrorCenterMesh', mirrorMat, [
-    [-0.13, 1.20, -0.38],
-    [0.13, 1.20, -0.38],
-    [0.13, 1.28, -0.38],
-    [-0.13, 1.28, -0.38],
-  ]);
-  const centerMirrorNode = doc.createNode('mirror_center').setMesh(centerMirrorMesh);
-  cockpitRoot.addChild(centerMirrorNode);
+  // Ambient light strips: the door cards and the dashboard have thin strips painted blue in
+  // the atlas. They are split into one 'ambient_led' mesh that the game lights in the chosen
+  // ambient colour. The steering wheel is not scanned (its roundel is blue too).
+  const ledPrims = [];
+  let ledTex = null;
+  for (const src of ['Object_62', 'Object_86', 'Object_93']) {
+    const prim = nodeByName(src)?.getMesh()?.listPrimitives()[0];
+    const tex = prim?.getMaterial()?.getBaseColorTexture();
+    if (!tex) continue;
+    const sample = await textureSampler(tex);
+    const uv = prim.getAttribute('TEXCOORD_0');
+    const e = [];
+    const led = splitTriangles(doc, prim, (...ids) => {
+      let u = 0;
+      let v = 0;
+      for (const i of ids) { uv.getElement(i, e); u += e[0] / 3; v += e[1] / 3; }
+      const [r, g, b] = sample(u, v);
+      return b > 90 && b > r * 1.6 && b > g * 1.3;
+    });
+    if (led) { ledPrims.push(led); ledTex = tex; }
+  }
+  if (ledPrims.length) {
+    // Keeps the atlas so the game can reuse the painted brightness falloff as a mask
+    const ledMat = doc.createMaterial('AmbientLED').setBaseColorTexture(ledTex);
+    const ledMesh = doc.createMesh('ambient_led');
+    ledPrims.forEach((p) => ledMesh.addPrimitive(p.setMaterial(ledMat)));
+    cockpitRoot.addChild(doc.createNode('ambient_led').setMesh(ledMesh));
+    console.log(`ambient_led: ${ledPrims.reduce((n, p) => n + p.getIndices().getCount() / 3, 0)} tris`);
+  }
 
   // Footwell floor plane
   const floorMat = doc.createMaterial('FootwellFloor')
-    .setBaseColorFactor([0.08, 0.08, 0.09, 1.0])
-    .setRoughnessFactor(0.9)
+    .setBaseColorFactor([0.018, 0.018, 0.02, 1.0])
+    .setRoughnessFactor(1.0)
     .setMetallicFactor(0.0);
   const floorMesh = createQuadMesh(doc, 'FloorMesh', floorMat, [
     [-0.85, 0.32, -0.2],
@@ -479,7 +591,7 @@ async function main() {
   console.log('Loading source model world matrices...');
   const { matrices } = await loadSourceWorldMatrices();
   await buildCockpitModel(matrices);
-  await buildExteriorModel(matrices);
+  if (!process.argv.includes('--cockpit-only')) await buildExteriorModel(matrices);
   console.log('\nAll models generated successfully!');
 }
 

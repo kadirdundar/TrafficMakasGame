@@ -34,20 +34,23 @@ const painter = Object.create(CarCockpit.prototype); painter.carType = car; pain
 painter._screenState = { speedKmh: 128, rpm: 4300, gear: 6, highBeam: false, odometerKm: 1428.4 };
 const ck = await loadCockpit3D({ carType: car, eyeAnchor: new THREE.Vector3(...presets[0].slice(0,3)), mirrorTexture: rt.texture, paintScreen: (n,ctx,w,h)=>painter.paint3DScreen(n,ctx,w,h) });
 scene.add(ck.group);
-const cam = new THREE.PerspectiveCamera(P[3], W/H, 0.05, 1000);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov')||P[3]), W/H, 0.01, 1000);
 cam.position.copy(eye);
 if (q.get('ext')) { const [x,y,z]=q.get('ext').split(',').map(Number); cam.position.set(x,y,z); const [a,b,c]=(q.get('look')||'0,1.1,-0.5').split(',').map(Number); cam.lookAt(a,b,c); }
 else cam.setViewOffset(W,H,0,Math.round(H*P[4]),W,H);
 cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
 ck.update({ steerAngle: +(q.get('steer')||0), night, aspect: W/H });
 if (q.get('hl')) { ck.group.traverse(o => { if (o.isMesh && o.name.toLowerCase().includes(q.get('hl').toLowerCase())) o.material = new THREE.MeshBasicMaterial({color:0xff00ff, side:THREE.DoubleSide}); }); }
+// Rear view for the mirrors, like the game's mirror pass (cockpit hidden)
+const mcam = new THREE.PerspectiveCamera(60, 2, 0.1, 400); mcam.position.set(0, 1.2, 0.4); mcam.lookAt(0, 1.0, 20);
+ck.group.visible = false; r.setRenderTarget(rt); r.render(scene, mcam); r.setRenderTarget(null); ck.group.visible = true;
 r.render(scene, cam);
 const info = {};
 if (q.get('pick')) { const rc = new THREE.Raycaster(); ck.group.updateMatrixWorld(true);
   for (const p of q.get('pick').split(';')) { const [px,py]=p.split(',').map(Number); rc.setFromCamera(new THREE.Vector2(px/W*2-1, -(py/H)*2+1), cam);
     const hits = rc.intersectObject(ck.group, true).filter(h=>h.object.visible).slice(0,3);
-    info[p] = hits.map(h => { const n = h.face.normal.clone().transformDirection(h.object.matrixWorld); return `${h.object.name} [${h.object.material.name}] d=${h.distance.toFixed(2)} facing=${(n.dot(rc.ray.direction)<0)?'front':'BACK'} side=${h.object.material.side}`; }); } }
-window.__info = info; window.__done = true;
+    info[p] = hits.map(h => { const n = h.face.normal.clone().transformDirection(h.object.matrixWorld); const lp = ck.group.worldToLocal(h.point.clone()); return `${h.object.name} [${h.object.material.name}] p=${lp.toArray().map(v=>v.toFixed(3)).join(',')} uv=${h.uv ? h.uv.x.toFixed(3)+','+h.uv.y.toFixed(3) : '-'} d=${h.distance.toFixed(2)} facing=${(n.dot(rc.ray.direction)<0)?'front':'BACK'} side=${h.object.material.side}`; }); } }
+window.__info = info; window.__ck = ck; window.__cam = cam; window.__scene = scene; window.__r = r; window.THREE = THREE; window.__done = true;
 </script>
 </body>
 </html>
