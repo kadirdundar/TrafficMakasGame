@@ -53,14 +53,18 @@ export default {
   cockpit: {
     out: 'public/models/porsche-911-cockpit.glb',
     keepNodes: [
-      'Object_40',
-      'Object_44',
-      'Object_46',
-      'Object_28',
-      'Object_30',
-      'Object_55',
-      'Object_64',
-      'Object_66',
+      'Object_13', // cowl / wiper trough / front inner fenders
+      'Object_15', // front fenders & body panels (seals gaps beside hood)
+      'Object_28', // roof / targa arch / mirror housings
+      'Object_30', // door frames & lower A-pillar
+      'Object_40', // dashboard, steering wheel, console, door cards, pedals
+      'Object_44', // badges & steering crest
+      'Object_46', // leather sports seats
+      'Object_49', // A-pillar interior trim & pillar lining
+      'Object_51', // A-pillar painted body pillar & roof frame
+      'Object_55', // chrome trim
+      'Object_64', // center hood lid
+      'Object_66', // hood crest
     ],
     eye: [-0.38, 1.08, 0.30],
     steering: {

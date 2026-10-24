@@ -42,8 +42,7 @@ function radialTexture(stops) {
   });
 }
 
-// Dark studio with long softboxes (the clean highlight lines car photos are known for) and a
-// low accent-coloured band that tints the sills and wheels in the turntable ring's colour
+// Dark matte studio with soft diffused ambient lighting and minimal specular glare
 class StudioEnvironment {
   constructor(renderer) {
     this.pmrem = new THREE.PMREMGenerator(renderer);
@@ -55,12 +54,12 @@ class StudioEnvironment {
     const env = new THREE.Scene();
     const room = new THREE.Mesh(
       new THREE.BoxGeometry(40, 16, 40),
-      new THREE.MeshBasicMaterial({ color: 0x05070b, side: THREE.BackSide })
+      new THREE.MeshBasicMaterial({ color: 0x121722, side: THREE.BackSide })
     );
     room.position.y = 7;
     env.add(room);
 
-    const softbox = (w, h, intensity, position, rotation, tint = 0xffffff) => {
+    const softbox = (w, h, intensity, position, rotation, tint = 0xdce6f7) => {
       const color = new THREE.Color(tint).multiplyScalar(intensity);
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(w, h),
@@ -70,13 +69,11 @@ class StudioEnvironment {
       mesh.rotation.set(...rotation);
       env.add(mesh);
     };
-    softbox(4, 22, 3.4, [0, 14.5, 0], [Math.PI / 2, 0, 0]);
-    softbox(1.2, 22, 2.6, [-6, 13, 0], [Math.PI / 2, 0.35, 0]);
-    softbox(1.2, 22, 2.6, [6, 13, 0], [Math.PI / 2, -0.35, 0]);
-    softbox(26, 1.4, 2.0, [0, 4, -19.5], [0, 0, 0], 0xdfe9ff);
-    softbox(26, 1.4, 1.4, [0, 4, 19.5], [0, Math.PI, 0], 0xfff1e0);
-    softbox(1.6, 9, 1.6, [-19.5, 5, -6], [0, Math.PI / 2, 0]);
-    softbox(1.6, 9, 1.6, [19.5, 5, 6], [0, -Math.PI / 2, 0]);
+    softbox(14, 26, 0.45, [0, 14.5, 0], [Math.PI / 2, 0, 0]);
+    softbox(6, 24, 0.35, [-8, 13, 0], [Math.PI / 2, 0.35, 0]);
+    softbox(6, 24, 0.35, [8, 13, 0], [Math.PI / 2, -0.35, 0]);
+    softbox(28, 4, 0.3, [0, 4, -19.5], [0, 0, 0], 0xdfe9ff);
+    softbox(28, 4, 0.25, [0, 4, 19.5], [0, Math.PI, 0], 0xfff1e0);
 
     this.accentMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
     const band = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 1.2, 48, 1, true), this.accentMat);
@@ -85,11 +82,11 @@ class StudioEnvironment {
     return env;
   }
 
-  // Re-render the reflections with a new accent colour (a few ms, only on colour changes)
+  // Re-render the diffused environment with a new accent colour (heavily blurred for a matte look)
   update(accent) {
-    this.accentMat.color.set(accent).multiplyScalar(1.6);
+    this.accentMat.color.set(accent).multiplyScalar(0.25);
     const previous = this.texture;
-    this.texture = this.pmrem.fromScene(this.scene, 0.035).texture;
+    this.texture = this.pmrem.fromScene(this.scene, 0.18).texture;
     previous?.dispose();
     return this.texture;
   }
@@ -117,14 +114,19 @@ export class A8Showroom {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 0.95;
     this.renderer.setClearColor(0x000000, 0);
 
     this.scene = new THREE.Scene();
+    if ('environmentIntensity' in this.scene) {
+      this.scene.environmentIntensity = 0.3;
+    }
     this.studio = new StudioEnvironment(this.renderer);
-    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    const key = new THREE.DirectionalLight(0xfffaf0, 1.05);
     key.position.set(-4, 8, -3);
-    this.scene.add(key, new THREE.HemisphereLight(0xbcd2ff, 0x0b0d12, 0.35));
+    const fill = new THREE.DirectionalLight(0xc4d7ff, 0.55);
+    fill.position.set(5, 6, 4);
+    this.scene.add(key, fill, new THREE.HemisphereLight(0xd8e4ff, 0x141822, 1.05));
 
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 120);
     this.target = TARGET.clone();
@@ -162,19 +164,20 @@ export class A8Showroom {
   }
 
   buildFloor() {
-    // Glossy dark floor that fades into the page background at its edge
+    // Matte dark floor that fades into the page background at its edge (no mirror reflections)
     const floorAlpha = radialTexture([
-      [0, '#d6d6d6'],
-      [0.42, '#bcbcbc'],
+      [0, '#e0e0e0'],
+      [0.45, '#c4c4c4'],
       [1, '#000'],
     ]);
     floorAlpha.colorSpace = THREE.NoColorSpace;
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(14, 72),
       new THREE.MeshStandardMaterial({
-        color: 0x0b0e15,
-        roughness: 0.34,
-        metalness: 0.55,
+        color: 0x0c1018,
+        roughness: 0.95,
+        metalness: 0.05,
+        envMapIntensity: 0.1,
         transparent: true,
         alphaMap: floorAlpha,
         depthWrite: false,
@@ -184,22 +187,22 @@ export class A8Showroom {
     floor.position.y = -0.001;
     this.scene.add(floor);
 
-    // Turntable: crisp accent ring with a soft glow, a faint inner ring and lane markings
+    // Turntable: crisp accent ring with a subtle soft glow, a faint inner ring and lane markings
     const glowTex = canvasTexture(512, (g, s) => {
       const grad = g.createRadialGradient(s / 2, s / 2, s * 0.3, s / 2, s / 2, s / 2);
       grad.addColorStop(0, 'rgba(255,255,255,0)');
       grad.addColorStop(0.62, 'rgba(255,255,255,0.0)');
-      grad.addColorStop(0.79, 'rgba(255,255,255,0.55)');
-      grad.addColorStop(0.86, 'rgba(255,255,255,0.08)');
+      grad.addColorStop(0.79, 'rgba(255,255,255,0.35)');
+      grad.addColorStop(0.86, 'rgba(255,255,255,0.05)');
       grad.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = grad;
       g.fillRect(0, 0, s, s);
     });
     const additive = (opts) =>
       new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, ...opts });
-    this.ringMat = additive({ opacity: 0.95 });
-    this.glowMat = additive({ map: glowTex, opacity: 0.7 });
-    this.innerRingMat = additive({ opacity: 0.22 });
+    this.ringMat = additive({ opacity: 0.65 });
+    this.glowMat = additive({ map: glowTex, opacity: 0.35 });
+    this.innerRingMat = additive({ opacity: 0.14 });
 
     const flat = (geometry, material, y) => {
       const mesh = new THREE.Mesh(geometry, material);
@@ -265,12 +268,6 @@ export class A8Showroom {
       this.target.set(0, Math.max(0.62, height * 0.44), 0);
       this.frameHalfHeight = Math.max(FRAME_HALF_HEIGHT, height * 0.9);
       this.controls.target.copy(this.target);
-
-      // Mirror image under the semi-transparent floor gives the glossy-floor reflection
-      const reflection = car.group.clone();
-      reflection.scale.y = -1;
-      this.reflection = reflection;
-      this.scene.add(reflection);
 
       car.setLights({ night: this.lightsOn });
       this.resize();

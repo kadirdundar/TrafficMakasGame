@@ -1278,11 +1278,295 @@
     touch-action: pan-y;
   }
 
+  /* Hide stage camera/light tools on Steps 2 and 3 so the user focuses on settings */
+  .menu-overlay[data-step='2'] #garage-stage-tools,
+  .menu-overlay[data-step='3'] #garage-stage-tools,
+  .menu-overlay[data-step='2'] .garage-hint,
+  .menu-overlay[data-step='3'] .garage-hint {
+    display: none;
+  }
+
+  /* --- Step-by-step Wizard Header --- */
+  .wizard-stepper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 12px;
+    background: rgba(4, 7, 13, 0.55);
+    border-block-end: 1px solid var(--line);
+  }
+
+  .step-pill {
+    flex: 1;
+    min-inline-size: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  }
+
+  .step-pill:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+  }
+
+  .step-pill.active {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    color: #fff;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
+  .step-pill.done {
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #d8e2ef;
+  }
+
+  .step-badge {
+    flex: none;
+    inline-size: 22px;
+    block-size: 22px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 0.7rem;
+    font-weight: 900;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    transition: background 0.16s ease, color 0.16s ease;
+  }
+
+  .step-pill.active .step-badge {
+    background: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+
+  .step-pill.done .step-badge {
+    background: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.5);
+  }
+
+  .step-text {
+    min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .step-text strong {
+    font-size: 0.7rem;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .step-text small {
+    font-size: 0.58rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .step-pill.active .step-text small {
+    color: color-mix(in srgb, var(--accent) 85%, #fff);
+  }
+
+  .step-arrow {
+    color: rgba(255, 255, 255, 0.22);
+    font-size: 0.9rem;
+    font-weight: 700;
+    flex: none;
+  }
+
+  .wizard-step-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: tabIn 0.22s ease;
+  }
+
+  .wizard-step-page[hidden] {
+    display: none;
+  }
+
+  .step-intro {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-block-end: 10px;
+    border-block-end: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .step-intro h2 {
+    font-size: 1rem;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    color: #fff;
+  }
+
+  .step-intro p {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  /* --- Step 1: Car Selection Cards --- */
+  .car-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .car-select-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 13px;
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--line);
+    color: var(--text-main);
+    text-align: start;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+  }
+
+  .car-select-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  .car-select-card.active {
+    background: color-mix(in srgb, var(--accent) 14%, rgba(12, 18, 30, 0.85));
+    border-color: color-mix(in srgb, var(--accent) 75%, transparent);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  .car-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-inline-size: 0;
+  }
+
+  .car-card-make {
+    font-size: 0.56rem;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .car-select-card.active .car-card-make {
+    color: var(--accent);
+  }
+
+  .car-card-name {
+    font-size: 0.9rem;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.01em;
+  }
+
+  .car-card-variant {
+    margin-inline-start: auto;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.32);
+    padding: 3px 8px;
+    border-radius: 99px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    white-space: nowrap;
+  }
+
+  .car-card-check {
+    inline-size: 22px;
+    block-size: 22px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 0.72rem;
+    font-weight: 900;
+    background: rgba(255, 255, 255, 0.06);
+    color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .car-select-card.active .car-card-check {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+
+  .paint-box {
+    justify-content: space-between;
+    padding: 10px 13px;
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--line);
+  }
+
+  .paint-swatches-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .step-footer-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .step-footer-row[hidden] {
+    display: none;
+  }
+
+  .back-step-btn {
+    flex: 0 0 auto;
+    padding-inline: 14px;
+    font-weight: 800;
+  }
+
+  .next-step-btn {
+    flex: 1;
+    justify-content: space-between;
+    padding: 11px 18px;
+  }
+
+  .step-btn-arrow {
+    font-size: 1.25rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .resume-quick-btn {
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #6ee7b7;
+  }
+
   .panel-tabs {
     display: flex;
     gap: 2px;
-    padding: 6px;
-    border-block-end: 1px solid var(--line);
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--line);
+    border-radius: 12px;
   }
 
   .panel-tab {
@@ -1778,6 +2062,57 @@
 
     .garage-panel {
       border-radius: 16px;
+    }
+
+    .wizard-stepper {
+      padding: 6px 8px;
+      gap: 3px;
+    }
+
+    .step-pill {
+      padding: 5px 7px;
+      gap: 6px;
+    }
+
+    .step-badge {
+      inline-size: 19px;
+      block-size: 19px;
+      font-size: 0.62rem;
+    }
+
+    .step-text strong {
+      font-size: 0.64rem;
+    }
+
+    .step-text small,
+    .step-intro p,
+    .car-card-variant {
+      display: none;
+    }
+
+    .step-intro {
+      padding-block-end: 6px;
+    }
+
+    .step-intro h2 {
+      font-size: 0.85rem;
+    }
+
+    .car-card-list {
+      gap: 5px;
+    }
+
+    .car-select-card {
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+
+    .car-card-name {
+      font-size: 0.78rem;
+    }
+
+    .paint-box {
+      padding: 6px 10px;
     }
 
     .panel-tabs {

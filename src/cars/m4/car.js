@@ -25,7 +25,11 @@ export default {
   exterior: {
     url: `${BASE}models/bmw-m4.glb`,
     length: 4.8,
-    envMapIntensity: 1.25,
+    envMapIntensity: 0.25,
+    metalness: 0.18,
+    roughness: 0.68,
+    clearcoat: 0.04,
+    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.8, highBeam: 3.5 },
     tail: { day: 0.35, night: 1.2, brake: 3.2 },
     lamps: [{ match: /^emissive$/, role: 'head', emissive: 0xffffff, intensity: 0.5 }],

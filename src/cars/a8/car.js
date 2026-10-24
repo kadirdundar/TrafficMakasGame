@@ -23,7 +23,11 @@ export default {
   exterior: {
     url: `${BASE}models/audi-a8.glb`,
     length: 4.85,
-    envMapIntensity: 1.2,
+    envMapIntensity: 0.25,
+    metalness: 0.18,
+    roughness: 0.68,
+    clearcoat: 0.04,
+    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
     // First matching rule wins (material names in the GLB)

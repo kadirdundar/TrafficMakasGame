@@ -194,7 +194,7 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
   if (cfg.floor) {
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(cfg.floor.w, cfg.floor.h).rotateX(-Math.PI / 2).translate(0, cfg.floor.y, cfg.floor.z),
-      new THREE.MeshStandardMaterial({ color: 0x101113, roughness: 1, metalness: 0 })
+      new THREE.MeshStandardMaterial({ color: 0x101113, roughness: 1, metalness: 0, side: THREE.DoubleSide })
     );
     model.add(floor);
   }
@@ -238,6 +238,7 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
     roughness: 0.28,
     clearcoat: 1,
     clearcoatRoughness: 0.06,
+    side: THREE.DoubleSide,
   });
   const occlusion = cfg.occlusion && {
     cabinInverse: { value: new THREE.Matrix4() },
@@ -246,6 +247,7 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
   const cabinMats = new Set();
   model.traverse((o) => {
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
+    o.material.side = THREE.DoubleSide;
     if (cfg.paintMaterials?.has(o.material.name)) {
       o.material = paintMat;
       return;

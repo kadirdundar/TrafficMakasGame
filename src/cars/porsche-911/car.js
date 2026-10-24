@@ -24,7 +24,11 @@ export default {
   exterior: {
     url: `${BASE}models/porsche-911.glb`,
     length: 4.52,
-    envMapIntensity: 1.2,
+    envMapIntensity: 0.25,
+    metalness: 0.18,
+    roughness: 0.68,
+    clearcoat: 0.04,
+    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
     lamps: [
@@ -66,7 +70,7 @@ export default {
     glassUp: new THREE.Vector3(0, 0.52, 0.85).normalize(),
     wiperPivots: [[-0.34, 0.86, -0.45], [0.12, 0.86, -0.45]],
     wiperLen: 0.55,
-    floor: null,
+    floor: { w: 2.0, h: 4.0, y: 0.22, z: -0.6 },
     occlusion: { y0: 0.2, y1: 0.85, min: 0.35 },
   },
 };

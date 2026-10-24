@@ -58,11 +58,11 @@ export async function loadExterior(cfg, { paintHex = 0x0e6f9c } = {}) {
 
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: paintHex,
-    metalness: cfg.metalness ?? 0.82,
-    roughness: cfg.roughness ?? 0.22,
-    clearcoat: cfg.clearcoat ?? 1.0,
-    clearcoatRoughness: cfg.clearcoatRoughness ?? 0.05,
-    envMapIntensity: cfg.envMapIntensity ?? 1.2,
+    metalness: cfg.metalness ?? 0.18,
+    roughness: cfg.roughness ?? 0.68,
+    clearcoat: cfg.clearcoat ?? 0.04,
+    clearcoatRoughness: cfg.clearcoatRoughness ?? 0.65,
+    envMapIntensity: cfg.envMapIntensity ?? 0.25,
     side: THREE.DoubleSide,
   });
   const paintName = cfg.paintMaterial || 'paint';
@@ -78,15 +78,38 @@ export async function loadExterior(cfg, { paintHex = 0x0e6f9c } = {}) {
       return;
     }
     const rule = cfg.lamps?.find((r) => r.match.test(name));
-    if (!rule) return;
-    if (rule.removeMap) mat.map = null;
-    if (rule.color !== undefined) mat.color.set(rule.color);
-    if (rule.emissive !== undefined) mat.emissive.set(rule.emissive);
-    if (rule.emissiveFromMap) mat.emissiveMap = mat.map;
-    if (rule.intensity !== undefined) mat.emissiveIntensity = rule.intensity;
-    if (rule.removeMap) mat.needsUpdate = true;
-    lampMats[rule.role].push(mat);
-    if (rule.box) boxes[rule.box].expandByObject(o);
+    if (rule) {
+      if (rule.removeMap) mat.map = null;
+      if (rule.color !== undefined) mat.color.set(rule.color);
+      if (rule.emissive !== undefined) mat.emissive.set(rule.emissive);
+      if (rule.emissiveFromMap) mat.emissiveMap = mat.map;
+      if (rule.intensity !== undefined) mat.emissiveIntensity = rule.intensity;
+      if ('roughness' in mat) mat.roughness = Math.max(mat.roughness ?? 0.5, 0.5);
+      if ('metalness' in mat) mat.metalness = Math.min(mat.metalness ?? 0.2, 0.25);
+      if ('envMapIntensity' in mat) mat.envMapIntensity = 0.2;
+      if (rule.removeMap) mat.needsUpdate = true;
+      lampMats[rule.role].push(mat);
+      if (rule.box) boxes[rule.box].expandByObject(o);
+      return;
+    }
+    // Tame mirror reflections across all secondary exterior materials (trim, glass, rims, bodykit, etc.)
+    if (mat) {
+      const isGlass = /glass|lens|window/i.test(name) || mat.transparent;
+      if ('roughness' in mat) {
+        mat.roughness = Math.max(mat.roughness ?? 0.6, isGlass ? 0.42 : 0.62);
+      }
+      if ('metalness' in mat) {
+        mat.metalness = Math.min(mat.metalness ?? 0.25, isGlass ? 0.15 : 0.3);
+      }
+      if ('clearcoat' in mat) {
+        mat.clearcoat = Math.min(mat.clearcoat || 0, 0.04);
+        mat.clearcoatRoughness = Math.max(mat.clearcoatRoughness || 0.6, 0.6);
+      }
+      if ('envMapIntensity' in mat) {
+        mat.envMapIntensity = Math.min(mat.envMapIntensity ?? 0.25, 0.25);
+      }
+      mat.needsUpdate = true;
+    }
   });
 
   const { front, flare: flareDef, rear } = cfg.glow;

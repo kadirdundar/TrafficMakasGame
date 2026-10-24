@@ -180,9 +180,9 @@
     </div>
   </div>
 
-  <!-- Start / Pause menu: the A8 garage (3D car on a turntable + settings panel) -->
-  <div id="menu-overlay" class="menu-overlay" data-weather="night">
-    <canvas id="garage-canvas" class="garage-canvas" aria-label="Audi A8 3D model: sürükleyerek döndür, kaydırarak yakınlaş"></canvas>
+  <!-- Start / Pause menu: Step-by-step garage wizard (1: Araç, 2: Pist & Atmosfer, 3: Kokpit & Başlat) -->
+  <div id="menu-overlay" class="menu-overlay" data-weather="night" data-step="1">
+    <canvas id="garage-canvas" class="garage-canvas" aria-label="3D araç modeli: sürükleyerek döndür, kaydırarak yakınlaş"></canvas>
 
     <div class="garage-layout">
       <header class="garage-brand">
@@ -203,16 +203,12 @@
       </div>
 
       <section class="garage-car" aria-label="Aracın">
-        <div class="segmented-control car-select-group" id="garage-car-select" role="group" aria-label="Araç modeli seçimi">
-          <!-- One button per car in src/cars/ (filled in by main.js) -->
-        </div>
-
         <div class="car-title">
           <span class="car-make" id="garage-car-make">AUDI</span>
           <strong class="car-model" id="garage-car-model">A8 <small class="car-variant" id="garage-car-variant">D5 · quattro</small></strong>
         </div>
 
-        <div class="garage-tools">
+        <div class="garage-tools" id="garage-stage-tools">
           <div class="chip-group" id="garage-view-group" role="group" aria-label="Kamera açısı">
             <button type="button" class="chip active" data-view="front34">¾ Ön</button>
             <button type="button" class="chip" data-view="side">Yan</button>
@@ -224,14 +220,6 @@
             <button type="button" id="garage-flash" class="chip" aria-label="Selektör" title="Selektör yak">≡O<span class="chip-text"> Selektör</span></button>
             <button type="button" id="garage-spin" class="chip toggle" aria-pressed="true" aria-label="Otomatik döndür" title="Otomatik döndür">⟳<span class="chip-text"> Döndür</span></button>
           </div>
-          <div class="paint-row" id="garage-paint-group" title="Online'da arkadaşların seni oda sırana göre bu renklerden birinde görür">
-            <span class="paint-label">Online boya</span>
-            <button type="button" class="paint-swatch active" data-paint="0" style="--sw-color: #0e6f9c" aria-label="Navarra Mavisi"></button>
-            <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #8f1020" aria-label="Tango Kırmızısı"></button>
-            <button type="button" class="paint-swatch" data-paint="2" style="--sw-color: #e4e8ec" aria-label="Buzul Beyazı"></button>
-            <button type="button" class="paint-swatch" data-paint="3" style="--sw-color: #17191f" aria-label="Mitos Siyahı"></button>
-            <span id="garage-paint-name" class="paint-name">Navarra Mavisi</span>
-          </div>
         </div>
 
         <p class="garage-hint">Sürükle: döndür · Kaydır / iki parmak: yakınlaş</p>
@@ -240,18 +228,78 @@
       </section>
 
       <aside class="garage-panel menu-modal">
-        <nav class="panel-tabs" role="tablist" aria-label="Menü">
-          <button type="button" role="tab" class="panel-tab active" id="tab-drive" data-tab="drive" aria-selected="true" aria-controls="page-drive">Sürüş</button>
-          <button type="button" role="tab" class="panel-tab" id="tab-online" data-tab="online" aria-selected="false" aria-controls="page-online">
-            Online <i id="tab-online-dot" class="tab-dot" aria-hidden="true"></i>
+        <!-- Step-by-Step Progress Header -->
+        <nav class="wizard-stepper" aria-label="Kurulum Adımları">
+          <button type="button" class="step-pill active" data-step-target="1" aria-current="step">
+            <span class="step-badge">1</span>
+            <span class="step-text">
+              <strong>Araç Seçimi</strong>
+              <small id="step-summary-car">Audi A8</small>
+            </span>
           </button>
-          <button type="button" role="tab" class="panel-tab" id="tab-cockpit" data-tab="cockpit" aria-selected="false" aria-controls="page-cockpit">Kokpit</button>
-          <button type="button" role="tab" class="panel-tab" id="tab-guide" data-tab="guide" aria-selected="false" aria-controls="page-guide">Rehber</button>
+          <span class="step-arrow" aria-hidden="true">›</span>
+          <button type="button" class="step-pill" data-step-target="2">
+            <span class="step-badge">2</span>
+            <span class="step-text">
+              <strong>Yol &amp; Hava</strong>
+              <small id="step-summary-world">Otoban · Gece</small>
+            </span>
+          </button>
+          <span class="step-arrow" aria-hidden="true">›</span>
+          <button type="button" class="step-pill" data-step-target="3">
+            <span class="step-badge">3</span>
+            <span class="step-text">
+              <strong>Kokpit &amp; Başlat</strong>
+              <small>Son Ayarlar</small>
+            </span>
+          </button>
         </nav>
 
         <div class="panel-body">
-          <!-- Drive: time of day & traffic -->
-          <section id="page-drive" class="tab-page" role="tabpanel" aria-labelledby="tab-drive">
+          <!-- ==================== ADIM 1: ARAÇ & BOYA SEÇİMİ ==================== -->
+          <div id="wizard-step-1" class="wizard-step-page" data-step-page="1">
+            <div class="step-intro">
+              <h2>1. Aracını Seç</h2>
+              <p>Garajdan sürüş yapmak istediğin aracı ve gövde rengini seç.</p>
+            </div>
+
+            <div class="panel-section">
+              <h3>Araç Modeli</h3>
+              <div class="car-card-list" id="garage-car-select" role="group" aria-label="Araç modeli seçimi">
+                <!-- Filled in by main.js -> buildCarSelect() -->
+              </div>
+            </div>
+
+            <div class="panel-section">
+              <h3>Araç Rengi (Online Boya)</h3>
+              <div class="paint-row paint-box" id="garage-paint-group" title="Online'da arkadaşların seni oda sırana göre bu renklerden birinde görür">
+                <div class="paint-swatches-wrap">
+                  <button type="button" class="paint-swatch active" data-paint="0" style="--sw-color: #0e6f9c" aria-label="Navarra Mavisi"></button>
+                  <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #8f1020" aria-label="Tango Kırmızısı"></button>
+                  <button type="button" class="paint-swatch" data-paint="2" style="--sw-color: #e4e8ec" aria-label="Buzul Beyazı"></button>
+                  <button type="button" class="paint-swatch" data-paint="3" style="--sw-color: #17191f" aria-label="Mitos Siyahı"></button>
+                </div>
+                <span id="garage-paint-name" class="paint-name">Navarra Mavisi</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== ADIM 2: YOL TİPİ, ATMOSFER & TRAFİK ==================== -->
+          <div id="wizard-step-2" class="wizard-step-page" data-step-page="2" hidden>
+            <div class="step-intro">
+              <h2>2. Yol &amp; Atmosfer</h2>
+              <p>Sürüş yapacağın pisti, hava durumunu ve trafik yoğunluğunu belirle.</p>
+            </div>
+
+            <div class="panel-section">
+              <h3>Yol Tipi / Pist</h3>
+              <div class="segmented-control" id="road-mode-group">
+                <button type="button" class="seg-btn active" data-road="highway">Otoban (4 Şerit)</button>
+                <button type="button" class="seg-btn" data-road="twoway">Gidiş-Geliş (Sollama)</button>
+                <button type="button" class="seg-btn" data-road="track">🏁 Pist (İstanbul Park)</button>
+              </div>
+            </div>
+
             <div class="panel-section">
               <h3>Atmosfer</h3>
               <div class="option-cards" id="weather-select-group">
@@ -279,24 +327,6 @@
             </div>
 
             <div class="panel-section">
-              <h3>Koltuk / Kamera Açısı</h3>
-              <div class="segmented-control" id="camera-preset-group">
-                <button type="button" class="seg-btn active" data-camera="0">Standart</button>
-                <button type="button" class="seg-btn" data-camera="1">Tam Kabin</button>
-                <button type="button" class="seg-btn" data-camera="2">Yakın Sürüş</button>
-              </div>
-            </div>
-
-            <div class="panel-section">
-              <h3>Yol Tipi / Pist</h3>
-              <div class="segmented-control" id="road-mode-group">
-                <button type="button" class="seg-btn active" data-road="highway">Otoban (4 Şerit)</button>
-                <button type="button" class="seg-btn" data-road="twoway">Gidiş-Geliş (Sollama)</button>
-                <button type="button" class="seg-btn" data-road="track">🏁 Pist (İstanbul Park)</button>
-              </div>
-            </div>
-
-            <div class="panel-section">
               <h3>Trafik Yoğunluğu</h3>
               <div class="segmented-control" id="traffic-density-group">
                 <button type="button" class="seg-btn" data-density="normal">Akıcı</button>
@@ -304,114 +334,174 @@
                 <button type="button" class="seg-btn" data-density="extreme">Köprü Trafiği</button>
               </div>
             </div>
-          </section>
+          </div>
 
-          <!-- Online: WebRTC P2P room, host-centred, up to 4 players -->
-          <section id="page-online" class="tab-page" role="tabpanel" aria-labelledby="tab-online" hidden>
-            <div class="mp-lobby-box">
-              <div class="mp-lobby-header">
-                <div>
-                  <h3>4 Kişiye Kadar Beraber Sürüş</h3>
-                  <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşlarına gönder, 4 kişiye kadar aynı trafikte beraber makas atın!</p>
-                </div>
-                <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
-                  <span>ODA KODU</span>
-                  <strong id="mp-room-code-val">----</strong>
-                </div>
-              </div>
+          <!-- ==================== ADIM 3: KOKPİT, ONLINE & BAŞLAT ==================== -->
+          <div id="wizard-step-3" class="wizard-step-page" data-step-page="3" hidden>
+            <div class="step-intro">
+              <h2>3. Kokpit &amp; Sürüş Modu</h2>
+              <p>Kabin ayarlarını yap, istersen arkadaşlarınla 4 kişilik odaya bağlan ve sürüşe başla!</p>
+            </div>
 
-              <div class="mp-input-group">
-                <label for="mp-player-name">Oyuncu Adın</label>
-                <input id="mp-player-name" type="text" maxlength="14" placeholder="Örn: KADİR" value="OYUNCU 1" />
-              </div>
-
-              <button id="btn-mp-host" type="button" class="mp-btn host-btn">
-                🏁 ODA KUR (KOD AL)
+            <nav class="panel-tabs" role="tablist" aria-label="Son Hazırlık Sekmeleri">
+              <button type="button" role="tab" class="panel-tab active" id="tab-cockpit" data-tab="cockpit" aria-selected="true" aria-controls="page-cockpit">Kokpit &amp; Kontrol</button>
+              <button type="button" role="tab" class="panel-tab" id="tab-online" data-tab="online" aria-selected="false" aria-controls="page-online">
+                Online (4 Kişi) <i id="tab-online-dot" class="tab-dot" aria-hidden="true"></i>
               </button>
+              <button type="button" role="tab" class="panel-tab" id="tab-guide" data-tab="guide" aria-selected="false" aria-controls="page-guide">Rehber</button>
+            </nav>
 
-              <div class="mp-divider"><span>veya koda katıl</span></div>
+            <!-- Cockpit & controls -->
+            <section id="page-cockpit" class="tab-page" role="tabpanel" aria-labelledby="tab-cockpit">
+              <div class="panel-section">
+                <h3>Koltuk / Kamera Açısı</h3>
+                <div class="segmented-control" id="camera-preset-group">
+                  <button type="button" class="seg-btn active" data-camera="0">Standart</button>
+                  <button type="button" class="seg-btn" data-camera="1">Tam Kabin</button>
+                  <button type="button" class="seg-btn" data-camera="2">Yakın Sürüş</button>
+                </div>
+              </div>
 
-              <div class="mp-join-group">
-                <input id="mp-join-code" type="text" inputmode="numeric" maxlength="4" placeholder="4 Haneli Kod" aria-label="4 haneli oda kodu" />
-                <button id="btn-mp-join" type="button" class="mp-btn join-btn">
-                  🔗 ODAYA KATIL
+              <div class="panel-section">
+                <h3>Ambiyans Aydınlatması</h3>
+                <div class="color-swatches" id="ambient-select-group">
+                  <button type="button" class="swatch active" data-color="cyan" style="--sw-color: #00f0ff" title="Buz Mavisi"></button>
+                  <button type="button" class="swatch" data-color="purple" style="--sw-color: #b829ff" title="Neon Mor"></button>
+                  <button type="button" class="swatch" data-color="red" style="--sw-color: #ff1e42" title="Sport Kırmızı"></button>
+                  <button type="button" class="swatch" data-color="emerald" style="--sw-color: #00ff88" title="Zümrüt Yeşili"></button>
+                  <button type="button" class="swatch" data-color="amber" style="--sw-color: #ffaa00" title="Altın Kehribar"></button>
+                </div>
+              </div>
+
+              <div class="panel-section">
+                <h3>Mobil / Dokunmatik Kontrol Tipi</h3>
+                <div class="segmented-control" id="steer-mode-group">
+                  <button type="button" class="seg-btn active" data-steermode="wheel">Direksiyon</button>
+                  <button type="button" class="seg-btn" data-steermode="buttons">Ok Tuşları</button>
+                  <button type="button" class="seg-btn" data-steermode="tilt">Sensör (Eğim)</button>
+                </div>
+              </div>
+
+              <div class="panel-section">
+                <h3>Dokunmatik Kontrolleri Göster</h3>
+                <div class="segmented-control" id="touch-vis-group">
+                  <button type="button" class="seg-btn active" data-touchvis="auto">Otomatik</button>
+                  <button type="button" class="seg-btn" data-touchvis="always">Her Zaman</button>
+                  <button type="button" class="seg-btn" data-touchvis="hide">Gizle (PC)</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Online: WebRTC P2P room, host-centred, up to 4 players -->
+            <section id="page-online" class="tab-page" role="tabpanel" aria-labelledby="tab-online" hidden>
+              <div class="mp-lobby-box">
+                <div class="mp-lobby-header">
+                  <div>
+                    <h3>4 Kişiye Kadar Beraber Sürüş</h3>
+                    <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşlarına gönder, 4 kişiye kadar aynı trafikte beraber makas atın!</p>
+                  </div>
+                  <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
+                    <span>ODA KODU</span>
+                    <strong id="mp-room-code-val">----</strong>
+                  </div>
+                </div>
+
+                <div class="mp-input-group">
+                  <label for="mp-player-name">Oyuncu Adın</label>
+                  <input id="mp-player-name" type="text" maxlength="14" placeholder="Örn: KADİR" value="OYUNCU 1" />
+                </div>
+
+                <button id="btn-mp-host" type="button" class="mp-btn host-btn">
+                  🏁 ODA KUR (KOD AL)
+                </button>
+
+                <div class="mp-divider"><span>veya koda katıl</span></div>
+
+                <div class="mp-join-group">
+                  <input id="mp-join-code" type="text" inputmode="numeric" maxlength="4" placeholder="4 Haneli Kod" aria-label="4 haneli oda kodu" />
+                  <button id="btn-mp-join" type="button" class="mp-btn join-btn">
+                    🔗 ODAYA KATIL
+                  </button>
+                </div>
+
+                <button id="btn-mp-leave" type="button" class="mp-btn leave-btn hidden">
+                  ✖ Odadan Ayrıl
                 </button>
               </div>
+              <p class="panel-note">Ücretsiz P2P bağlantı: sunucu yok, kodu paylaşman yeterli. Arkadaşlarının araçlarını dikiz aynasında da görürsün.</p>
+            </section>
 
-              <button id="btn-mp-leave" type="button" class="mp-btn leave-btn hidden">
-                ✖ Odadan Ayrıl
-              </button>
-            </div>
-            <p class="panel-note">Ücretsiz P2P bağlantı: sunucu yok, kodu paylaşman yeterli. Arkadaşlarının A8'lerini dikiz aynasında da görürsün.</p>
-          </section>
-
-          <!-- Cockpit & controls -->
-          <section id="page-cockpit" class="tab-page" role="tabpanel" aria-labelledby="tab-cockpit" hidden>
-            <div class="panel-section">
-              <h3>Ambiyans Aydınlatması</h3>
-              <div class="color-swatches" id="ambient-select-group">
-                <button type="button" class="swatch active" data-color="cyan" style="--sw-color: #00f0ff" title="Buz Mavisi"></button>
-                <button type="button" class="swatch" data-color="purple" style="--sw-color: #b829ff" title="Neon Mor"></button>
-                <button type="button" class="swatch" data-color="red" style="--sw-color: #ff1e42" title="Sport Kırmızı"></button>
-                <button type="button" class="swatch" data-color="emerald" style="--sw-color: #00ff88" title="Zümrüt Yeşili"></button>
-                <button type="button" class="swatch" data-color="amber" style="--sw-color: #ffaa00" title="Altın Kehribar"></button>
+            <!-- How to play -->
+            <section id="page-guide" class="tab-page" role="tabpanel" aria-labelledby="tab-guide" hidden>
+              <ul class="guide-list">
+                <li><span class="guide-icon">⚡</span><div><strong>Yakın Makas</strong>100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div></li>
+                <li><span class="guide-icon">🔦</span><div><strong>Selektör Tepkisi</strong>Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div></li>
+                <li><span class="guide-icon">↔️</span><div><strong>Gidiş-Geliş Yolu</strong>Karşı şeride çıkıp sollama yap; karşıdan gelen yaklaştıkça puan artar, son anda dönersen bonus! Kafa kafaya çarpışma ağır hasar verir.</div></li>
+                <li><span class="guide-icon">🏁</span><div><strong>İstanbul Park Yarış Pisti</strong>Virajlı yarış pistinde apexleri yakala, efsanevi 8. Viraj'ı tam gaz dön ve arkadaşlarınla pistte yarışarak en iyi tur süresini yap!</div></li>
+                <li><span class="guide-icon">🌉</span><div><strong>Köprü &amp; Tünel Geçişleri</strong>Avrasya Tüneli'nde yankılanan V8 egzozuyla, 15 Temmuz Şehitler Köprüsü'nde Boğaz üzerinde makas at!</div></li>
+                <li><span class="guide-icon">👥</span><div><strong>4 Kişilik P2P Mod</strong>Arkadaşlarınla aynı trafikte makas at, dikiz aynasından selektörlerini gör!</div></li>
+              </ul>
+              <div class="key-grid">
+                <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Gaz · Direksiyon · Fren</span>
+                <span><kbd>F</kbd><kbd>Boşluk</kbd></span><span>Selektör</span>
+                <span><kbd>H</kbd></span><span>Korna</span>
+                <span><kbd>R</kbd></span><span>Arkadaşına yetiş</span>
+                <span><kbd>V</kbd> <kbd>L</kbd></span><span>Silecek · Ambiyans</span>
+                <span><kbd>K</kbd> <kbd>N</kbd></span><span>Hüzün Radyosu (Aç/Sonraki)</span>
+                <span><kbd>T</kbd> <kbd>C</kbd></span><span>Hava · Kamera açısı</span>
+                <span><kbd>Esc</kbd></span><span>Menü / Duraklat</span>
               </div>
-            </div>
-
-            <div class="panel-section">
-              <h3>Mobil / Dokunmatik Kontrol Tipi</h3>
-              <div class="segmented-control" id="steer-mode-group">
-                <button type="button" class="seg-btn active" data-steermode="wheel">Direksiyon</button>
-                <button type="button" class="seg-btn" data-steermode="buttons">Ok Tuşları</button>
-                <button type="button" class="seg-btn" data-steermode="tilt">Sensör (Eğim)</button>
-              </div>
-            </div>
-
-            <div class="panel-section">
-              <h3>Dokunmatik Kontrolleri Göster</h3>
-              <div class="segmented-control" id="touch-vis-group">
-                <button type="button" class="seg-btn active" data-touchvis="auto">Otomatik</button>
-                <button type="button" class="seg-btn" data-touchvis="always">Her Zaman</button>
-                <button type="button" class="seg-btn" data-touchvis="hide">Gizle (PC)</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- How to play -->
-          <section id="page-guide" class="tab-page" role="tabpanel" aria-labelledby="tab-guide" hidden>
-            <ul class="guide-list">
-              <li><span class="guide-icon">⚡</span><div><strong>Yakın Makas</strong>100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div></li>
-              <li><span class="guide-icon">🔦</span><div><strong>Selektör Tepkisi</strong>Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div></li>
-              <li><span class="guide-icon">↔️</span><div><strong>Gidiş-Geliş Yolu</strong>Karşı şeride çıkıp sollama yap; karşıdan gelen yaklaştıkça puan artar, son anda dönersen bonus! Kafa kafaya çarpışma ağır hasar verir.</div></li>
-              <li><span class="guide-icon">🏁</span><div><strong>İstanbul Park Yarış Pisti</strong>Virajlı yarış pistinde apexleri yakala, efsanevi 8. Viraj'ı tam gaz dön ve arkadaşlarınla pistte yarışarak en iyi tur süresini yap!</div></li>
-              <li><span class="guide-icon">🌉</span><div><strong>Köprü & Tünel Geçişleri</strong>Avrasya Tüneli'nde yankılanan V8 egzozuyla, 15 Temmuz Şehitler Köprüsü'nde Boğaz üzerinde makas at!</div></li>
-              <li><span class="guide-icon">👥</span><div><strong>4 Kişilik P2P Mod</strong>Arkadaşlarınla aynı trafikte makas at, dikiz aynasından selektörlerini gör!</div></li>
-            </ul>
-            <div class="key-grid">
-              <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Gaz · Direksiyon · Fren</span>
-              <span><kbd>F</kbd><kbd>Boşluk</kbd></span><span>Selektör</span>
-              <span><kbd>H</kbd></span><span>Korna</span>
-              <span><kbd>R</kbd></span><span>Arkadaşına yetiş</span>
-              <span><kbd>V</kbd> <kbd>L</kbd></span><span>Silecek · Ambiyans</span>
-              <span><kbd>K</kbd> <kbd>N</kbd></span><span>Hüzün Radyosu (Aç/Sonraki)</span>
-              <span><kbd>T</kbd> <kbd>C</kbd></span><span>Hava · Kamera açısı</span>
-              <span><kbd>Esc</kbd></span><span>Menü / Duraklat</span>
-            </div>
-            <p class="panel-note">Dokunmatikte: direksiyonu parmağınla çevir; sağdaki pedalda yukarı ittikçe gaz, geriye/aşağı çektikçe fren yapar (elini kaldırmadan tek parmakla tam kontrol).</p>
-          </section>
+              <p class="panel-note">Dokunmatikte: direksiyonu parmağınla çevir; sağdaki pedalda yukarı ittikçe gaz, geriye/aşağı çektikçe fren yapar (elini kaldırmadan tek parmakla tam kontrol).</p>
+            </section>
+          </div>
         </div>
 
         <footer class="panel-actions">
-          <button id="btn-start-game" type="button" class="cta-btn start-btn">
-            <span class="start-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3v8" /><path d="M6.4 6.6a8 8 0 1 0 11.2 0" /></svg>
-            </span>
-            <span class="start-text">
-              <span id="start-label">SÜRÜŞE BAŞLA</span>
-              <small id="start-sublabel">MOTORU ÇALIŞTIR</small>
-            </span>
-          </button>
+          <!-- Step 1 Footer Actions -->
+          <div id="footer-step-1" class="step-footer-row">
+            <button id="btn-step-1-next" type="button" class="cta-btn start-btn next-step-btn">
+              <span class="start-text">
+                <span>ARACI SEÇ &amp; DEVAM ET</span>
+                <small>ADIM 2: YOL &amp; ATMOSFER SEÇİMİ</small>
+              </span>
+              <span class="step-btn-arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+
+          <!-- Step 2 Footer Actions -->
+          <div id="footer-step-2" class="step-footer-row" hidden>
+            <button id="btn-step-2-prev" type="button" class="secondary-btn back-step-btn" title="Araç Seçimine Dön">
+              ← Araç
+            </button>
+            <button id="btn-step-2-next" type="button" class="cta-btn start-btn next-step-btn">
+              <span class="start-text">
+                <span>DEVAM ET</span>
+                <small>ADIM 3: KOKPİT &amp; SÜRÜŞE BAŞLA</small>
+              </span>
+              <span class="step-btn-arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+
+          <!-- Step 3 Footer Actions -->
+          <div id="footer-step-3" class="step-footer-row" hidden>
+            <button id="btn-step-3-prev" type="button" class="secondary-btn back-step-btn" title="Yol & Atmosfer Ayarlarına Dön">
+              ← Yol
+            </button>
+            <button id="btn-start-game" type="button" class="cta-btn start-btn">
+              <span class="start-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3v8" /><path d="M6.4 6.6a8 8 0 1 0 11.2 0" /></svg>
+              </span>
+              <span class="start-text">
+                <span id="start-label">SÜRÜŞE BAŞLA</span>
+                <small id="start-sublabel">MOTORU ÇALIŞTIR</small>
+              </span>
+            </button>
+          </div>
+
           <div class="secondary-actions">
+            <button id="btn-quick-resume" type="button" class="secondary-btn resume-quick-btn hidden">
+              ▶ Sürüşe Hemen Dön
+            </button>
             <button id="btn-reset-car" type="button" class="secondary-btn hidden">
               ↺ Yolu Sıfırla &amp; Tamir Et
             </button>

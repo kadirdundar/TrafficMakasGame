@@ -397,7 +397,7 @@ class OtobanMakasGame {
     });
 
     // Start / Resume & Reset Buttons in Modal
-    document.getElementById('btn-start-game')?.addEventListener('click', () => {
+    const startOrResumeGame = () => {
       this.enterAppFullscreen();
       if (nameInput?.value) {
         this.multiplayer.setPlayerName(nameInput.value);
@@ -409,14 +409,29 @@ class OtobanMakasGame {
       this.sound.setRainAmbience(this.world.weatherKey === 'rain');
       this.setMenuOpen(false);
       this.showResumeButtons();
-    });
+    };
+
+    document.getElementById('btn-start-game')?.addEventListener('click', startOrResumeGame);
+    document.getElementById('btn-quick-resume')?.addEventListener('click', startOrResumeGame);
 
     document.getElementById('btn-reset-car')?.addEventListener('click', () => {
       this.resetRun();
       this.setMenuOpen(false);
     });
 
-    // Menu tabs
+    // Step-by-step wizard navigation (Step 1 -> Step 2 -> Step 3)
+    this.menuStep = 1;
+    document.querySelectorAll('.step-pill[data-step-target]').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        this.setMenuStep(Number(pill.dataset.stepTarget));
+      });
+    });
+    document.getElementById('btn-step-1-next')?.addEventListener('click', () => this.setMenuStep(2));
+    document.getElementById('btn-step-2-prev')?.addEventListener('click', () => this.setMenuStep(1));
+    document.getElementById('btn-step-2-next')?.addEventListener('click', () => this.setMenuStep(3));
+    document.getElementById('btn-step-3-prev')?.addEventListener('click', () => this.setMenuStep(2));
+
+    // Menu tabs (within Step 3)
     document.querySelectorAll('.panel-tab').forEach((tab) => {
       tab.addEventListener('click', () => this.showMenuTab(tab.dataset.tab));
     });
@@ -429,6 +444,7 @@ class OtobanMakasGame {
       });
     });
     this.setCar(this.selectedCar, false);
+    this.updateWizardSummaries();
 
     document.querySelectorAll('#garage-view-group .chip').forEach((chip) => {
       chip.addEventListener('click', () => this.showroom?.goToView(chip.dataset.view));
@@ -914,6 +930,7 @@ class OtobanMakasGame {
     // Automatically turn on wipers in Rainy weather
     this.cockpit.toggleWipers(preset.rain);
     this.sound.setRainAmbience(preset.rain);
+    this.updateWizardSummaries?.();
   }
 
   // The 3D interior is the only cockpit. While its model downloads (or if every attempt
@@ -929,7 +946,7 @@ class OtobanMakasGame {
     }
   }
 
-  // One garage button per registered car (src/cars/)
+  // One garage card button per registered car (src/cars/)
   buildCarSelect() {
     const group = document.getElementById('garage-car-select');
     if (!group) return;
@@ -937,9 +954,29 @@ class OtobanMakasGame {
       ...CAR_LIST.map((car) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'seg-btn';
+        btn.className = 'seg-btn car-select-card';
         btn.dataset.car = car.id;
-        btn.textContent = car.label;
+
+        const info = document.createElement('span');
+        info.className = 'car-card-info';
+        const make = document.createElement('small');
+        make.className = 'car-card-make';
+        make.textContent = car.make;
+        const name = document.createElement('strong');
+        name.className = 'car-card-name';
+        name.textContent = car.model;
+        info.append(make, name);
+
+        const variant = document.createElement('span');
+        variant.className = 'car-card-variant';
+        variant.textContent = car.variant;
+
+        const check = document.createElement('span');
+        check.className = 'car-card-check';
+        check.setAttribute('aria-hidden', 'true');
+        check.textContent = '✓';
+
+        btn.append(info, variant, check);
         return btn;
       })
     );
@@ -1005,6 +1042,60 @@ class OtobanMakasGame {
     if (this.multiplayer) {
       this.multiplayer.setLocalCarModel(carId);
     }
+    this.updateWizardSummaries?.();
+  }
+
+  updateWizardSummaries() {
+    const car = CARS[this.selectedCar];
+    if (car) {
+      this.setHudText('step-summary-car', car.label);
+    }
+    const roadNames = {
+      highway: 'Otoban',
+      twoway: 'Gidiş-Geliş',
+      track: 'İstanbul Park',
+    };
+    const roadLabel = roadNames[this.traffic?.roadMode] || 'Otoban';
+    const weatherLabel = WEATHER_PRESETS[this.world?.weatherKey]?.label || 'Gece';
+    this.setHudText('step-summary-world', `${roadLabel} · ${weatherLabel}`);
+  }
+
+  setMenuStep(stepNum) {
+    const step = Math.max(1, Math.min(3, Number(stepNum) || 1));
+    this.menuStep = step;
+    const overlay = document.getElementById('menu-overlay');
+    if (overlay) overlay.dataset.step = String(step);
+
+    document.querySelectorAll('.step-pill[data-step-target]').forEach((pill) => {
+      const target = Number(pill.dataset.stepTarget);
+      const isCurrent = target === step;
+      const isDone = target < step;
+      pill.classList.toggle('active', isCurrent);
+      pill.classList.toggle('done', isDone);
+      if (isCurrent) {
+        pill.setAttribute('aria-current', 'step');
+      } else {
+        pill.removeAttribute('aria-current');
+      }
+    });
+
+    document.querySelectorAll('.wizard-step-page[data-step-page]').forEach((page) => {
+      page.hidden = Number(page.dataset.stepPage) !== step;
+    });
+
+    for (let i = 1; i <= 3; i++) {
+      const footer = document.getElementById(`footer-step-${i}`);
+      if (footer) footer.hidden = i !== step;
+    }
+
+    // Show quick resume on Steps 1 & 2 only if the player already started driving
+    const quickResume = document.getElementById('btn-quick-resume');
+    if (quickResume && this.hasStartedDriving) {
+      quickResume.classList.toggle('hidden', step === 3);
+    }
+
+    const panelBody = document.querySelector('.garage-panel .panel-body');
+    if (panelBody) panelBody.scrollTop = 0;
   }
 
 
@@ -1139,14 +1230,26 @@ class OtobanMakasGame {
   setMenuOpen(open, tab) {
     this.paused = open;
     document.getElementById('menu-overlay')?.classList.toggle('hidden', !open);
-    if (tab) this.showMenuTab(tab);
-    if (open) this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
+    if (tab) {
+      if (tab === 'online' || tab === 'cockpit' || tab === 'guide') {
+        this.setMenuStep(3);
+      } else if (tab === 'drive') {
+        this.setMenuStep(2);
+      }
+      this.showMenuTab(tab);
+    }
+    if (open) {
+      this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
+      this.updateWizardSummaries?.();
+    }
     this.showroom?.setActive(open && !this.portraitPhone?.matches);
   }
 
   // Once driving, the menu's main button resumes the drive and the road can be reset
   showResumeButtons() {
+    this.hasStartedDriving = true;
     document.getElementById('btn-reset-car')?.classList.remove('hidden');
+    document.getElementById('btn-quick-resume')?.classList.toggle('hidden', this.menuStep === 3);
     this.setHudText('start-label', 'SÜRÜŞE DEVAM ET');
     this.setHudText('start-sublabel', 'KALDIĞIN YERDEN');
   }
@@ -1278,6 +1381,7 @@ class OtobanMakasGame {
     document.querySelectorAll('#road-mode-group .seg-btn').forEach((b) => {
       b.classList.toggle('active', b.dataset.road === mode);
     });
+    this.updateWizardSummaries?.();
     if (mode === this.traffic.roadMode && mode === this.world.roadMode) return;
 
     this.world.setRoadLayout(mode);
