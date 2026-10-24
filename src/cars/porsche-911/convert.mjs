@@ -67,7 +67,7 @@ export default {
       'Object_64', // center hood lid
       'Object_66', // hood crest
     ],
-    eye: [-0.38, 1.08, 0.30],
+    eye: [-0.345, 1.01, 0.42],
     steering: {
       node: 'Object_40',
       pivot: [-0.340, 0.789, -0.266],
