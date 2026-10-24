@@ -31,7 +31,7 @@ export class RadioPlayer {
     this.playlist = HUZUN_PLAYLIST;
     this.currentIndex = 0;
     this.isPlaying = false;
-    this.volume = 0.7;
+    this.volume = 0.35;
     this.stationName = 'HÜZÜN RADYOSU';
 
     this.onTrackChange = options.onTrackChange || null;
