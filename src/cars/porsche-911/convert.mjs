@@ -62,7 +62,7 @@ export default {
       'Object_64',
       'Object_66',
     ],
-    eye: [-0.34, 1.05, 0.25],
+    eye: [-0.38, 1.08, 0.30],
     steering: {
       node: 'Object_40',
       pivot: [-0.340, 0.789, -0.266],
@@ -71,6 +71,11 @@ export default {
       maxPieceDistance: 0.18,
     },
     wheelTrim: { from: ['Object_44'], radius: 0.19, axial: [-0.06, 0.06] },
+    mirrors: [
+      { name: 'mirror_left', from: 'Object_28', x: [-1.05, -0.75], y: [0.80, 1.00], z: [-0.40, -0.20], facing: [0.28, -0.15, 0.94] },
+      { name: 'mirror_right', from: 'Object_28', x: [0.75, 1.05], y: [0.80, 1.00], z: [-0.40, -0.20], facing: [-0.28, -0.15, 0.94] },
+      { name: 'mirror_center', from: 'Object_40', x: [-0.15, 0.15], y: [1.08, 1.22], z: [-0.35, -0.20], facing: [-0.18, -0.17, 0.96] },
+    ],
     materials: [
       [/^PLASTI_NEGRO_3$/, { color: [0.035, 0.035, 0.038], metallic: 0.1, roughness: 0.75 }],
       [/^INTERIOR_12$/, { color: [0.04, 0.04, 0.042], metallic: 0.05, roughness: 0.65 }],

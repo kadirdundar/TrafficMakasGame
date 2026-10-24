@@ -42,7 +42,7 @@ export default {
     modelUrl: `${BASE}models/porsche-911-cockpit.glb`,
     cluster: 'porsche',
     scale: 1,
-    defaultEye: [-0.34, 1.05, 0.25],
+    defaultEye: [-0.38, 1.08, 0.30],
     wheelRadius: 0.18,
     steerSign: -1,
     softMaterials: new Set(['INTERIOR_12', 'PLASTI_NEGRO_3']),

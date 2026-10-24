@@ -93,7 +93,7 @@ function createWiper(pivotPos, glassOut, wiperLen) {
 }
 
 function applyMirror(obj, texture, u0, u1) {
-  const mat = new THREE.MeshBasicMaterial({ map: texture, color: 0xd5dbe2 });
+  const mat = new THREE.MeshBasicMaterial({ map: texture, color: 0xd5dbe2, side: THREE.DoubleSide });
   obj.traverse((m) => {
     if (!m.isMesh) return;
     const g = m.geometry;

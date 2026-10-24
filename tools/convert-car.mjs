@@ -490,7 +490,9 @@ async function buildCockpit(matrices) {
   if (columnNode) cockpitRoot.addChild(columnNode);
   if (ck.eye) scene.setExtras({ eye: ck.eye });
 
-  const nodeByName = (name) => root.listNodes().find((n) => n.getName() === name);
+  const nodeByName = (name) =>
+    root.listNodes().find((n) => n.getName() === name) ||
+    (columnNode && (name === 'steering_column' || name === ck.steering?.node) ? columnNode : null);
   if (wheelMesh && ck.wheelTrim) moveWheelTrim(doc, nodeByName, wheelMesh, ck.steering, ck.wheelTrim);
 
   // Mirrors: the model's own glass triangles. Picked by UV island (u taken modulo 1) and/or by
