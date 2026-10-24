@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-DuCffFmV.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DnMDsfPP.css">
+  <script type="module" crossorigin src="./assets/index-DQm--BoR.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BXz0UGkn.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -41,6 +41,13 @@
           <div class="combo-bar-wrap">
             <div id="hud-combo-bar" class="combo-bar-fill"></div>
           </div>
+        </div>
+      </div>
+      <div class="stat-card distance-card" id="distance-card" title="Kat Edilen Gerçek Yol Mesafesi">
+        <span class="stat-label">KM SAYACI</span>
+        <div class="distance-row">
+          <span id="hud-distance" class="stat-value distance-val">0.00</span>
+          <small class="distance-unit">KM</small>
         </div>
       </div>
       <div class="stat-card best-card hide-mobile">
@@ -113,6 +120,10 @@
     <div class="mini-speed-block">
       <span id="mini-speed">0</span>
       <small>KM/S</small>
+    </div>
+    <div class="mini-distance-block" title="Kat Edilen Gerçek Yol Mesafesi">
+      <span id="mini-distance">0.00</span>
+      <small>KM</small>
     </div>
     <div class="mini-indicators">
       <span id="ind-highbeam" class="ind-badge highbeam" title="Uzun Far / Selektör">≡O</span>
