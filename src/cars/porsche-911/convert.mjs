@@ -75,10 +75,10 @@ export default {
       radius: 0.18,
       maxPieceDistance: 0.18,
     },
-    wheelTrim: { from: ['Object_44'], radius: 0.19, axial: [-0.06, 0.06] },
+    wheelTrim: { from: ['Object_44', 'Object_46'], radius: 0.19, axial: [-0.08, 0.05] },
     mirrors: [
-      { name: 'mirror_left', from: 'Object_28', x: [-1.05, -0.75], y: [0.80, 1.00], z: [-0.40, -0.20], facing: [0.28, -0.15, 0.94] },
-      { name: 'mirror_right', from: 'Object_28', x: [0.75, 1.05], y: [0.80, 1.00], z: [-0.40, -0.20], facing: [-0.28, -0.15, 0.94] },
+      { name: 'mirror_left', from: 'Object_28', uv: [0.95, 1.0, 0.82, 0.86], x: [-1.05, -0.75], y: [0.80, 1.00], z: [-0.40, -0.20], facing: [0.28, -0.15, 0.94] },
+      { name: 'mirror_right', from: 'Object_28', uv: [0.95, 1.0, 0.82, 0.86], x: [0.75, 1.05], y: [0.80, 1.00], z: [-0.40, -0.20], facing: [-0.28, -0.15, 0.94] },
       { name: 'mirror_center', from: 'Object_40', x: [-0.15, 0.15], y: [1.08, 1.22], z: [-0.35, -0.20], facing: [-0.18, -0.17, 0.96] },
     ],
     materials: [
