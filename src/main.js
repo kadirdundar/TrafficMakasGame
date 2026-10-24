@@ -157,6 +157,7 @@ class OtobanMakasGame {
     this.comboTimer = 0; // 0.0 to 1.0
     this.health = 100;
     this.odometerKm = 1428.4;
+    this.tripDistanceKm = 0;
 
     this.playerX = -1.8; // Start in left-center fast lane (two-way road: see setRoadMode below)
     this.overtakeRun = null; // two-way road: an excursion into the oncoming lane (see updateOvertakeRun)
@@ -210,6 +211,18 @@ class OtobanMakasGame {
       savedRoad = localStorage.getItem('otoban_makas_road');
     } catch (_) {}
     if (ROAD_MODES.includes(savedRoad)) this.setRoadMode(savedRoad);
+
+    // Traffic density chosen last time
+    let savedDensity = null;
+    try {
+      savedDensity = localStorage.getItem('otoban_traffic_density');
+    } catch (_) {}
+    if (savedDensity && ['normal', 'heavy', 'extreme'].includes(savedDensity)) {
+      this.traffic.setDensity(savedDensity);
+      document.querySelectorAll('#traffic-density-group .seg-btn').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-density') === savedDensity);
+      });
+    }
 
     const params = new URLSearchParams(window.location.search);
     if (params.has('fps')) this.toggleFpsMeter();
@@ -483,7 +496,14 @@ class OtobanMakasGame {
       btn.addEventListener('click', () => {
         document.querySelectorAll('#traffic-density-group .seg-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        this.traffic.setDensity(btn.getAttribute('data-density'));
+        const density = btn.getAttribute('data-density');
+        this.traffic.setDensity(density);
+        try {
+          localStorage.setItem('otoban_traffic_density', density);
+        } catch (_) {}
+        if (this.paused && !this.multiplayer.isRemoteControlled) {
+          this.traffic.resetTraffic();
+        }
       });
     });
 
@@ -1147,6 +1167,7 @@ class OtobanMakasGame {
     this.combo = 1.0;
     this.comboTimer = 0;
     this.health = 100;
+    this.tripDistanceKm = 0;
     this.speedKmh = 0;
     this.playerX = this.startX();
     this.lateralVel = 0;
@@ -1737,8 +1758,10 @@ class OtobanMakasGame {
     this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost + accelFovKick, dt * 6);
     this.camera.updateProjectionMatrix();
 
-    // 7. Continuous High-Speed Scoring & Combo Decay
-    this.odometerKm += (speedMs * dt) / 1000;
+    // 7. Continuous High-Speed Scoring, Odometer & Combo Decay
+    const frameDistanceKm = (speedMs * dt) / 1000;
+    this.odometerKm += frameDistanceKm;
+    this.tripDistanceKm += frameDistanceKm;
 
     if (this.speedKmh > 120) {
       this.score += (this.speedKmh - 100) * 0.35 * this.combo * dt;
@@ -2008,6 +2031,10 @@ class OtobanMakasGame {
 
     this.setHudText('mini-speed', String(Math.round(this.speedKmh)));
     this.setHudText('mini-gear', `D${this.gear}`);
+
+    const distStr = (this.tripDistanceKm || 0).toFixed(2);
+    this.setHudText('hud-distance', distStr);
+    this.setHudText('mini-distance', distStr);
 
     this.updateMultiplayerHud();
   }

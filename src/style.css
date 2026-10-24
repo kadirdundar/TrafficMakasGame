@@ -189,6 +189,24 @@
     transition: width 0.1s linear;
   }
 
+  .distance-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .distance-val {
+    color: var(--accent-emerald);
+    text-shadow: 0 0 12px rgba(0, 255, 136, 0.45);
+  }
+
+  .distance-unit {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
   .health-bar-wrap {
     inline-size: 88px;
     block-size: 8px;
@@ -436,6 +454,29 @@
   }
 
   .mini-speed-block small {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-weight: 700;
+  }
+
+  .mini-distance-block {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    padding-inline-start: 8px;
+    border-inline-start: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  #mini-distance {
+    font-family: var(--font-mono);
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--accent-emerald);
+    min-inline-size: 4ch;
+    text-align: end;
+  }
+
+  .mini-distance-block small {
     font-size: 0.65rem;
     color: var(--text-muted);
     font-weight: 700;

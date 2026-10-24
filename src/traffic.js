@@ -176,6 +176,30 @@ export class TrafficManager {
       } else if (car.spec.type === 'truck') {
         lane = 3;
       }
+    } else if (this.densityMode === 'normal') {
+      // Akıcı mod: Sol şerit (lane 0) yaklaşık %90 boş (~%10 araç),
+      // hemen yanındaki soldan ikinci şerit (lane 1) ise yaklaşık %80 boş (~%20 araç).
+      // Kamyon ve vanlar kesinlikle sağ şeritlerde (2 veya 3) kalır.
+      if (car.spec.type === 'truck') {
+        lane = Math.random() < 0.75 ? 3 : 2;
+      } else if (car.spec.type === 'van') {
+        lane = Math.random() < 0.65 ? 3 : 2;
+      } else {
+        // Otomobiller (sedan, sport, suv) için şerit seçimi:
+        // Kamyon ve vanlar toplam havuzun %40'ı olup tamamı sağ şeritlerde olduğundan,
+        // kalan %60'lık binek araç havuzundan %17'si lane 0 (%10 genel pay),
+        // %33'ü lane 1 (%20 genel pay) alır. Böylece sol şerit ~%90, soldan 2. şerit ~%80 boş kalır.
+        const r = Math.random();
+        if (r < 0.17) {
+          lane = 0; // %90 boş
+        } else if (r < 0.50) {
+          lane = 1; // %80 boş
+        } else if (r < 0.75) {
+          lane = 2;
+        } else {
+          lane = 3;
+        }
+      }
     } else {
       // Trucks & vans stay in right lanes (2 or 3); sport/sedans prefer left lanes (0, 1, 2)
       if (car.spec.type === 'truck') {
@@ -201,8 +225,14 @@ export class TrafficManager {
           Math.abs(other.z - z) < 24
       );
       if (!conflict) break;
-      // Keep trucks/vans in right lanes (2 or 3) when resolving spawn conflicts
-      if (car.spec.type === 'truck' || car.spec.type === 'van') {
+      if (this.densityMode === 'normal') {
+        // Akıcı modda sağ şerit araçlarını sol şeritlere kaydırma
+        if (lane >= 2) {
+          lane = lane === 2 ? 3 : 2;
+        } else {
+          z -= 25;
+        }
+      } else if (car.spec.type === 'truck' || car.spec.type === 'van') {
         lane = lane === 3 ? 2 : 3;
       } else {
         lane = (lane + 1) % 4;
@@ -572,10 +602,31 @@ export class TrafficManager {
           ) {
             const tryLeft = car.lane - 1;
             const tryRight = car.lane + 1;
-            if (this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
-              this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
-            } else if (this.isLaneClear(car, tryRight, 16, playerX, mpContext)) {
-              this.signalLaneChange(car, tryRight, LANE_CHANGE_SIGNAL_SEC);
+            if (this.densityMode === 'normal') {
+              // Akıcı modda sol şeritlerin sakinliği korunur:
+              if (car.spec.type === 'truck' || car.spec.type === 'van') {
+                // Kamyon ve vanlar asla sol şeritlere (0 veya 1) geçmez
+                if (tryRight <= 3 && this.isLaneClear(car, tryRight, 16, playerX, mpContext)) {
+                  this.signalLaneChange(car, tryRight, LANE_CHANGE_SIGNAL_SEC);
+                } else if (tryLeft === 2 && this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
+                  this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
+                }
+              } else {
+                // Otomobiller sol şeritlerden önce sağa dönmeyi tercih eder, sol şeritlere rastgele akın etmez
+                if (tryRight <= 3 && this.isLaneClear(car, tryRight, 16, playerX, mpContext)) {
+                  this.signalLaneChange(car, tryRight, LANE_CHANGE_SIGNAL_SEC);
+                } else if (tryLeft > 1 && this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
+                  this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
+                } else if (tryLeft === 1 && Math.random() < 0.15 && this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
+                  this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
+                }
+              }
+            } else {
+              if (this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
+                this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
+              } else if (this.isLaneClear(car, tryRight, 16, playerX, mpContext)) {
+                this.signalLaneChange(car, tryRight, LANE_CHANGE_SIGNAL_SEC);
+              }
             }
           }
           car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, carAhead.speedKmh * 0.92, dt * 4);
