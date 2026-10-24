@@ -340,16 +340,42 @@ function splitSteering(doc, root, matrices, st) {
 
   const find = connectedPieces(N, (i) => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]], idx, 2000);
   const pieceMinZ = new Map();
+  const pieceCenters = new Map();
+  const pieceCounts = new Map();
   for (let t = 0; t < idx.length; t += 3) {
     const r = find(idx[t]);
     let mz = pieceMinZ.get(r) ?? 999;
-    for (let k = 0; k < 3; k++) mz = Math.min(mz, P[idx[t + k] * 3 + 2]);
+    let c = pieceCenters.get(r);
+    if (!c) { c = [0, 0, 0]; pieceCenters.set(r, c); }
+    for (let k = 0; k < 3; k++) {
+      const z = P[idx[t + k] * 3 + 2];
+      mz = Math.min(mz, z);
+      c[0] += P[idx[t + k] * 3];
+      c[1] += P[idx[t + k] * 3 + 1];
+      c[2] += z;
+    }
     pieceMinZ.set(r, mz);
+    pieceCounts.set(r, (pieceCounts.get(r) || 0) + 3);
   }
+  for (const [r, c] of pieceCenters.entries()) {
+    const cnt = pieceCounts.get(r);
+    c[0] /= cnt; c[1] /= cnt; c[2] /= cnt;
+  }
+
   const wheelIdx = [];
   const columnIdx = [];
   for (let t = 0; t < idx.length; t += 3) {
-    const target = st.columnBeyondZ !== undefined && pieceMinZ.get(find(idx[t])) < st.columnBeyondZ ? columnIdx : wheelIdx;
+    let isWheel = false;
+    if (st.maxPieceDistance !== undefined) {
+      const c = pieceCenters.get(find(idx[t]));
+      const dist = Math.hypot(c[0] - st.pivot[0], c[1] - st.pivot[1], c[2] - st.pivot[2]);
+      isWheel = dist <= st.maxPieceDistance;
+    } else if (st.columnBeyondZ !== undefined) {
+      isWheel = pieceMinZ.get(find(idx[t])) >= st.columnBeyondZ;
+    } else {
+      isWheel = true;
+    }
+    const target = isWheel ? wheelIdx : columnIdx;
     target.push(idx[t], idx[t + 1], idx[t + 2]);
   }
 
