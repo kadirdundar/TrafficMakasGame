@@ -1191,7 +1191,7 @@ class OtobanMakasGame {
   triggerScreenFlash(className) {
     const vig = document.getElementById('screen-vignette');
     if (!vig) return;
-    vig.classList.remove('near-miss-flash', 'double-makas-flash', 'crash-flash');
+    vig.classList.remove('crash-flash');
     void vig.offsetWidth;
     vig.classList.add(className);
     setTimeout(() => {
@@ -1318,8 +1318,7 @@ class OtobanMakasGame {
       this.score += pts;
       this.combo = Math.min(10.0, this.combo + 1.0);
       this.comboTimer = 1.0;
-      this.triggerScreenFlash('double-makas-flash');
-      this.sound.playMakasWhoosh(this.combo, true);
+      this.sound.playMakasWhoosh(this.combo, true, this.speedKmh, true);
       this.showMakasNotification(`⚡ SON ANDA DÖNÜŞ (${Math.round(gap)} M)`, pts, 'gold');
     }
   }
@@ -1359,11 +1358,10 @@ class OtobanMakasGame {
 
       if (isNewRecord) {
         this.showMakasNotification(`⚡ YENİ PİST REKORU: ${timeStr}`, 1500, 'double');
-        this.triggerScreenFlash('double-makas-flash');
-        this.sound.playMakasWhoosh(5, true);
+        this.sound.playMakasWhoosh(5, true, this.speedKmh, true);
       } else {
         this.showMakasNotification(`🏁 TUR ${completedLap} TAMAMLANDI: ${timeStr}`, 800, 'combo');
-        this.sound.playMakasWhoosh(2, false);
+        this.sound.playMakasWhoosh(2, false, this.speedKmh, false);
       }
     }
 
@@ -1386,7 +1384,7 @@ class OtobanMakasGame {
           this.combo = Math.min(10.0, this.combo + 0.5);
           this.comboTimer = 1.0;
           this.showMakasNotification(`🏎️ MÜKEMMEL APEX (+${pts})`, pts, 'combo');
-          this.sound.playMakasWhoosh(this.combo, false);
+          this.sound.playMakasWhoosh(this.combo, false, this.speedKmh, false);
         }
       }
     }
@@ -1422,7 +1420,6 @@ class OtobanMakasGame {
       const count = this.overtakeRun?.passed ?? 1;
       label = risk > 0.6 ? '⚡ KIL PAYI SOLLAMA!' : count > 1 ? `SOLLAMA ×${count}` : 'SOLLAMA!';
       if (risk > 0.6) style = 'gold';
-      this.triggerScreenFlash(risk > 0.6 ? 'double-makas-flash' : 'near-miss-flash');
     } else {
       // Brushed past an oncoming car
       const closeness = Math.max(1, (1.2 - lateralGap) * 2.5);
@@ -1430,7 +1427,6 @@ class OtobanMakasGame {
       this.combo = Math.min(10.0, this.combo + 1.0);
       label = `😱 KARŞIDAN SIYIRDIN (${Math.round(lateralGap * 100)} CM)`;
       style = 'gold';
-      this.triggerScreenFlash('near-miss-flash');
     }
     this.comboTimer = 1.0;
     const totalPts = basePts * this.combo;
@@ -1441,7 +1437,7 @@ class OtobanMakasGame {
     }
     this.shakeIntensity = Math.min(0.45, this.shakeIntensity + 0.18);
     this.cockpit.triggerMakasCockpitPulse();
-    this.sound.playMakasWhoosh(this.combo, style === 'gold');
+    this.sound.playMakasWhoosh(this.combo, style === 'gold', speedKmh, true);
     this.showMakasNotification(label, totalPts, style);
   }
 
@@ -1468,14 +1464,10 @@ class OtobanMakasGame {
       basePts *= 2.4;
       label = '🔥 ÇİFT MAKAS (İĞNE DELİĞİ)!';
       style = 'gold';
-      this.triggerScreenFlash('double-makas-flash');
     } else if (isRazorClose) {
       basePts *= 1.5;
       label = `⚡ KUSURSUZ MAKAS (${Math.round(lateralGap * 100)} CM)`;
       style = 'gold';
-      this.triggerScreenFlash('near-miss-flash');
-    } else {
-      this.triggerScreenFlash('near-miss-flash');
     }
 
     const totalPts = basePts * this.combo;
@@ -1487,7 +1479,7 @@ class OtobanMakasGame {
 
     this.shakeIntensity = Math.min(0.45, this.shakeIntensity + (isDoubleMakas ? 0.32 : 0.16));
     this.cockpit.triggerMakasCockpitPulse();
-    this.sound.playMakasWhoosh(this.combo, isDoubleMakas);
+    this.sound.playMakasWhoosh(this.combo, isDoubleMakas, speedKmh, isRazorClose);
     this.showMakasNotification(label, totalPts, style);
   }
 
@@ -1879,7 +1871,7 @@ class OtobanMakasGame {
         this.score += tandemPts;
         this.combo = Math.min(10.0, this.combo + 0.5);
         this.comboTimer = 1.0;
-        this.sound.playMakasWhoosh(this.combo, true);
+        this.sound.playMakasWhoosh(this.combo, true, this.speedKmh, true);
         this.showMakasNotification(
           `🤝 ${peer.name} İLE TANDEM MAKAS!`,
           tandemPts,

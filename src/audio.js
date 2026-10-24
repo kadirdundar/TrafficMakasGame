@@ -374,58 +374,87 @@ export class SoundEngine {
     osc.stop(now + 0.035);
   }
 
-  playMakasWhoosh(comboLevel = 1, isDouble = false) {
+  playMakasWhoosh(comboLevel = 1, isDouble = false, speedKmh = 140, isRazor = false) {
     if (!this.ctx || this.muted) return;
     const now = this.ctx.currentTime;
 
-    // 1. Aerodynamic Doppler Whoosh as you slice past the car
-    const dur = 0.28;
-    const bufSize = Math.floor(this.ctx.sampleRate * dur);
-    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
+    // Gerçekçi Aerodinamik Rüzgar Yarılması & Basınç Dalgası (Whoosh)
+    // Aracın anlık hızına ve yakınlığına göre dinamik olarak şekillenir
+    const speedRatio = Math.max(0.65, Math.min(1.5, (speedKmh || 140) / 130));
+    const dur = isDouble ? 0.52 : 0.40;
+    const sampleRate = this.ctx.sampleRate;
+    const bufSize = Math.floor(sampleRate * dur);
+    const buf = this.ctx.createBuffer(2, bufSize, sampleRate);
+    const left = buf.getChannelData(0);
+    const right = buf.getChannelData(1);
+
+    // Organik rüzgar gövdesi için Brownian + Pink gürültü sentezi
+    let bL = 0;
+    let bR = 0;
     for (let i = 0; i < bufSize; i++) {
-      const env = Math.sin((i / bufSize) * Math.PI);
-      d[i] = (Math.random() * 2 - 1) * env;
+      const p = i / bufSize;
+      let env;
+      if (isDouble) {
+        // Çift makas (iğne deliği): İki araç arasındaki çift hava girdabı dalgası
+        const env1 = Math.pow(Math.sin(Math.min(1, p * 2.2) * Math.PI), 1.6);
+        const env2 = p > 0.28 ? Math.pow(Math.sin(Math.min(1, (p - 0.28) * 1.9) * Math.PI), 1.6) * 0.92 : 0;
+        env = Math.max(env1, env2);
+      } else {
+        // Tek araç makası: Aracın yanından geçerken hızla yükselen ve arkasında girdap bırakan rüzgar dalgası
+        env = Math.pow(Math.sin(p * Math.PI), 1.5);
+      }
+
+      const whiteL = Math.random() * 2 - 1;
+      const whiteR = Math.random() * 2 - 1;
+      bL = (bL + 0.055 * whiteL) / 1.055;
+      bR = (bR + 0.055 * whiteR) / 1.055;
+
+      // %72 derin hava sürtünmesi (brown rumble) + %28 yüksek hız rüzgar tıslaması
+      const sL = (bL * 3.2 * 0.72 + whiteL * 0.28) * env;
+      const sR = (bR * 3.2 * 0.72 + whiteR * 0.28) * env;
+      left[i] = Math.max(-1, Math.min(1, sL));
+      right[i] = Math.max(-1, Math.min(1, sR));
     }
 
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buf;
+    const noiseSource = this.ctx.createBufferSource();
+    noiseSource.buffer = buf;
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.Q.value = 2.0;
-    filter.frequency.setValueAtTime(950, now);
-    filter.frequency.exponentialRampToValueAtTime(240, now + dur);
+    // Filtre 1: Düşük frekanslı hava kütlesi & yer değiştirme rüzgarı (80Hz - 260Hz)
+    const lowFilter = this.ctx.createBiquadFilter();
+    lowFilter.type = 'lowpass';
+    const startLowFreq = Math.min(380, 220 + speedRatio * 75);
+    lowFilter.frequency.setValueAtTime(startLowFreq, now);
+    lowFilter.frequency.exponentialRampToValueAtTime(85, now + dur);
+    lowFilter.Q.value = 1.25;
 
+    // Filtre 2: Yüksek hız aerodinamik rüzgar girdabı & Doppler kayması (300Hz - 1800Hz)
+    const shearFilter = this.ctx.createBiquadFilter();
+    shearFilter.type = 'bandpass';
+    const startShearFreq = Math.min(2200, 1100 * speedRatio);
+    shearFilter.frequency.setValueAtTime(startShearFreq, now);
+    shearFilter.frequency.exponentialRampToValueAtTime(260, now + dur);
+    shearFilter.Q.value = 1.6;
+
+    // Ana Rüzgar Kazanç Zarfı (Sentetik çan / zil sesleri tamamen kaldırıldı)
     const whooshGain = this.ctx.createGain();
-    whooshGain.gain.setValueAtTime(0.18, now);
-    whooshGain.gain.exponentialRampToValueAtTime(0.01, now + dur);
+    const peakGain = (isDouble ? 0.38 : isRazor ? 0.34 : 0.27) * speedRatio;
+    whooshGain.gain.setValueAtTime(0.001, now);
+    whooshGain.gain.linearRampToValueAtTime(peakGain, now + dur * 0.25);
+    whooshGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
-    noise.connect(filter);
-    filter.connect(whooshGain);
+    noiseSource.connect(lowFilter);
+    noiseSource.connect(shearFilter);
+    lowFilter.connect(whooshGain);
+    shearFilter.connect(whooshGain);
     whooshGain.connect(this.master);
-    noise.start(now);
 
-    // 2. Stylish Combo Chime (pitch scales with combo!)
-    const chimeOsc = this.ctx.createOscillator();
-    const chimeGain = this.ctx.createGain();
-    chimeOsc.type = 'sine';
-    const baseNote = 520 + Math.min(comboLevel, 10) * 65;
-    chimeOsc.frequency.setValueAtTime(baseNote, now);
-    if (isDouble) {
-      chimeOsc.frequency.setValueAtTime(baseNote * 1.25, now + 0.07);
-      chimeOsc.frequency.setValueAtTime(baseNote * 1.5, now + 0.14);
-    } else {
-      chimeOsc.frequency.exponentialRampToValueAtTime(baseNote * 1.25, now + 0.12);
+    // Tünelde ise tünel duvarı yankısını ekle
+    if (this.acousticZone === 'tunnel' && this.tunnelDelay) {
+      whooshGain.connect(this.tunnelDelay);
     }
 
-    chimeGain.gain.setValueAtTime(0.08, now);
-    chimeGain.gain.exponentialRampToValueAtTime(0.001, now + (isDouble ? 0.28 : 0.18));
-
-    chimeOsc.connect(chimeGain);
-    chimeGain.connect(this.master);
-    chimeOsc.start(now);
-    chimeOsc.stop(now + (isDouble ? 0.3 : 0.2));
+    noiseSource.start(now);
+    noiseSource.stop(now + dur + 0.05);
   }
 
   playCrash() {
