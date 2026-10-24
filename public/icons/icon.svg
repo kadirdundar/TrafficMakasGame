@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#10203f"/>
-      <stop offset="0.45" stop-color="#0a1222"/>
-      <stop offset="1" stop-color="#05080f"/>
+      <stop offset="0" stop-color="#2a0c14"/>
+      <stop offset="0.45" stop-color="#14080d"/>
+      <stop offset="1" stop-color="#070406"/>
     </linearGradient>
     <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1b2433"/>
-      <stop offset="1" stop-color="#2a3446"/>
+      <stop offset="0" stop-color="#1e181b"/>
+      <stop offset="1" stop-color="#2d2428"/>
     </linearGradient>
     <linearGradient id="swoosh" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0" stop-color="#00f0ff"/>
-      <stop offset="1" stop-color="#3b82f6"/>
+      <stop offset="0" stop-color="#ff1e42"/>
+      <stop offset="1" stop-color="#ff5238"/>
     </linearGradient>
     <radialGradient id="horizon" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.55"/>
-      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+      <stop offset="0" stop-color="#ff2a4b" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#ff2a4b" stop-opacity="0"/>
     </radialGradient>
     <filter id="blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="10"/></filter>
   </defs>
@@ -28,15 +28,15 @@
   <line x1="264" y1="150" x2="324" y2="512" stroke="#e2e8f0" stroke-width="7" stroke-dasharray="34 30" stroke-opacity="0.75"/>
   <!-- traffic cars (rear view) -->
   <g>
-    <rect x="148" y="318" width="74" height="50" rx="10" fill="#0f172a" stroke="#475569" stroke-width="3"/>
-    <rect x="154" y="350" width="18" height="8" rx="3" fill="#ff2a4b"/>
-    <rect x="198" y="350" width="18" height="8" rx="3" fill="#ff2a4b"/>
-    <rect x="290" y="226" width="50" height="34" rx="7" fill="#0f172a" stroke="#475569" stroke-width="2.5"/>
-    <rect x="294" y="248" width="12" height="6" rx="2" fill="#ff2a4b"/>
-    <rect x="324" y="248" width="12" height="6" rx="2" fill="#ff2a4b"/>
+    <rect x="148" y="318" width="74" height="50" rx="10" fill="#161214" stroke="#5a454d" stroke-width="3"/>
+    <rect x="154" y="350" width="18" height="8" rx="3" fill="#ff1e42"/>
+    <rect x="198" y="350" width="18" height="8" rx="3" fill="#ff1e42"/>
+    <rect x="290" y="226" width="50" height="34" rx="7" fill="#161214" stroke="#5a454d" stroke-width="2.5"/>
+    <rect x="294" y="248" width="12" height="6" rx="2" fill="#ff1e42"/>
+    <rect x="324" y="248" width="12" height="6" rx="2" fill="#ff1e42"/>
   </g>
   <!-- the makas line weaving between them -->
-  <path d="M256 470 C 340 420, 300 360, 252 318 S 196 236, 262 182" fill="none" stroke="#00f0ff" stroke-width="30" stroke-linecap="round" filter="url(#blur)" opacity="0.65"/>
+  <path d="M256 470 C 340 420, 300 360, 252 318 S 196 236, 262 182" fill="none" stroke="#ff1e42" stroke-width="30" stroke-linecap="round" filter="url(#blur)" opacity="0.75"/>
   <path d="M256 470 C 340 420, 300 360, 252 318 S 196 236, 262 182" fill="none" stroke="url(#swoosh)" stroke-width="22" stroke-linecap="round"/>
-  <polygon points="236,196 290,160 280,222" fill="#3b82f6"/>
+  <polygon points="236,196 290,160 280,222" fill="#ff385c"/>
 </svg>
