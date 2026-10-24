@@ -57,6 +57,7 @@ export default {
       'Object_15', // front fenders & body panels (seals gaps beside hood)
       'Object_28', // roof / targa arch / mirror housings
       'Object_30', // door frames & lower A-pillar
+      'Object_37', // roof rail, Targa soft top frame & upper door pillar header
       'Object_40', // dashboard, steering wheel, console, door cards, pedals
       'Object_44', // badges & steering crest
       'Object_46', // leather sports seats
@@ -86,6 +87,7 @@ export default {
       [/^BADGE_6$/, { color: [0.85, 0.75, 0.35], metallic: 0.9, roughness: 0.2 }],
       [/^CHROME_13$/, { color: [0.85, 0.85, 0.85], metallic: 0.9, roughness: 0.15 }],
       [/^PAINT_COLOR_4$/, { color: [0.05, 0.05, 0.05], metallic: 0.8, roughness: 0.3 }],
+      [/^modelSM_SoftTop_000.001SG3_11$/, { color: [0.035, 0.035, 0.038], metallic: 0.1, roughness: 0.75 }],
     ],
     join: true,
     cleanAttributes: true,

@@ -54,7 +54,7 @@ class StudioEnvironment {
     const env = new THREE.Scene();
     const room = new THREE.Mesh(
       new THREE.BoxGeometry(40, 16, 40),
-      new THREE.MeshBasicMaterial({ color: 0x121722, side: THREE.BackSide })
+      new THREE.MeshBasicMaterial({ color: 0x1e2638, side: THREE.BackSide })
     );
     room.position.y = 7;
     env.add(room);
@@ -69,11 +69,11 @@ class StudioEnvironment {
       mesh.rotation.set(...rotation);
       env.add(mesh);
     };
-    softbox(14, 26, 0.45, [0, 14.5, 0], [Math.PI / 2, 0, 0]);
-    softbox(6, 24, 0.35, [-8, 13, 0], [Math.PI / 2, 0.35, 0]);
-    softbox(6, 24, 0.35, [8, 13, 0], [Math.PI / 2, -0.35, 0]);
-    softbox(28, 4, 0.3, [0, 4, -19.5], [0, 0, 0], 0xdfe9ff);
-    softbox(28, 4, 0.25, [0, 4, 19.5], [0, Math.PI, 0], 0xfff1e0);
+    softbox(16, 28, 0.85, [0, 14.5, 0], [Math.PI / 2, 0, 0]);
+    softbox(8, 24, 0.65, [-8, 13, 0], [Math.PI / 2, 0.35, 0]);
+    softbox(8, 24, 0.65, [8, 13, 0], [Math.PI / 2, -0.35, 0]);
+    softbox(28, 5, 0.55, [0, 4, -19.5], [0, 0, 0], 0xdfe9ff);
+    softbox(28, 5, 0.45, [0, 4, 19.5], [0, Math.PI, 0], 0xfff1e0);
 
     this.accentMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
     const band = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 1.2, 48, 1, true), this.accentMat);
@@ -84,9 +84,9 @@ class StudioEnvironment {
 
   // Re-render the diffused environment with a new accent colour (heavily blurred for a matte look)
   update(accent) {
-    this.accentMat.color.set(accent).multiplyScalar(0.25);
+    this.accentMat.color.set(accent).multiplyScalar(0.35);
     const previous = this.texture;
-    this.texture = this.pmrem.fromScene(this.scene, 0.18).texture;
+    this.texture = this.pmrem.fromScene(this.scene, 0.15).texture;
     previous?.dispose();
     return this.texture;
   }
@@ -114,19 +114,24 @@ export class A8Showroom {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 1.22;
     this.renderer.setClearColor(0x000000, 0);
 
     this.scene = new THREE.Scene();
     if ('environmentIntensity' in this.scene) {
-      this.scene.environmentIntensity = 0.3;
+      this.scene.environmentIntensity = 0.55;
     }
     this.studio = new StudioEnvironment(this.renderer);
-    const key = new THREE.DirectionalLight(0xfffaf0, 1.05);
-    key.position.set(-4, 8, -3);
-    const fill = new THREE.DirectionalLight(0xc4d7ff, 0.55);
-    fill.position.set(5, 6, 4);
-    this.scene.add(key, fill, new THREE.HemisphereLight(0xd8e4ff, 0x141822, 1.05));
+    const key = new THREE.DirectionalLight(0xfffaf0, 1.45);
+    key.position.set(-4, 9, -3);
+    const fill = new THREE.DirectionalLight(0xcde0ff, 0.95);
+    fill.position.set(5, 7, 4);
+    const top = new THREE.DirectionalLight(0xffffff, 0.7);
+    top.position.set(0, 12, 0);
+    const rim = new THREE.DirectionalLight(0xb4ccf8, 0.6);
+    rim.position.set(-2, 5, 5);
+    const hemi = new THREE.HemisphereLight(0xe4edff, 0x1c2434, 1.35);
+    this.scene.add(key, fill, top, rim, hemi);
 
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 120);
     this.target = TARGET.clone();
@@ -174,10 +179,10 @@ export class A8Showroom {
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(14, 72),
       new THREE.MeshStandardMaterial({
-        color: 0x0c1018,
-        roughness: 0.95,
+        color: 0x161e2c,
+        roughness: 0.92,
         metalness: 0.05,
-        envMapIntensity: 0.1,
+        envMapIntensity: 0.15,
         transparent: true,
         alphaMap: floorAlpha,
         depthWrite: false,

@@ -4,13 +4,13 @@
 @property --sky {
   syntax: '<color>';
   inherits: true;
-  initial-value: #17223a;
+  initial-value: #1e2c48;
 }
 
 @property --haze {
   syntax: '<color>';
   inherits: true;
-  initial-value: rgba(70, 120, 210, 0.2);
+  initial-value: rgba(85, 140, 230, 0.3);
 }
 
 @layer reset {
@@ -918,8 +918,8 @@
     z-index: 30;
     overflow: hidden;
     background:
-      radial-gradient(48% 30% at var(--stage-x) var(--stage-y), var(--haze), transparent 72%),
-      radial-gradient(120% 85% at var(--stage-x) 38%, var(--sky) 0%, #080b12 56%, #030508 100%);
+      radial-gradient(54% 36% at var(--stage-x) var(--stage-y), var(--haze), transparent 75%),
+      radial-gradient(120% 85% at var(--stage-x) 38%, var(--sky) 0%, #0d121c 56%, #060912 100%);
     transition: --sky 0.7s ease, --haze 0.7s ease;
     touch-action: pan-y;
   }
@@ -985,8 +985,8 @@
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(70% 38% at 0% 100%, rgba(3, 5, 8, 0.78), transparent),
-      radial-gradient(50% 22% at 0% 0%, rgba(3, 5, 8, 0.55), transparent);
+      radial-gradient(70% 38% at 0% 100%, rgba(3, 5, 8, 0.55), transparent),
+      radial-gradient(50% 22% at 0% 0%, rgba(3, 5, 8, 0.35), transparent);
   }
 
   .garage-layout > * {
@@ -1278,9 +1278,7 @@
     touch-action: pan-y;
   }
 
-  /* Hide stage camera/light tools on Steps 2 and 3 so the user focuses on settings */
-  .menu-overlay[data-step='2'] #garage-stage-tools,
-  .menu-overlay[data-step='3'] #garage-stage-tools,
+  /* Hide drag hint on Steps 2 and 3 so the user focuses on settings */
   .menu-overlay[data-step='2'] .garage-hint,
   .menu-overlay[data-step='3'] .garage-hint {
     display: none;

@@ -446,25 +446,10 @@ class OtobanMakasGame {
     this.setCar(this.selectedCar, false);
     this.updateWizardSummaries();
 
-    document.querySelectorAll('#garage-view-group .chip').forEach((chip) => {
-      chip.addEventListener('click', () => this.showroom?.goToView(chip.dataset.view));
-    });
-    const bindToggleChip = (id, onToggle) => {
-      const chip = document.getElementById(id);
-      chip?.addEventListener('click', () => {
-        const on = chip.getAttribute('aria-pressed') !== 'true';
-        chip.setAttribute('aria-pressed', String(on));
-        onToggle(on);
-      });
-    };
-    // Reduced motion: the turntable stands still until switched on
+    // Reduced motion: the turntable stands still
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.showroom?.setAutoRotate(false);
-      document.getElementById('garage-spin')?.setAttribute('aria-pressed', 'false');
     }
-    bindToggleChip('garage-lights', (on) => this.showroom?.setLights(on));
-    bindToggleChip('garage-spin', (on) => this.showroom?.setAutoRotate(on));
-    document.getElementById('garage-flash')?.addEventListener('click', () => this.showroom?.flashHighBeam());
     document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
       sw.addEventListener('click', () => this.setGaragePaint(Number(sw.dataset.paint)));
     });

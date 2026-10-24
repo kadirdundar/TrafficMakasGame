@@ -49,7 +49,7 @@ export default {
     defaultEye: [-0.38, 1.08, 0.30],
     wheelRadius: 0.18,
     steerSign: -1,
-    softMaterials: new Set(['INTERIOR_12', 'PLASTI_NEGRO_3']),
+    softMaterials: new Set(['INTERIOR_12', 'PLASTI_NEGRO_3', 'modelSM_SoftTop_000.001SG3_11']),
     paintMaterials: new Set(['PAINT_COLOR_4']),
     screens: {
       cluster: {
