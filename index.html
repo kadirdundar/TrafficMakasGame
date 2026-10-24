@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-BpjyKZSS.js"></script>
+  <script type="module" crossorigin src="./assets/index-CWqFUm0Y.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-DnMDsfPP.css">
 </head>
 <body>
@@ -194,8 +194,7 @@
 
       <section class="garage-car" aria-label="Aracın">
         <div class="segmented-control car-select-group" id="garage-car-select" role="group" aria-label="Araç modeli seçimi">
-          <button type="button" class="seg-btn active" data-car="a8">Audi A8</button>
-          <button type="button" class="seg-btn" data-car="m4">BMW M4 CS</button>
+          <!-- One button per car in src/cars/ (filled in by main.js) -->
         </div>
 
         <div class="car-title">
@@ -226,11 +225,8 @@
         </div>
 
         <p class="garage-hint">Sürükle: döndür · Kaydır / iki parmak: yakınlaş</p>
-        <p class="asset-credits">
-          3D model: <a href="https://sketchfab.com/3d-models/audi-a8-custom-2018-cd094d03f7684809900a929a9c88c8db" target="_blank" rel="noopener">"Audi A8 Custom 2018"</a>
-          — everhard, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>
-          <span class="credit-extra">(iç mekân çıkarıldı, sadeleştirildi)</span>
-        </p>
+        <!-- Credit of the selected car's model (from src/cars/<id>/car.js, filled in by main.js) -->
+        <p class="asset-credits" id="garage-credit"></p>
       </section>
 
       <aside class="garage-panel menu-modal">
