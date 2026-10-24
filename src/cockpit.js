@@ -737,7 +737,7 @@ export class CarCockpit {
     const s = this._screenState;
     if (!s) return;
     if (name !== 'cluster') return;
-    const style = getCar(this.carType).cockpit.cluster;
+    const style = getCar(this.carType)?.cockpit?.cluster || 'mercedes';
     if (style === 'bmw') {
       this.drawBmwClusterScreen(ctx, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
     } else {

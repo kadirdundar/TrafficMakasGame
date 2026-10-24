@@ -54,18 +54,27 @@ async function sourceMatrices() {
   scene.updateMatrixWorld(true);
   const turn = new THREE.Matrix4().makeRotationY(THREE.MathUtils.degToRad(cfg.transform?.rotateY ?? 0));
 
+  const box = new THREE.Box3();
+  scene.traverse((o) => {
+    if (!o.isMesh || matches(cfg.dropNodes || [], o.name)) return;
+    box.union(new THREE.Box3().setFromObject(o).applyMatrix4(turn));
+  });
+
   let scale = cfg.transform?.scale;
   if (!scale) {
-    // Scale so the kept meshes are `length` metres long along Z
-    const box = new THREE.Box3();
-    scene.traverse((o) => {
-      if (!o.isMesh || matches(cfg.dropNodes || [], o.name)) return;
-      box.union(new THREE.Box3().setFromObject(o).applyMatrix4(turn));
-    });
     scale = cfg.transform.length / (box.max.z - box.min.z);
     console.log(`Ölçek: ${scale.toFixed(4)} (boy ${cfg.transform.length} m)`);
   }
-  const post = turn.clone().scale(new THREE.Vector3(scale, scale, scale));
+
+  let post = turn.clone().scale(new THREE.Vector3(scale, scale, scale));
+  if (cfg.transform?.center) {
+    const dx = -((box.min.x + box.max.x) / 2) * scale;
+    const dy = -box.min.y * scale;
+    const dz = -((box.min.z + box.max.z) / 2) * scale;
+    const centerShift = new THREE.Matrix4().makeTranslation(dx, dy, dz);
+    post = centerShift.multiply(post);
+  }
+
   const matrices = new Map();
   scene.traverse((o) => {
     if (o.isMesh) matrices.set(o.name, post.clone().multiply(o.matrixWorld));
@@ -266,6 +275,24 @@ async function buildExterior(matrices) {
     n.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]);
     carRoot.addChild(n);
   });
+
+  // Assign specific materials to named nodes before global rename (e.g. separate shared lights)
+  if (ex.assignNodeMaterials) {
+    for (const rule of ex.assignNodeMaterials) {
+      for (const node of root.listNodes()) {
+        if (!matches([rule.node], node.getName())) continue;
+        const mesh = node.getMesh();
+        if (!mesh) continue;
+        for (const prim of mesh.listPrimitives()) {
+          const oldMat = prim.getMaterial();
+          if (!oldMat) continue;
+          const newMat = oldMat.clone();
+          newMat.setName(rule.materialName);
+          prim.setMaterial(newMat);
+        }
+      }
+    }
+  }
 
   // Rename materials to what the game expects (paint, glass, head*, tail*, ...)
   root.listMaterials().forEach((mat) => {
