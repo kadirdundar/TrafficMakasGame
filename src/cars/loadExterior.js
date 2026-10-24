@@ -58,11 +58,12 @@ export async function loadExterior(cfg, { paintHex = 0x0e6f9c } = {}) {
 
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: paintHex,
-    metalness: 0.82,
-    roughness: 0.22,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.05,
+    metalness: cfg.metalness ?? 0.82,
+    roughness: cfg.roughness ?? 0.22,
+    clearcoat: cfg.clearcoat ?? 1.0,
+    clearcoatRoughness: cfg.clearcoatRoughness ?? 0.05,
     envMapIntensity: cfg.envMapIntensity ?? 1.2,
+    side: THREE.DoubleSide,
   });
   const paintName = cfg.paintMaterial || 'paint';
 

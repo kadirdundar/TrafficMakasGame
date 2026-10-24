@@ -236,6 +236,20 @@ async function buildExterior(matrices) {
     const m = mesh && matrices.get(n.getName());
     if (!m) return;
     transformMesh(mesh, Array.from(m.elements));
+    if (m.determinant() < 0) {
+      for (const prim of mesh.listPrimitives()) {
+        const idxAcc = prim.getIndices();
+        if (idxAcc) {
+          const arr = idxAcc.getArray().slice();
+          for (let i = 0; i < arr.length; i += 3) {
+            const tmp = arr[i + 1];
+            arr[i + 1] = arr[i + 2];
+            arr[i + 2] = tmp;
+          }
+          idxAcc.setArray(arr);
+        }
+      }
+    }
     n.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]);
     carRoot.addChild(n);
   });
@@ -387,6 +401,20 @@ async function buildCockpit(matrices) {
     const m = n.getMesh() && name !== 'steering_wheel' && name !== 'steering_column' && matrices.get(name);
     if (!m) return;
     transformMesh(n.getMesh(), Array.from(m.elements));
+    if (m.determinant() < 0) {
+      for (const prim of n.getMesh().listPrimitives()) {
+        const idxAcc = prim.getIndices();
+        if (idxAcc) {
+          const arr = idxAcc.getArray().slice();
+          for (let i = 0; i < arr.length; i += 3) {
+            const tmp = arr[i + 1];
+            arr[i + 1] = arr[i + 2];
+            arr[i + 2] = tmp;
+          }
+          idxAcc.setArray(arr);
+        }
+      }
+    }
     n.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]);
   });
 

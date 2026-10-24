@@ -24,7 +24,12 @@ export default {
   exterior: {
     url: `${BASE}models/brabus-g700.glb`,
     length: 4.87,
-    envMapIntensity: 1.2,
+    // Stealth matte finish: low reflection, diffuse matte surface without harsh mirror glares
+    envMapIntensity: 0.35,
+    metalness: 0.15,
+    roughness: 0.70,
+    clearcoat: 0.05,
+    clearcoatRoughness: 0.6,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
     // Material names set by convert.mjs → exterior.renameMaterials

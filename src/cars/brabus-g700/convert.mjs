@@ -46,12 +46,12 @@ export default {
       [/^(MT_151|MT_152|MT_153|MT_154|MT_155|MT_156|2021_Lamborghini_Essenza_SCV12_CSR2_Wheel1A_Rotor|2021_Lamborghini_Essenza_SCV12_CSR2_Calliper_Color)$/, 'rim'],
     ],
     materials: [
-      [/^black_matt$/, { color: [0.03, 0.03, 0.03], metallic: 0.1, roughness: 0.7 }],
-      [/^black_shiny$/, { color: [0.02, 0.02, 0.02], metallic: 0.3, roughness: 0.3 }],
-      [/^chrome$/, { color: [0.85, 0.85, 0.85], metallic: 0.95, roughness: 0.15 }],
-      [/^tire$/, { color: [0.05, 0.05, 0.05], metallic: 0.0, roughness: 0.85 }],
-      [/^rim$/, { metallic: 0.8, roughness: 0.25 }],
-      [/^glass$/, { metallic: 0, roughness: 0.05, alpha: 0.35 }],
+      [/^black_matt$/, { color: [0.03, 0.03, 0.03], metallic: 0.05, roughness: 0.85 }],
+      [/^black_shiny$/, { color: [0.02, 0.02, 0.02], metallic: 0.15, roughness: 0.65 }],
+      [/^chrome$/, { color: [0.70, 0.70, 0.70], metallic: 0.6, roughness: 0.45 }],
+      [/^tire$/, { color: [0.04, 0.04, 0.04], metallic: 0.0, roughness: 0.9 }],
+      [/^rim$/, { color: [0.03, 0.03, 0.03], metallic: 0.2, roughness: 0.65 }],
+      [/^glass$/, { metallic: 0, roughness: 0.1, alpha: 0.35 }],
     ],
     cleanAttributes: true,
     // Bütçe: ≤ 60k üçgen, ~1 MB (tarif §3)
@@ -93,9 +93,9 @@ export default {
     materials: [
       [/^2020_Mercedes-AMG_G63_Brabus_G700_DarkLeather$/, { color: [0.03, 0.03, 0.03], metallic: 0.05, roughness: 0.7 }],
       [/^2020_Mercedes-AMG_G63_Brabus_G700_Carpet$/, { color: [0.02, 0.02, 0.02], metallic: 0.0, roughness: 0.9 }],
-      [/^2020_Mercedes-AMG_G63_Brabus_G700_PianoBlack$/, { color: [0.02, 0.02, 0.02], metallic: 0.3, roughness: 0.2 }],
-      [/^2020_Mercedes-AMG_G63_Brabus_G700_BlackTrim$/, { color: [0.03, 0.03, 0.03], metallic: 0.1, roughness: 0.7 }],
-      [/^2020_Mercedes-AMG_G63_Brabus_G700_ChromeSilver$/, { color: [0.85, 0.85, 0.85], metallic: 0.95, roughness: 0.2 }],
+      [/^2020_Mercedes-AMG_G63_Brabus_G700_PianoBlack$/, { color: [0.02, 0.02, 0.02], metallic: 0.2, roughness: 0.45 }],
+      [/^2020_Mercedes-AMG_G63_Brabus_G700_BlackTrim$/, { color: [0.03, 0.03, 0.03], metallic: 0.05, roughness: 0.85 }],
+      [/^2020_Mercedes-AMG_G63_Brabus_G700_ChromeSilver$/, { color: [0.70, 0.70, 0.70], metallic: 0.7, roughness: 0.4 }],
     ],
     mergeMaterials: [
       [/^(2020_Mercedes-AMG_G63_Brabus_G700_Black1|2020_Mercedes-AMG_G63_Brabus_G700_Black2|2020_Mercedes-AMG_G63_Brabus_G700_lambert1)$/, '2020_Mercedes-AMG_G63_Brabus_G700_BlackTrim'],
