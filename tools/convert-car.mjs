@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { prune, dedup, reorder, transformMesh, join, weld, simplify, meshopt } from '@gltf-transform/functions';
+import { prune, dedup, reorder, transformMesh, join, weld, simplify, meshopt, compactPrimitive } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import {
   compressTextures,
@@ -102,23 +102,119 @@ const countTris = (doc) =>
     .flatMap((m) => m.listPrimitives())
     .reduce((n, p) => n + (p.getIndices()?.getCount() ?? p.getAttribute('POSITION').getCount()) / 3, 0);
 
-// Optional mesh simplification (keeps borders so panels stay closed). `targetTris` sets the
-// ratio from the current count; `error` caps how far surfaces may move (fraction of mesh size).
+// Optional mesh simplification.
+//   { targetTris, maxError = 0.01 }: world-space mode (geometry is already in metres). Every part
+//     is simplified with the same absolute error, so small parts (badges, grilles) shrink as much
+//     as big panels; the smallest error that reaches targetTris is searched, capped at maxError.
+//     Normals steer the collapses, seams may be crossed, specks smaller than the error vanish.
+//   { ratio, error }: per-mesh relative mode of glTF-Transform's simplify (borders locked).
 async function simplifyDoc(doc, opts) {
   if (!opts) return;
   await MeshoptSimplifier.ready;
-  await doc.transform(weld());
+  await doc.transform(prune(), weld()); // only what is still in the scene counts
   const before = countTris(doc);
-  const ratio = opts.targetTris ? Math.min(1, opts.targetTris / before) : opts.ratio;
-  await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio, error: opts.error ?? 0.0005, lockBorder: true }));
-  const after = countTris(doc);
-  console.log(`  Sadeleştirme: ${before} → ${after} üçgen${opts.targetTris && after > opts.targetTris * 1.2 ? ' (hedefe inmedi: error değerini büyüt ya da gereksiz düğümleri dropNodes ile at)' : ''}`);
+  if (!opts.targetTris) {
+    await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio: opts.ratio, error: opts.error ?? 0.0005, lockBorder: true }));
+    console.log(`  Sadeleştirme: ${before} → ${countTris(doc)} üçgen`);
+    return;
+  }
+  const prims = doc
+    .getRoot()
+    .listMeshes()
+    .flatMap((m) => m.listPrimitives())
+    .filter((p) => p.getIndices() && p.getMode() === 4)
+    .map((p) => ({
+      p,
+      idx: new Uint32Array(p.getIndices().getArray()),
+      pos: new Float32Array(p.getAttribute('POSITION').getArray()),
+      nrm: p.getAttribute('NORMAL') ? new Float32Array(p.getAttribute('NORMAL').getArray()) : null,
+    }));
+  const flags = ['ErrorAbsolute', 'Permissive', 'Prune'];
+  const run = (err, apply) => {
+    let total = 0;
+    for (const { p, idx, pos, nrm } of prims) {
+      const [out] = nrm
+        ? MeshoptSimplifier.simplifyWithAttributes(idx, pos, 3, nrm, 3, [0.25, 0.25, 0.25], null, 0, err, flags)
+        : MeshoptSimplifier.simplify(idx, pos, 3, 0, err, flags);
+      total += out.length / 3;
+      if (apply) p.getIndices().setArray(out);
+    }
+    return total;
+  };
+  const maxError = opts.maxError ?? 0.01;
+  let lo = 0.0001;
+  let hi = maxError;
+  if (run(hi, false) <= opts.targetTris) {
+    for (let i = 0; i < 10; i++) {
+      const mid = Math.sqrt(lo * hi);
+      if (run(mid, false) > opts.targetTris) lo = mid;
+      else hi = mid;
+    }
+  }
+  const after = run(hi, true);
+  for (const { p } of prims) {
+    if (p.getIndices().getCount() === 0) p.dispose();
+    else compactPrimitive(p);
+  }
+  console.log(`  Sadeleştirme: ${before} → ${after} üçgen (hata ${(hi * 1000).toFixed(1)} mm)` +
+    (after > opts.targetTris ? ` — hedefe inmedi: maxError'ı büyüt ya da görünmeyen düğümleri dropNodes ile at` : ''));
 }
 
 // Final cleanup; `compress` adds meshopt geometry compression (the game decodes it)
 async function finish(doc, opts) {
   await doc.transform(prune(), dedup(), reorder({ encoder: MeshoptEncoder }));
   if (opts.compress) await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+}
+
+// Fewer draw calls: primitives whose material matches a rule take the named target material
+// (look-alike dark trims, cabin details seen only from afar), so join() can merge them.
+function mergeMaterials(root, rules) {
+  if (!rules?.length) return;
+  const byName = new Map(root.listMaterials().map((m) => [m.getName(), m]));
+  let moved = 0;
+  for (const mesh of root.listMeshes()) {
+    for (const prim of mesh.listPrimitives()) {
+      const rule = rules.find(([pattern]) => pattern.test(prim.getMaterial()?.getName() || ''));
+      const target = rule && byName.get(rule[1]);
+      if (!rule) continue;
+      if (!target) throw new Error(`mergeMaterials: hedef malzeme yok: ${rule[1]}`);
+      if (prim.getMaterial() !== target) {
+        prim.setMaterial(target);
+        moved++;
+      }
+    }
+  }
+  console.log(`  Malzeme birleştirme: ${moved} parça`);
+}
+
+// Untextured materials do not need UVs, tangents or vertex colours; dropping them shrinks the
+// file and lets join() merge more primitives
+function cleanAttributes(root) {
+  let n = 0;
+  for (const prim of root.listMeshes().flatMap((m) => m.listPrimitives())) {
+    const mat = prim.getMaterial();
+    const textured = mat && [mat.getBaseColorTexture(), mat.getNormalTexture(), mat.getEmissiveTexture(), mat.getOcclusionTexture(), mat.getMetallicRoughnessTexture()].some(Boolean);
+    const normalMapped = Boolean(mat?.getNormalTexture());
+    for (const semantic of prim.listSemantics()) {
+      if ((!textured && semantic.startsWith('TEXCOORD')) || (!normalMapped && semantic === 'TANGENT') || semantic.startsWith('COLOR')) {
+        prim.setAttribute(semantic, null);
+        n++;
+      }
+    }
+  }
+  console.log(`  Gereksiz köşe verisi silindi: ${n}`);
+}
+
+// PBR fixes; first matching rule wins
+function applyMaterialFixes(root, rules) {
+  root.listMaterials().forEach((m) => {
+    const rule = (rules || []).find(([pattern]) => pattern.test(m.getName() || ''));
+    if (!rule) return;
+    if (rule[1].metallic !== undefined) m.setMetallicFactor(rule[1].metallic);
+    if (rule[1].roughness !== undefined) m.setRoughnessFactor(rule[1].roughness);
+    const [r, g, b, a] = m.getBaseColorFactor();
+    m.setBaseColorFactor([...(rule[1].color || [r, g, b]), rule[1].alpha ?? a]); // linear RGB
+  });
 }
 
 // ---------------------------------------------------------------- Exterior
@@ -150,6 +246,9 @@ async function buildExterior(matrices) {
     if (rule) mat.setName(rule[1]);
   });
 
+  mergeMaterials(root, ex.mergeMaterials);
+  applyMaterialFixes(root, ex.materials);
+  if (ex.cleanAttributes) cleanAttributes(root);
   await simplifyDoc(doc, ex.simplify);
   if (ex.join !== false) await doc.transform(join());
   await compressTextures(doc, { quality: ex.webpQuality ?? 85, maxSize: ex.maxTextureSize });
@@ -298,20 +397,34 @@ async function buildCockpit(matrices) {
   const nodeByName = (name) => root.listNodes().find((n) => n.getName() === name);
   if (wheelMesh && ck.wheelTrim) moveWheelTrim(doc, nodeByName, wheelMesh, ck.steering, ck.wheelTrim);
 
-  // Mirrors: the model's own glass triangles, picked by their UV island (u taken modulo 1)
+  // Mirrors: the model's own glass triangles. Picked by UV island (u taken modulo 1) and/or by
+  // the triangle centre's x/y/z ranges and facing (for untextured glass, or both mirrors in one node)
   const frac = (x) => x - Math.floor(x);
   if (ck.mirrors?.length) {
     const mirrorMat = doc.createMaterial('MirrorMaterial').setRoughnessFactor(0.0).setMetallicFactor(1.0);
-    for (const { name, from, uv: box } of ck.mirrors) {
+    for (const { name, from, uv: box, x, y, z, facing } of ck.mirrors) {
       const prim = nodeByName(from)?.getMesh()?.listPrimitives()[0];
       const uv = prim?.getAttribute('TEXCOORD_0');
+      const pos = prim?.getAttribute('POSITION');
       const e = [];
-      const inBox = (...ids) =>
-        ids.every((i) => {
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const c = new THREE.Vector3();
+      const face = facing && new THREE.Vector3().fromArray(facing).normalize();
+      const within = (range, value) => !range || (value >= range[0] && value <= range[1]);
+      const pick = (...ids) => {
+        if (box && !ids.every((i) => {
           uv.getElement(i, e);
           return frac(e[0]) >= box[0] && frac(e[0]) <= box[1] && e[1] >= box[2] && e[1] <= box[3];
-        });
-      const glass = prim && splitTriangles(doc, prim, inBox);
+        })) return false;
+        a.fromArray(pos.getElement(ids[0], []));
+        b.fromArray(pos.getElement(ids[1], []));
+        c.fromArray(pos.getElement(ids[2], []));
+        const centre = a.clone().add(b).add(c).divideScalar(3);
+        if (!within(x, centre.x) || !within(y, centre.y) || !within(z, centre.z)) return false;
+        return !face || b.sub(a).cross(c.sub(a)).normalize().dot(face) > 0.5;
+      };
+      const glass = prim && splitTriangles(doc, prim, pick);
       if (!glass) {
         console.warn(`  Ayna camı bulunamadı: ${name}`);
         continue;
@@ -373,15 +486,17 @@ async function buildCockpit(matrices) {
     if (keep.has(n.getName()) || n.getName() === 'steering_wheel') cockpitRoot.addChild(n);
   });
 
-  // PBR fixes; first matching rule wins
-  root.listMaterials().forEach((m) => {
-    const rule = (ck.materials || []).find(([pattern]) => pattern.test(m.getName() || ''));
-    if (!rule) return;
-    if (rule[1].metallic !== undefined) m.setMetallicFactor(rule[1].metallic);
-    if (rule[1].roughness !== undefined) m.setRoughnessFactor(rule[1].roughness);
-  });
+  mergeMaterials(root, ck.mergeMaterials);
+  applyMaterialFixes(root, ck.materials);
+  if (ck.cleanAttributes) cleanAttributes(root);
 
   await simplifyDoc(doc, ck.simplify);
+  // Fewer draw calls: everything except the nodes the game looks up by name (wheel, mirrors,
+  // LED strips, floor, and `keepSeparate` for atlasPatches / satinPieces) is joined by material
+  if (ck.join) {
+    const separate = new Set(['steering_wheel', 'steering_column', 'mirror_left', 'mirror_right', 'mirror_center', 'ambient_led', 'cabin_floor', ...(ck.keepSeparate || [])]);
+    await doc.transform(join({ filter: (node) => !separate.has(node.getName()) }));
+  }
   await compressTextures(doc, { quality: ck.webpQuality ?? 90, maxSize: ck.maxTextureSize });
   await finish(doc, ck);
   await save(io, doc, outPath(ck.out));

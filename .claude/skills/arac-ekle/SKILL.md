@@ -27,14 +27,17 @@ Değerleri asla tahmin etme; ölç. Her adımdan sonra ekran görüntüsüyle do
    `maxTextureSize: 1024`, `compress: true`. `npm run car:convert -- <id> --exterior-only`.
    Hedef: ≤ 60k üçgen, ~1 MB. Kontrol: `car.html?car=<id>` (¾ ön/arka, gece, fren, uzun far).
    Lamba malzemesi yoksa `car.js` → `exterior.glow.*.at` ile ölçülmüş nokta ver.
-5. **Kokpit modeli:** lab sayfasında "Kokpite al" → `keepNodes`; "Direksiyon (3 nokta)" →
+5. **Kokpit modeli:** önce "Direksiyon (3 nokta)" ile göz noktasını bul, sonra
+   "Gözden görünen parçalar" düğmesi `keepNodes` listesini çıkarır (tek tek: "Kokpite al"); "Direksiyon (3 nokta)" →
    `steering`, `eye`, `wheelTrim`; "Ayna camı" → `mirrors`; "Ambiyans şeridi" → `ambientLed`.
-   Ön camı `keepNodes`'a alma. `npm run car:convert -- <id>`. Hedef ≤ 65k üçgen, ≤ 30 draw call.
+   Ön camı `keepNodes`'a alma. `join: true`, `simplify: { targetTris: 65000 }`.
+   `npm run car:convert -- <id>`. Hedef ≤ 65k üçgen, ≤ 30 draw call (cockpit.html'de say).
+   Kaynak "siyah" malzemeler çoğu zaman gri ve çok metaliktir: `materials` ile koyulaştır.
 6. **Kokpit ayarı:** `lab.html?car=<id>&model=cockpit` → "Gösterge (4 köşe)" → `car.js` →
    `cockpit.screens.cluster` (kavisli camda kenarlardan ölç; dörtgen camın önünde olmalı);
    bulanık detaylar için "Bulanık detay" → `atlasPatches` (çizim fonksiyonu aracın klasörüne);
    kapı kolu gibi parçalar için "Metal parça" → `satinPieces`. `car.js`'teki yorumlu `cockpit`
-   bloğunu doldur; `cluster: 'audi' | 'bmw'`.
+   bloğunu doldur; `cluster: 'audi' | 'mercedes' | 'bmw'`.
 7. **Doğrulama:** `cockpit.html?car=<id>&preset=0|1|2`, `&night=1`, `&steer=0.8`, dikey ekran
    (`&w=420&h=740`). Direksiyon dönüşünde tüm direksiyon parçaları dönmeli; aynalar canlı,
    gösterge canlı olmalı. Sonra oyunda garajdan aracı seçip sürüşe başla.

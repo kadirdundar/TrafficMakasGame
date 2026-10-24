@@ -289,7 +289,7 @@ export class CarCockpit {
     this.currentInteriorCar = null;
     this.lastEyeAnchor = null;
     this.interior3d = null;
-    this._interiorPromise = null;
+    this.pendingInteriors = new Map(); // car id -> loading promise
     this._overlayCleared = false;
     this.camera = null; // set by the game; needed to project the 3D wheel for touch steering
 
@@ -301,6 +301,8 @@ export class CarCockpit {
   }
 
   // Sets or swaps the car interior (a car id from src/cars/). Cached in memory after first load.
+  // One download per car even if the player switches cars while it is still loading; only the
+  // car selected when a download finishes is shown (the photo cockpit covers the wait).
   async setCarType(carType, eyeAnchor) {
     if (!carType) return;
     const key = getCar(carType).id;
@@ -312,40 +314,54 @@ export class CarCockpit {
       this.interior3d.group.visible = true;
       return;
     }
-
-    // Hide / detach current interior
-    if (this.interior3d) {
-      this.interior3d.group.visible = false;
-      this.group.remove(this.interior3d.group);
-      this.interior3d = null;
-    }
-
+    this.detachInterior();
     if (this.cockpitCache.has(key)) {
-      this.interior3d = this.cockpitCache.get(key);
-      this.group.add(this.interior3d.group);
-      this.interior3d.group.visible = true;
-      this.currentInteriorCar = key;
+      this.attachInterior(key, this.cockpitCache.get(key));
       return;
     }
 
+    let pending = this.pendingInteriors.get(key);
+    if (!pending) {
+      pending = import('./cockpit3d.js')
+        .then(({ loadCockpit3D }) =>
+          loadCockpit3D({
+            carType: key,
+            eyeAnchor: this.lastEyeAnchor || eyeAnchor,
+            mirrorTexture: this.mirrorRenderTarget.texture,
+            paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
+          })
+        )
+        .then((interior) => {
+          this.cockpitCache.set(key, interior);
+          return interior;
+        })
+        .finally(() => this.pendingInteriors.delete(key));
+      this.pendingInteriors.set(key, pending);
+    }
     try {
-      const { loadCockpit3D } = await import('./cockpit3d.js');
-      const interior = await loadCockpit3D({
-        carType: key,
-        eyeAnchor: this.lastEyeAnchor || eyeAnchor,
-        mirrorTexture: this.mirrorRenderTarget.texture,
-        paintScreen: (name, ctx, w, h) => this.paint3DScreen(name, ctx, w, h),
-      });
-      this.cockpitCache.set(key, interior);
-      if (this.carType === key && this.mode === '3d') {
-        this.interior3d = interior;
-        this.group.add(interior.group);
-        interior.group.visible = true;
-        this.currentInteriorCar = key;
-      }
+      const interior = await pending;
+      if (this.carType === key && this.mode === '3d') this.attachInterior(key, interior);
     } catch (err) {
       console.warn(`${key} 3D kokpit yüklenemedi:`, err);
     }
+  }
+
+  attachInterior(key, interior) {
+    if (this.interior3d === interior) return;
+    this.detachInterior();
+    this.interior3d = interior;
+    this.group.add(interior.group);
+    interior.group.visible = true;
+    this.currentInteriorCar = key;
+    this._overlayCleared = false; // wipe the photo cockpit drawn while it was loading
+  }
+
+  detachInterior() {
+    if (!this.interior3d) return;
+    this.interior3d.group.visible = false;
+    this.group.remove(this.interior3d.group);
+    this.interior3d = null;
+    this.currentInteriorCar = null;
   }
 
   // Switches between the photo cockpit and the 3D interior. The 3D module + model are only
@@ -358,7 +374,8 @@ export class CarCockpit {
 
     if (this.mode === '3d') {
       await this.setCarType(this.carType || DEFAULT_CAR_ID, eyeAnchor);
-      if (!this.interior3d) {
+      // Fall back only if the selected car really failed (not while another one is loading)
+      if (!this.interior3d && !this.pendingInteriors.has(this.carType)) {
         this.mode = 'photo';
       }
     } else {
@@ -720,10 +737,11 @@ export class CarCockpit {
     const s = this._screenState;
     if (!s) return;
     if (name !== 'cluster') return;
-    if (getCar(this.carType).cockpit.cluster === 'bmw') {
+    const style = getCar(this.carType).cockpit.cluster;
+    if (style === 'bmw') {
       this.drawBmwClusterScreen(ctx, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
     } else {
-      this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
+      this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm, style);
     }
   }
 
@@ -1201,21 +1219,24 @@ export class CarCockpit {
     ctx.restore();
   }
 
-  // Audi Virtual Cockpit: tachometer (left), speedometer (right), digital speed in the middle.
+  // Two-dial cluster: tachometer (left), speedometer (right), digital speed in the middle; the
+  // badge between the dials follows the brand ('audi' rings, 'mercedes' AMG lettering).
   // Faces, ticks and numbers never change, so they are drawn once into a cached canvas; each
-  // repaint only adds the arcs, needles and readouts.
-  drawVirtualCockpitScreen(ctx, x, y, w, h, speedKmh, rpm, gear, highBeam, odometerKm) {
+  // repaint only adds the arcs, needles and readouts. Sizes follow `fh`, the height capped by
+  // the width, so squarer screens than the A8's (2.6:1) keep the dials apart.
+  drawVirtualCockpitScreen(ctx, x, y, w, h, speedKmh, rpm, gear, highBeam, odometerKm, brand = 'audi') {
     const accent = AMBIENT_COLORS[this.ambientKey]?.css || '#00f0ff';
     const scale = Math.max(1, ctx.getTransform().a);
+    const fh = Math.min(h, w * 0.385);
     const layout = {
-      r: h * 0.43,
+      r: fh * 0.43,
       tach: { cx: x + w * 0.2, cy: y + h * 0.52 },
       speedo: { cx: x + w * 0.8, cy: y + h * 0.52 },
       centerX: x + w * 0.5,
     };
 
     ctx.save();
-    ctx.drawImage(this.getClusterFace(w, h, scale), x, y, w, h);
+    ctx.drawImage(this.getClusterFace(w, h, scale, brand), x, y, w, h);
 
     const { r, tach, speedo, centerX } = layout;
     this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), rpm > 6500 ? '#ff3b4f' : accent);
@@ -1226,20 +1247,20 @@ export class CarCockpit {
 
     // Gear inside the tachometer (tiptronic D1..D8)
     ctx.fillStyle = '#f8fafc';
-    ctx.font = `800 ${h * 0.17}px system-ui, sans-serif`;
+    ctx.font = `800 ${fh * 0.17}px system-ui, sans-serif`;
     ctx.fillText(`D${gear}`, tach.cx, tach.cy + r * 0.5);
 
     // Speed in the middle, between the dials
-    ctx.font = `800 ${h * 0.3}px system-ui, sans-serif`;
+    ctx.font = `800 ${fh * 0.3}px system-ui, sans-serif`;
     ctx.fillText(String(Math.round(speedKmh)), centerX, y + h * 0.52);
     ctx.fillStyle = '#94a3b8';
-    ctx.font = `600 ${h * 0.09}px system-ui, sans-serif`;
+    ctx.font = `600 ${fh * 0.09}px system-ui, sans-serif`;
     ctx.fillText('km/h', centerX, y + h * 0.7);
     ctx.fillText(`${Math.floor(odometerKm)} km`, centerX, y + h * 0.88);
 
     if (highBeam) {
       ctx.fillStyle = '#3b82f6';
-      ctx.font = `800 ${h * 0.11}px system-ui, sans-serif`;
+      ctx.font = `800 ${fh * 0.11}px system-ui, sans-serif`;
       ctx.fillText('≡D', centerX, y + h * 0.13);
     }
     ctx.restore();
@@ -1249,8 +1270,8 @@ export class CarCockpit {
   static DIAL_START = Math.PI * 0.75;
   static DIAL_SWEEP = Math.PI * 1.5;
 
-  getClusterFace(w, h, scale) {
-    const key = `${w}x${h}@${scale.toFixed(2)}`;
+  getClusterFace(w, h, scale, brand = 'audi') {
+    const key = `${brand}|${w}x${h}@${scale.toFixed(2)}`;
     if (this._clusterFace?.key === key) return this._clusterFace.canvas;
 
     const canvas = document.createElement('canvas');
@@ -1269,18 +1290,28 @@ export class CarCockpit {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const r = h * 0.43;
+    const fh = Math.min(h, w * 0.385);
+    const r = fh * 0.43;
     this.drawDialFace(c, w * 0.2, h * 0.52, r, { max: 8, major: 1, minor: 0.5, label: 1, redFrom: 6.5, unit: 'x1000/min' });
     this.drawDialFace(c, w * 0.8, h * 0.52, r, { max: 260, major: 20, minor: 10, label: 40, unit: 'km/h' });
 
-    // Audi rings above the digital speed
-    const ringR = h * 0.045;
-    c.strokeStyle = '#cbd5e1';
-    c.lineWidth = h * 0.012;
-    for (let i = 0; i < 4; i++) {
-      c.beginPath();
-      c.arc(w / 2 + (i - 1.5) * ringR * 1.45, h * 0.27, ringR, 0, Math.PI * 2);
-      c.stroke();
+    if (brand === 'mercedes') {
+      // AMG lettering above the digital speed
+      c.fillStyle = '#e2e8f0';
+      c.font = `italic 800 ${fh * 0.1}px system-ui, sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('AMG', w / 2, h * 0.27);
+    } else {
+      // Audi rings above the digital speed
+      const ringR = fh * 0.045;
+      c.strokeStyle = '#cbd5e1';
+      c.lineWidth = fh * 0.012;
+      for (let i = 0; i < 4; i++) {
+        c.beginPath();
+        c.arc(w / 2 + (i - 1.5) * ringR * 1.45, h * 0.27, ringR, 0, Math.PI * 2);
+        c.stroke();
+      }
     }
 
     this._clusterFace = { key, canvas };

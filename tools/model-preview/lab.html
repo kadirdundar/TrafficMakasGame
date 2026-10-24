@@ -42,6 +42,7 @@
     <textarea id="out" spellcheck="false"></textarea>
     <div class="row"><button id="copy">Kopyala</button><button id="clear">Temizle</button></div>
   </div>
+  <button id="visible">Gözden görünen parçalar → keepNodes</button>
   <label><input type="checkbox" id="xray"> Seçili parçayı vurgula</label>
   <div class="row"><button id="view-eye">Göz</button><button id="view-out">Dış</button><button id="view-top">Üst</button></div>
 </aside>
@@ -400,6 +401,7 @@ function onPick(hit) {
   if (tool === 'wheel' && clicks.length === 3) {
     const { center, axis, radius } = circleFrom3(...clicks);
     const eye = center.clone().add(new THREE.Vector3(0, 0.26, 0.52));
+    lastEye = eye.clone();
     emit(`// convert.mjs → cockpit (direksiyon düğümü: ${node})
 steering: { node: '${node}', pivot: ${vec(center)}, axis: ${vec(axis)}, radius: ${r3(radius)}, columnBeyondZ: ${r3(center.z - 0.17)} },
 eye: ${vec(eye)}, // göbeğin 0.52 m arkası, 0.26 m üstü (tarif §5.1)
@@ -430,7 +432,65 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const hit = ray.intersectObject(model, true).find((h) => h.object.visible && h.object !== highlight);
   if (hit) onPick(hit);
 });
-window.__lab = { scene, camera, model, group, onPick, ray };
+// Which mesh nodes can the driver see? Renders an ID buffer in five directions (front, left,
+// right, up, down) from the eye and the three seat presets, and counts pixels per node.
+// Transparent meshes (windshield) are skipped so they do not hide what is behind them.
+let lastEye = eyeHint ? new THREE.Vector3().fromArray(eyeHint) : null;
+function findVisible(eye) {
+  const ids = [];
+  const idMats = new Map();
+  const saved = new Map();
+  model.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    saved.set(o, o.material);
+    if (o.material.transparent) { o.visible = false; return; }
+    const id = ids.push(nodeName(o));
+    const m = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    m.color.setHex(id, THREE.LinearSRGBColorSpace); // exact bytes in the (linear) render target
+    idMats.set(o, m);
+    o.material = m;
+  });
+  const helpers = [];
+  scene.traverse((o) => { if (!model.getObjectById(o.id) && o !== scene && o !== group && o.visible && (o.isLine || o.isMesh || o.isSprite || o.isLight)) { helpers.push(o); o.visible = false; } });
+  const bg = scene.background;
+  scene.background = new THREE.Color(0);
+  const size = 256;
+  const rt = new THREE.WebGLRenderTarget(size, size);
+  const cam = new THREE.PerspectiveCamera(95, 1, 0.01, 50);
+  const buf = new Uint8Array(size * size * 4);
+  const counts = new Map();
+  const offsets = [[0, 0, 0], [0, 0.03, 0.15], [0, -0.03, -0.15], [0, -0.05, -0.17]];
+  const dirs = [[0, 0, -1], [-1, 0, 0], [1, 0, 0], [0, 1, 0], [0, -1, -0.3]];
+  for (const off of offsets) for (const d of dirs) {
+    cam.position.copy(eye).add(new THREE.Vector3(...off));
+    cam.up.set(0, d[1] ? 0 : 1, d[1] ? -1 : 0);
+    cam.lookAt(cam.position.clone().add(new THREE.Vector3(...d)));
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, cam);
+    renderer.readRenderTargetPixels(rt, 0, 0, size, size, buf);
+    for (let i = 0; i < buf.length; i += 4) {
+      const id = (buf[i] << 16) | (buf[i + 1] << 8) | buf[i + 2];
+      if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+  }
+  renderer.setRenderTarget(null);
+  rt.dispose();
+  scene.background = bg;
+  helpers.forEach((o) => { o.visible = true; });
+  for (const [o, m] of saved) { o.material = m; o.visible = true; }
+  idMats.forEach((m) => m.dispose());
+  model.traverse((o) => { if (o.isMesh && isDropped(o)) o.visible = false; });
+  const byNode = new Map();
+  for (const [id, n] of counts) byNode.set(ids[id - 1], (byNode.get(ids[id - 1]) || 0) + n);
+  return [...byNode].filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]);
+}
+$('visible').onclick = () => {
+  if (!lastEye) { $('step').textContent = 'Önce göz noktası gerekli: "Direksiyon (3 nokta)" ile ölç ya da convert.mjs → cockpit.eye yaz'; return; }
+  const list = findVisible(lastEye);
+  $('info').textContent = list.map(([n, px]) => `${n.padEnd(16)} ${px} px`).join('\n');
+  emit(`// Göz ${vec(lastEye)} noktasından görünen ${list.length} düğüm (ön camı listeden çıkar)\nkeepNodes: [${list.map(([n]) => `'${n}'`).join(', ')}],`);
+};
+window.__lab = { scene, camera, model, group, onPick, ray, findVisible, setEye: (e) => { lastEye = new THREE.Vector3().fromArray(e); } };
 </script>
 </body>
 </html>

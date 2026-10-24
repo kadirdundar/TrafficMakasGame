@@ -156,8 +156,12 @@ ${renameLines}
     ],
     // İç mekânı dış modelden çıkar (garajda ve online'da görünmez):
     dropNodes: [],
-    // Bütçe: ≤ 60k üçgen, < 1 MB (tarif §3). error büyüdükçe daha çok sadeleşir.
-    simplify: { targetTris: 60000, error: 0.002 },
+    // Dışarıdan benzer görünen koyu malzemeleri birleştir (draw call ≤ 15):
+    // mergeMaterials: [[/^(black|trim2)$/, 'black_matt']],
+    // PBR düzeltmeleri (renk doğrusal RGB): materials: [[/^glass$/, { metallic: 0, roughness: 0.05 }]],
+    cleanAttributes: true,
+    // Bütçe: ≤ 60k üçgen, ~1 MB (tarif §3). Hata her yerde aynı (metre); en küçüğü aranır.
+    simplify: { targetTris: 60000, maxError: 0.012 },
     maxTextureSize: 1024,
     webpQuality: 85,
     compress: true,
@@ -167,15 +171,18 @@ ${renameLines}
     out: 'public/models/${id}-cockpit.glb',
     // Sürücü koltuğundan görünen düğümler. Aday iç mekân düğümleri (kontrol et):
 ${candidates.map((c) => `    //   '${c.n}'  ${c.mat}`).join('\n') || '    //   (ada göre aday bulunamadı; car:inspect listesine bak)'}
+    // Lab sayfası → "Gözden görünen parçalar" bu listeyi çıkarır
     keepNodes: [],
     // eye: [x, y, z],
     // steering: { node: '...', pivot: [x, y, z], axis: [x, y, z], radius: 0.18, columnBeyondZ: -0.5 },
     // wheelTrim: { from: ['...'], radius: 0.2, axial: [-0.1, 0.02] },
-    // mirrors: [{ name: 'mirror_left', from: '...', uv: [u0, u1, v0, v1] }],
+    // mirrors: [{ name: 'mirror_left', from: '...', uv: [u0, u1, v0, v1] }],  // veya x/y/z aralığı, facing
     // ambientLed: { from: ['...'] },
     // floor: { y: 0.3, x: [-0.85, 0.85], z: [-1.2, -0.2] },
     materials: [],
-    simplify: { targetTris: 65000, error: 0.001 },
+    join: true, // statik parçaları malzemeye göre birleştir (≤ 30 draw call)
+    cleanAttributes: true,
+    simplify: { targetTris: 65000, maxError: 0.006 },
     maxTextureSize: 1024,
     webpQuality: 90,
     compress: true,

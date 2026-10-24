@@ -65,7 +65,7 @@ Claude Code içinde `/arac-ekle` komutu bu adımları sırayla yürütür.
 | Alan | Anlamı |
 | --- | --- |
 | `modelUrl`, `scale` | Kokpit GLB'si ve ölçeği. |
-| `cluster` | Gösterge çizimi: `'audi'` veya `'bmw'` (`src/cockpit.js` → `paint3DScreen`). |
+| `cluster` | Gösterge çizimi: `'audi'`, `'mercedes'` (iki kadran) veya `'bmw'` (`src/cockpit.js` → `paint3DScreen`). |
 | `defaultEye` | Sürücü gözünün model içindeki konumu (GLB'de `eye` extras'ı varsa o kullanılır). |
 | `wheelRadius`, `steerSign` | Direksiyon çemberi (dokunmatik direksiyon için) ve dönüş yönü. |
 | `softMaterials`, `tints` | Deri/döşeme malzemeleri (mat yapılır) ve isteğe bağlı koyulaştırma (`{ ad: 0.4 }`). |
@@ -93,15 +93,19 @@ Düğüm adları `npm run car:inspect` çıktısındaki adlardır; desenler RegE
 | `exterior.out` | Çıktı (`public/models/<id>.glb`). |
 | `exterior.renameMaterials` | `[desen, yeniAd]` listesi: `paint`, `glass`, `headLight…`, `tailLight…` (car.js → `lamps` bu adlara bakar). |
 | `exterior.dropNodes` | Sadece dış modelden atılacaklar (iç mekân, motor). |
-| `*.simplify` | `{ targetTris, error }` ya da `{ ratio, error }`. `error` büyüdükçe daha çok sadeleşir. |
+| `*.simplify` | `{ targetTris, maxError }`: her parçada aynı mutlak hata (metre); hedefe inen en küçük hata aranır, `maxError` sınırdır. Eski kip: `{ ratio, error }` (parça başına göreli). |
+| `*.mergeMaterials` | `[desen, hedefAd]`: benzer görünen malzemeleri tek malzemeye toplar (draw call düşer). |
+| `*.materials` | `[desen, { color, alpha, metallic, roughness }]`: PBR düzeltmeleri, ilk eşleşen (renk doğrusal RGB). |
+| `*.cleanAttributes` | Dokusuz malzemelerden UV/tangent/renk verisini siler (dosya küçülür, birleştirme artar). |
 | `*.maxTextureSize`, `*.webpQuality` | Doku boyu sınırı ve WebP kalitesi. |
 | `*.compress` | meshopt geometri sıkıştırması (oyun çözer; dosya ~2-3 kat küçülür). |
 | `cockpit.out`, `cockpit.keepNodes` | Kokpit çıktısı ve sürücüden görünen düğümler (boşsa kokpit atlanır). |
 | `cockpit.eye` | Göz noktası (sahne extras'ına yazılır). |
 | `cockpit.steering` | `{ node, pivot, axis, radius, columnBeyondZ }`: direksiyonu dönen çember ve sabit kolon olarak ayırır (kolon = `columnBeyondZ`'den öne uzanan parçalar). |
 | `cockpit.wheelTrim` | `{ from, radius, axial }`: başka düğümlerde olup direksiyon diskinin içinde kalan parçaları (karbon kollar, logo, pedallar) direksiyona taşır. |
-| `cockpit.mirrors` | `{ name: 'mirror_left' / 'mirror_right' / 'mirror_center', from, uv }`: modelin ayna camı üçgenleri (UV kutusuyla). |
+| `cockpit.mirrors` | `{ name: 'mirror_left' / 'mirror_right' / 'mirror_center', from, uv?, x?, y?, z?, facing? }`: modelin ayna camı üçgenleri; UV kutusu ve/veya üçgen merkezinin konum aralığı ve yönü ile seçilir. |
+| `cockpit.join`, `cockpit.keepSeparate` | Statik parçaları malzemeye göre birleştirir; oyunun adla aradığı düğümler (direksiyon, aynalar, LED, zemin) ve `keepSeparate` ayrı kalır (`atlasPatches`/`satinPieces` düğümlerini buraya yaz). |
 | `cockpit.ambientLed` | `{ from, minBlue, overRed, overGreen }`: atlasta mavi boyalı şeritleri `ambient_led` mesh'ine ayırır. |
 | `cockpit.floor` | `{ y, x: [x0, x1], z: [z0, z1], color }`: zemini olmayan modellere ayak boşluğu düzlemi. |
-| `cockpit.materials` | `[desen, { metallic, roughness }]`: PBR düzeltmeleri (ilk eşleşen). |
+
 
