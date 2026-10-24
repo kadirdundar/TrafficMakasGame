@@ -6,6 +6,7 @@ import { TrafficManager } from './traffic.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
+import { CAR_LIST, CARS, getCar } from './cars/index.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -17,21 +18,6 @@ const A8_GEAR_RATIOS = [0, 5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64];
 const A8_FINAL_DRIVE = 2.85;
 const A8_WHEEL_CIRCUMFERENCE_M = 2.23;
 const A8_IDLE_RPM = 700;
-
-export const CAR_CONFIGS = {
-  a8: {
-    id: 'a8',
-    make: 'AUDI',
-    model: 'A8',
-    variant: 'D5 · quattro',
-  },
-  m4: {
-    id: 'm4',
-    make: 'BMW',
-    model: 'M4 CS',
-    variant: 'G82 · VR46 Edition',
-  },
-};
 
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
@@ -137,8 +123,7 @@ class OtobanMakasGame {
 
     // Start-menu garage with the rotatable car. Optional: the game runs without it if a second
     // WebGL context is not available.
-    this.selectedCar = localStorage.getItem('otoban_selected_car') || 'a8';
-    if (!CAR_CONFIGS[this.selectedCar]) this.selectedCar = 'a8';
+    this.selectedCar = getCar(localStorage.getItem('otoban_selected_car')).id;
 
     try {
       this.showroom = new A8Showroom(
@@ -424,6 +409,7 @@ class OtobanMakasGame {
     });
 
     // Garage: car model selection, camera angles, lights, turntable and the online paint preview
+    this.buildCarSelect();
     document.querySelectorAll('#garage-car-select .seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.setCar(btn.dataset.car);
@@ -923,13 +909,55 @@ class OtobanMakasGame {
     }
   }
 
+  // One garage button per registered car (src/cars/)
+  buildCarSelect() {
+    const group = document.getElementById('garage-car-select');
+    if (!group) return;
+    group.replaceChildren(
+      ...CAR_LIST.map((car) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'seg-btn';
+        btn.dataset.car = car.id;
+        btn.textContent = car.label;
+        return btn;
+      })
+    );
+  }
+
+  // Model credit line (CC BY requires naming the source, author and licence)
+  renderCarCredit(car) {
+    const el = document.getElementById('garage-credit');
+    const c = car.credit;
+    if (!el) return;
+    el.hidden = !c;
+    if (!c) return;
+    const link = (href, text) => {
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = text;
+      return a;
+    };
+    const parts = ['3D model: ', link(c.url, `"${c.title}"`), ` — ${c.author}, `, link(c.licenseUrl, c.license)];
+    if (c.note) {
+      const note = document.createElement('span');
+      note.className = 'credit-extra';
+      note.textContent = ` ${c.note}`;
+      parts.push(note);
+    }
+    el.replaceChildren(...parts);
+  }
+
   // Garage car model selection
   setCar(carId, switchShowroom = true) {
-    if (!CAR_CONFIGS[carId]) return;
+    if (!CARS[carId]) return;
     this.selectedCar = carId;
     localStorage.setItem('otoban_selected_car', carId);
 
-    const config = CAR_CONFIGS[carId];
+    const config = CARS[carId];
+    this.renderCarCredit(config);
     this.setHudText('garage-car-make', config.make);
     const modelEl = document.getElementById('garage-car-model');
     if (modelEl) {

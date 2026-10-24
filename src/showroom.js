@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { DEFAULT_CAR_ID, loadCarExterior } from './cars/index.js';
 
-// Start-menu garage: the player's Audi A8 on a lit turntable that can be dragged around, zoomed
+// Start-menu garage: the player's car on a lit turntable that can be dragged around, zoomed
 // and viewed from preset angles. It has its own small renderer on the menu canvas and only draws
 // while the menu is open. The car is the same optimized glTF the online friends drive.
 
@@ -96,7 +97,7 @@ class StudioEnvironment {
 
 export class A8Showroom {
   // canvas: where the garage is drawn; stage: the empty layout box the car is framed into
-  constructor(canvas, stage, { paintHex, accent = '#00f0ff', carType = 'a8', onReady } = {}) {
+  constructor(canvas, stage, { paintHex, accent = '#00f0ff', carType = DEFAULT_CAR_ID, onReady } = {}) {
     this.canvas = canvas;
     this.stage = stage;
     this.onReady = onReady;
@@ -242,7 +243,7 @@ export class A8Showroom {
     shadow.renderOrder = 3;
   }
 
-  async loadCar(type = this.carType || 'a8') {
+  async loadCar(type = this.carType || DEFAULT_CAR_ID) {
     this.carType = type;
     if (this.car) {
       this.scene.remove(this.car.group);
@@ -253,11 +254,7 @@ export class A8Showroom {
       this.reflection = null;
     }
     try {
-      const isBmw = this.carType.toLowerCase().includes('bmw') || this.carType.toLowerCase().includes('m4');
-      const loader = isBmw
-        ? (await import('./peerBMW.js')).loadBmwPeerCar
-        : (await import('./peerA8.js')).loadA8PeerCar;
-      const car = await loader({ paintHex: this.paintHex });
+      const car = await loadCarExterior(this.carType, { paintHex: this.paintHex });
       this.car = car;
       this.scene.add(car.group);
 

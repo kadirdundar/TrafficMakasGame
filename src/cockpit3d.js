@@ -2,121 +2,27 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import {
-  applyAtlasPatch,
-  applyPieceMaterial,
-  paintBmwClimateRow,
-  paintBmwDoorLocks,
-  paintBmwRoundel,
-} from './cockpitDecals.js';
+import { applyAtlasPatch, applyPieceMaterial } from './cockpitDecals.js';
+import { getCar } from './cars/index.js';
 
-// 3D Cockpit Module supporting Audi A8 and BMW M4 (G82 VR46 Edition).
-// Lightweight, highly optimized, 60 FPS, with interactive steering, live digital gauge screens,
-// dynamic rear-view mirrors, and ambient cabin contour illumination.
+// 3D cockpit: interactive steering wheel, live instrument cluster screens, rear-view mirrors and
+// ambient cabin lighting, driven by a car's `cockpit` config (src/cars/<id>/car.js, fields in
+// src/cars/README.md). Lightweight enough for 60 FPS on phones.
 
-const COCKPIT_CONFIGS = {
-  a8: {
-    modelUrl: `${import.meta.env.BASE_URL}models/a8-cockpit.glb`,
-    scale: 1.0816,
-    defaultEye: [-0.36, 0.33, -0.02],
-    wheelRadius: 0.155,
-    steerSign: -1,
-    softMaterials: new Set(['a8texture3', 'a8texture5', 'a8texture7', 'a8texture10']),
-    screens: {
-      cluster: {
-        tl: [-0.4689, 0.1873, -0.7588],
-        tr: [-0.196, 0.1873, -0.7588],
-        bl: [-0.4689, 0.0827, -0.7473],
-        br: [-0.196, 0.0827, -0.7473],
-        n: [0, 0.11, 0.994],
-        logical: [200, 77],
-        px: [512, 196],
-      },
-    },
-    ledPaths: [
-      [[-0.648, 0.098, -0.64], [-0.656, 0.092, -0.3], [-0.652, 0.096, -0.04], [-0.639, 0.105, 0.05]],
-      [[0.648, 0.098, -0.64], [0.656, 0.092, -0.3], [0.652, 0.096, -0.04], [0.639, 0.105, 0.05]],
-    ],
-    glassOut: new THREE.Vector3(0, 0.86, -0.51).normalize(),
-    glassUp: new THREE.Vector3(-0.093, 0.46, 0.884).normalize(),
-    wiperPivots: [[-0.335, 0.2, -1.053], [0.125, 0.19, -1.097]],
-    wiperLen: 0.62,
-    floor: { w: 1.7, h: 1.5, y: -0.4, z: -0.45 },
-  },
-  bmw: {
-    modelUrl: `${import.meta.env.BASE_URL}models/bmw-m4-cockpit.glb`,
-    scale: 1.0,
-    defaultEye: [-0.375, 1.14, 0.185],
-    wheelRadius: 0.185,
-    steerSign: -1,
-    softMaterials: new Set([
-      'm4car_interior1.007',
-      'm4car_interior1.008',
-      'BMW_M4CSLRewardRecycled_2022InteriorA_Material.011',
-      'm4car_plast1.005',
-    ]),
-    // Hood seen through the windshield: dark metallic paint instead of the pale livery atlas
-    paintMaterials: new Set(['m4car_hood1.006']),
-    screens: {
-      // Measured on the model's own cluster glass (curved, so the quad sits just in front of it)
-      cluster: {
-        tl: [-0.524, 0.98, -0.588],
-        tr: [-0.207, 0.98, -0.588],
-        bl: [-0.524, 0.863, -0.561],
-        br: [-0.207, 0.863, -0.561],
-        n: [0, 0.19, 0.98],
-        logical: [240, 90],
-        px: [1024, 384],
-      },
-    },
-    // The strips painted in the model's atlas are split into the 'ambient_led' mesh offline
-    ledPaths: [],
-    glassOut: new THREE.Vector3(0, 0.82, -0.57).normalize(),
-    glassUp: new THREE.Vector3(0, 0.57, 0.82).normalize(),
-    wiperPivots: [[-0.42, 0.78, -1.02], [0.15, 0.78, -1.05]],
-    wiperLen: 0.65,
-    floor: null,
-    cabinNightGlow: 0.12,
-    // Fake cabin occlusion: the model is lit without shadows, so the footwell and lower door
-    // cards would be as bright as the dashboard top. Darken by model-space height instead.
-    occlusion: { y0: 0.3, y1: 0.95, min: 0.3 },
-    // Atlas areas too small to read from the seat, redrawn sharp (UV boxes measured on the atlas)
-    atlasPatches: [
-      {
-        meshes: ['Object_62'],
-        uv: [0.292, 0.389, 0.911, 0.932],
-        scale: 10,
-        background: false,
-        flipV: true,
-        surface: { roughness: 0.3, metalness: 0.25 },
-        paint: paintBmwClimateRow,
-      },
-      {
-        meshes: ['Object_86', 'Object_93'],
-        uv: [0.19, 0.32, 0.185, 0.226],
-        scale: 6,
-        paint: paintBmwDoorLocks,
-      },
-      {
-        meshes: ['steering_wheel'],
-        material: 'm4car_interior1.008',
-        uv: [0.905, 1, 0.122, 0.219],
-        scale: 5.5,
-        background: false,
-        project: { axis: [0.005, 0.368, 0.93] },
-        // Pulled forward in depth: the airbag cover is coplanar with the badge edge
-        surface: { roughness: 0.25, metalness: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 },
-        paint: paintBmwRoundel,
-      },
-    ],
-    // Door opener levers (one 131-triangle piece per door card), in satin aluminium
-    satinPieces: [
-      ['Object_86', [-0.7065, 0.855, -0.435]],
-      ['Object_93', [0.7065, 0.855, -0.435]],
-    ],
-  },
+// Optional cockpit fields (src/cars/README.md) fall back to these
+const COCKPIT_DEFAULTS = {
+  scale: 1,
+  wheelRadius: 0.18,
+  steerSign: -1,
+  softMaterials: new Set(),
+  screens: {},
+  ledPaths: [],
+  glassOut: new THREE.Vector3(0, 0.82, -0.57).normalize(),
+  glassUp: new THREE.Vector3(0, 0.57, 0.82).normalize(),
+  wiperPivots: [],
+  wiperLen: 0.6,
+  floor: null,
 };
-COCKPIT_CONFIGS.m4 = COCKPIT_CONFIGS.bmw;
 
 const CABIN_NIGHT_GLOW = 0.22;
 const SCREEN_REPAINT_MS = 80;
@@ -240,9 +146,11 @@ function addCabinOcclusion(material, uniforms) {
   material.customProgramCacheKey = () => 'cabin-occlusion';
 }
 
-export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, paintScreen }) {
-  const key = (carType || 'a8').toLowerCase().includes('bmw') || (carType || '').toLowerCase().includes('m4') ? 'bmw' : 'a8';
-  const cfg = COCKPIT_CONFIGS[key] || COCKPIT_CONFIGS.a8;
+export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintScreen }) {
+  const car = getCar(carType);
+  const key = car.id;
+  if (!car.cockpit) throw new Error(`${key}: car.js içinde cockpit ayarı yok`);
+  const cfg = { ...COCKPIT_DEFAULTS, ...car.cockpit };
 
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(cfg.modelUrl);
@@ -352,7 +260,8 @@ export async function loadCockpit3D({ carType = 'a8', eyeAnchor, mirrorTexture, 
     if (cfg.softMaterials.has(o.material.name)) {
       o.material.metalness = 0.05;
       o.material.roughness = 0.78;
-      if (o.material.name === 'a8texture3') o.material.color.setScalar(0.4);
+      const tint = cfg.tints?.[o.material.name];
+      if (tint !== undefined) o.material.color.setScalar(tint);
     }
     if (occlusion) addCabinOcclusion(o.material, occlusion);
     if (o.material.map) {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_CAR_ID, getCar } from './cars/index.js';
 
 export const AMBIENT_COLORS = {
   cyan: { hex: 0x00f0ff, css: '#00f0ff', name: 'Buz Mavisi' },
@@ -283,7 +284,7 @@ export class CarCockpit {
     // 'photo' = processed reference photo on the 2D overlay, '3d' = glTF interior (the game
     // switches to '3d' on startup; 'photo' stays the fallback while/if it fails to load)
     this.mode = 'photo';
-    this.carType = 'a8';
+    this.carType = DEFAULT_CAR_ID;
     this.cockpitCache = new Map();
     this.currentInteriorCar = null;
     this.lastEyeAnchor = null;
@@ -299,10 +300,10 @@ export class CarCockpit {
     return this.mode === '3d' && Boolean(this.interior3d);
   }
 
-  // Sets or swaps the car interior (e.g. 'a8' vs 'bmw'). Cached in memory after first load.
+  // Sets or swaps the car interior (a car id from src/cars/). Cached in memory after first load.
   async setCarType(carType, eyeAnchor) {
     if (!carType) return;
-    const key = (carType.toLowerCase().includes('bmw') || carType.toLowerCase().includes('m4')) ? 'bmw' : 'a8';
+    const key = getCar(carType).id;
     this.carType = key;
     if (eyeAnchor) this.lastEyeAnchor = eyeAnchor;
     if (this.mode !== '3d') return;
@@ -353,10 +354,10 @@ export class CarCockpit {
     this.mode = mode === '3d' ? '3d' : 'photo';
     this._overlayCleared = false;
     if (eyeAnchor) this.lastEyeAnchor = eyeAnchor;
-    if (carType) this.carType = (carType.toLowerCase().includes('bmw') || carType.toLowerCase().includes('m4')) ? 'bmw' : 'a8';
+    if (carType) this.carType = getCar(carType).id;
 
     if (this.mode === '3d') {
-      await this.setCarType(this.carType || 'a8', eyeAnchor);
+      await this.setCarType(this.carType || DEFAULT_CAR_ID, eyeAnchor);
       if (!this.interior3d) {
         this.mode = 'photo';
       }
@@ -719,7 +720,7 @@ export class CarCockpit {
     const s = this._screenState;
     if (!s) return;
     if (name !== 'cluster') return;
-    if (this.carType === 'bmw' || this.carType === 'm4') {
+    if (getCar(this.carType).cockpit.cluster === 'bmw') {
       this.drawBmwClusterScreen(ctx, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);
     } else {
       this.drawVirtualCockpitScreen(ctx, 0, 0, w, h, s.speedKmh, s.rpm, s.gear, s.highBeam, s.odometerKm);

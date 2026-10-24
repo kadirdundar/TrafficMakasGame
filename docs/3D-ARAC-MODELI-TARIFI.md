@@ -13,12 +13,14 @@ sıkıştır → kodda tek bir config ile bağla → önizleme araçlarıyla ekr
 
 | Ne | Nerede |
 | --- | --- |
-| Dış model (garaj + online arkadaşlar) | `public/models/<arac>.glb`, yükleyici `src/peer<Arac>.js` |
-| Kokpit modeli (sürüş görünümü) | `public/models/<arac>-cockpit.glb`, ayarlar `src/cockpit3d.js` → `COCKPIT_CONFIGS` |
-| Gösterge paneli çizimi | `src/cockpit.js` → `paint3DScreen()` (markaya göre: `drawVirtualCockpitScreen` = Audi, `drawBmwClusterScreen` = BMW) |
-| Araç listesi / garaj metni | `src/main.js` → `CAR_CONFIGS`, `index.html` → `#garage-car-select` |
-| Garaj | `src/showroom.js` → `loadCar()` |
-| Online | `src/multiplayer.js` (araç tipine göre yükleyici seçer) |
+| Araç kaydı (her şeyin ayarı) | `src/cars/<id>/car.js` — alanlar: [`src/cars/README.md`](../src/cars/README.md) |
+| Dış model (garaj + online arkadaşlar) | `public/models/<arac>.glb`, ayarlar `car.js` → `exterior`, genel yükleyici `src/cars/loadExterior.js` |
+| Kokpit modeli (sürüş görünümü) | `public/models/<arac>-cockpit.glb`, ayarlar `car.js` → `cockpit`, yükleyici `src/cockpit3d.js` |
+| Gösterge paneli çizimi | `src/cockpit.js` → `paint3DScreen()`, `car.js` → `cockpit.cluster` (`'audi'` / `'bmw'`) |
+| Garaj düğmesi, başlık, künye | `car.js` → `label`, `make`, `model`, `variant`, `credit` (garaj bunlardan üretilir) |
+| Dönüştürme ayarı | `src/cars/<id>/convert.mjs`, araç: `npm run car:convert -- <id>` |
+| Yeni araç iskeleti / inceleme | `npm run car:new -- <id> <kaynak.glb>`, `npm run car:inspect -- <glb>` |
+| Ölçüm | `tools/model-preview/lab.html?car=<id>` (tıklayarak ölç, ayar satırı üretir) |
 | Önizleme / doğrulama | `tools/model-preview/` (aşağıda §6) |
 
 Ham kaynak modeller repoya girmez (`model-kaynak/` gitignore'da); sadece optimize edilmiş GLB'ler
@@ -28,7 +30,7 @@ Ham kaynak modeller repoya girmez (`model-kaynak/` gitignore'da); sadece optimiz
 
 - Birim **metre**, **+Y yukarı**, aracın **burnu -Z yönünde**. Sağ = +X.
 - Dış model: uzunluk Z ekseninde **4.85 m**'ye normalize edilir, tekerlekler **y = 0**'a oturur,
-  X ve Z'de ortalanır (`peerA8.js` / `peerBMW.js` başındaki "Normalize" bloğu).
+  X ve Z'de ortalanır (`src/cars/loadExterior.js`, `exterior.length`).
 - Kokpit: model, sürücünün gözü kameranın `eyeAnchor` noktasına (bkz. `CAMERA_PRESETS` in
   `main.js`, varsayılan `(0, 1.25, 0.2)`) denk gelecek şekilde yerleştirilir. `defaultEye`, gözün
   model içindeki konumudur.
@@ -67,7 +69,10 @@ Hedef bütçe (mobilde 60 FPS için):
 | Doku | 512 px (detaylı yüzeyler 1024), WebP | aynı |
 | Dosya | < 1 MB | ~1 MB |
 
-Önerilen işlem sırası (Blender ve/veya `@gltf-transform`; devDependencies'te var):
+Bu adımların hepsi `npm run car:convert -- <id>` ile yapılır; ayarlar `src/cars/<id>/convert.mjs`
+içindedir (alanlar: [`src/cars/README.md`](../src/cars/README.md)). Blender sadece betiğin
+yapamadığı temizlik (ör. varyant parçaları silmek, iç mekân ile dışı ayırmak) için gerekir.
+Elle yapmak gerekirse işlem sırası:
 
 1. **Temizlik (Blender):** görünmeyen parçaları sil (dış modelde iç mekân ve motor; kokpitte motor,
    bagaj, alt takım), varyantları sil, uygulanmamış dönüşümleri uygula (Apply Transform), ölçeği
@@ -104,10 +109,11 @@ Sonuçta üçgen/malzeme sayısını ve sınır kutusunu kontrol et:
 `node tools/inspect-glb.mjs <dosya.glb> [ölçek] [180°=1]` her mesh için malzeme, üçgen sayısı ve
 dünya koordinatında sınır kutusu yazar (ya da `npx @gltf-transform/cli@4 inspect`).
 
-## 4. Dış model yükleyicisi (`src/peer<Arac>.js`)
+## 4. Dış model (`car.js` → `exterior`)
 
-`peerA8.js` referanstır. Yükleyici şunu döndürmelidir: `{ group, bodyMat, setLights({ night,
-braking, highBeam }) }`. Garaj `bodyMat.color` ile boyayı değiştirir.
+Kod yazılmaz; genel yükleyici (`src/cars/loadExterior.js`) ayarları okur ve
+`{ group, bodyMat, setLights({ night, braking, highBeam }) }` döndürür. Garaj `bodyMat.color` ile
+boyayı değiştirir. Alanlar: [`src/cars/README.md`](../src/cars/README.md).
 
 1. **Normalize et** (§1).
 2. **Boya:** `paint` malzemesini `MeshPhysicalMaterial` (metalness ~0.82, roughness ~0.22,
@@ -116,12 +122,12 @@ braking, highBeam }) }`. Garaj `bodyMat.color` ile boyayı değiştirir.
    Yoğunluklar `HEAD = { day: 0.5, night: 1.6, highBeam: 3.2 }`, `TAIL = { day: 0.35, night: 1.1,
    brake: 3.0 }`.
 4. **Işık haleleri (glow):** konumları **elle yazma**; far ve stop mesh'lerinin sınır kutusundan
-   hesapla (`peerA8.js`: `headBox` / `tailBox`; `peerBMW.js`: `lampCenter()`).
+   hesapla (`lamps[].box` + `glow.*.from`); ölçülmüş sabit nokta gerekiyorsa `glow.*.at`.
 5. Kaynak, sözleşmeye göre hazırlanamadıysa çalışma zamanında yamala (BMW örneği):
    `splitFrontRear()` ile lamba mesh'ini öne ve arkaya böl, `smoothNormals()` ile gövde
    normallerini yumuşat (çevrimdışı düzeltme her zaman daha iyidir).
 
-## 5. Kokpit (`COCKPIT_CONFIGS` in `src/cockpit3d.js`)
+## 5. Kokpit (`car.js` → `cockpit`)
 
 Her araç için tek bir config nesnesi doldurulur. Değerleri tahmin etme; modelden ölç (§6'daki
 `pick` / `hl` modları ve mesh sınır kutuları).
@@ -210,6 +216,12 @@ kaplama birleşimi. Direksiyonun arkasından geçen bir LED havada asılı gör�
 ## 6. Doğrulama: ekran görüntüsü almadan "bitti" deme
 
 `tools/model-preview/` (geliştirme sunucusu açıkken: `npm run dev`):
+
+- `lab.html?car=<id>[&model=source|cockpit|exterior]`: ölçüm sayfası. Modele tıklayınca düğüm,
+  malzeme, nokta, UV ve parça bilgisi; araçlar direksiyon göbeği/ekseni/göz noktası (3 nokta),
+  gösterge köşeleri (4 nokta), ayna camı ve bulanık detay UV kutuları (aynı düz yüzey + aynı
+  renk adası), metal parça, ambiyans şeridi ve `keepNodes` satırlarını hazır yazar. Yeşil ok
+  aracın burnunu (-Z) göstermeli.
 
 - `car.html?car=bmw&az=-2.3&pol=1.3&dist=9.5[&night=1&brake=1&high=1]`: dış model, açı ve
   ışıklarla.

@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 <body style="margin:0;background:#222">
-<!-- Exterior preview: /tools/model-preview/car.html?car=bmw&az=-2.3&pol=1.3&dist=9.5&night=1&brake=1 -->
+<!-- Exterior preview (car = id or alias from src/cars/): /tools/model-preview/car.html?car=m4&az=-2.3&pol=1.3&dist=9.5&night=1&brake=1 -->
 <script type="module">
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -22,8 +22,8 @@ const sun = new THREE.DirectionalLight(0xffffff, night ? 0.1 : 1.5);
 sun.position.set(3, 6, -2);
 scene.add(sun, new THREE.HemisphereLight(0xcfe0ff, 0x202020, 0.4));
 scene.add(new THREE.Mesh(new THREE.PlaneGeometry(30, 30).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 })));
-const mod = car === 'bmw' ? await import('/src/peerBMW.js') : await import('/src/peerA8.js');
-const c = await (car === 'bmw' ? mod.loadBmwPeerCar : mod.loadA8PeerCar)({ paintHex: Number(q.get('paint') || 0x0e6f9c) });
+const { loadCarExterior } = await import('/src/cars/index.js');
+const c = await loadCarExterior(car, { paintHex: Number(q.get('paint') || 0x0e6f9c) });
 scene.add(c.group);
 c.setLights({ night, braking: q.get('brake') === '1', highBeam: q.get('high') === '1' });
 const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 35), W / H, 0.05, 100);

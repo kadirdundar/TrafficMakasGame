@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Peer } from 'peerjs';
 import { WEATHER_PRESETS } from './world.js';
 import { createLuxurySedan } from './vehicleModels.js';
+import { DEFAULT_CAR_ID, getCar, loadCarExterior } from './cars/index.js';
 
 const PEER_PREFIX = 'otoban-makas-v1-room-';
 
@@ -65,7 +66,7 @@ export class MultiplayerManager {
     this.roomCode = null;
     this.connected = false; // host: at least one guest in the room; guest: welcomed by the host
     this.playerName = localStorage.getItem('otoban_player_name') || 'OYUNCU';
-    this.localCarModel = localStorage.getItem('otoban_selected_car') || 'a8';
+    this.localCarModel = getCar(localStorage.getItem('otoban_selected_car')).id;
     this.localId = null;
     this.localSlot = 0;
     this.hostId = null; // who hosts the room right now (changes on a hand-over)
@@ -162,8 +163,8 @@ export class MultiplayerManager {
   }
 
   createPeerCarMesh(style) {
-    // Procedural A8-style saloon is shown immediately; the real A8 glTF replaces it once
-    // loaded (see loadA8Model), so a slow or failed download never leaves a friend invisible.
+    // Procedural saloon is shown immediately; the friend's real car model replaces it once
+    // loaded (see loadPeerModel), so a slow or failed download never leaves a friend invisible.
     const group = new THREE.Group();
     const fallback = createLuxurySedan({ paintHex: style.paint });
     group.add(fallback.group);
@@ -203,10 +204,7 @@ export class MultiplayerManager {
   // Each friend gets their own optimized car model (separate chunk + glb, fetched once and
   // then served from the HTTP cache); single-player never downloads it.
   loadPeerModel(player) {
-    const isBmw = player.carModel?.toLowerCase().includes('bmw') || player.carModel?.toLowerCase().includes('m4');
-    const importPromise = isBmw ? import('./peerBMW.js') : import('./peerA8.js');
-    importPromise
-      .then((m) => (isBmw ? m.loadBmwPeerCar : m.loadA8PeerCar)({ paintHex: player.style.paint }))
+    loadCarExterior(player.carModel, { paintHex: player.style.paint })
       .then((model) => {
         if (!player.removed) player.car.swapModel(model);
       })
@@ -215,7 +213,7 @@ export class MultiplayerManager {
       });
   }
 
-  addRemotePlayer(id, name, slot, carModel = 'a8') {
+  addRemotePlayer(id, name, slot, carModel = DEFAULT_CAR_ID) {
     const style = SLOT_STYLES[slot % SLOT_STYLES.length];
     const car = this.createPeerCarMesh(style);
     car.group.visible = false;
@@ -683,7 +681,7 @@ export class MultiplayerManager {
           this.localWorldDistM = 0;
           this.traffic.resetTraffic();
         }
-        player = this.addRemotePlayer(data.from, data.name, slot, data.carModel || 'a8');
+        player = this.addRemotePlayer(data.from, data.name, slot, data.carModel || DEFAULT_CAR_ID);
       }
       if (conn) player.conn = conn;
       player.lastRecvTime = Math.max(player.lastRecvTime, performance.now());
@@ -853,7 +851,7 @@ export class MultiplayerManager {
           this.loadPeerModel(existing);
         }
       } else {
-        const player = this.addRemotePlayer(entry.id, entry.name, num(entry.slot, 1), entry.carModel || 'a8');
+        const player = this.addRemotePlayer(entry.id, entry.name, num(entry.slot, 1), entry.carModel || DEFAULT_CAR_ID);
         if (announce) this.callbacks.onPlayerJoined?.({ name: player.name });
       }
     }

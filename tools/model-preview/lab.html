@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Araç ölçüm sayfası</title>
+<!-- Measuring page for new cars (dev server only):
+     /tools/model-preview/lab.html?car=<id>[&model=source|cockpit|exterior]
+     /tools/model-preview/lab.html?file=/model-kaynak/x.glb[&rotate=180&scale=2.8]
+     Click on the model with a tool selected; the panel prints ready-to-paste config lines.
+     Coordinates are in game/cockpit space (after convert.mjs's turn and scale). -->
+<style>
+  :root { --bg: #0f1115; --panel: #171a21; --line: #2a2f3a; --text: #e6e9ef; --dim: #8b93a3; --acc: #38bdf8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #view { flex: 1; position: relative; min-width: 0; }
+  #view canvas { display: block; }
+  #hint { position: absolute; left: 10px; bottom: 10px; color: var(--dim); background: #0009; padding: 4px 8px; border-radius: 6px; pointer-events: none; }
+  #panel { width: 360px; background: var(--panel); border-left: 1px solid var(--line); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 14px; margin: 0; }
+  .sub { color: var(--dim); font-size: 12px; }
+  .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  button { background: #222733; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; cursor: pointer; font: inherit; text-align: left; }
+  button.on { border-color: var(--acc); background: #12324a; }
+  button:hover { border-color: #3b4252; }
+  .step { color: var(--acc); font-weight: 600; min-height: 1.4em; }
+  pre, textarea { background: #0b0d11; border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0; color: var(--text); font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+  textarea { width: 100%; min-height: 180px; resize: vertical; }
+  .row { display: flex; gap: 6px; }
+  .row button { flex: 1; text-align: center; }
+  label { color: var(--dim); display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+<div id="view"><div id="hint">Sol tık + sürükle: döndür · Sağ tık: kaydır · Tekerlek: yakınlaş · Tıkla: ölç</div></div>
+<aside id="panel">
+  <div><h1 id="title">Araç ölçüm sayfası</h1><div class="sub" id="subtitle">yükleniyor…</div></div>
+  <div class="tools" id="tools"></div>
+  <div class="step" id="step"></div>
+  <pre id="info">Bir araç seç ve modele tıkla.</pre>
+  <div>
+    <div class="sub">Ayar satırları (car.js / convert.mjs'e yapıştır)</div>
+    <textarea id="out" spellcheck="false"></textarea>
+    <div class="row"><button id="copy">Kopyala</button><button id="clear">Temizle</button></div>
+  </div>
+  <label><input type="checkbox" id="xray"> Seçili parçayı vurgula</label>
+  <div class="row"><button id="view-eye">Göz</button><button id="view-out">Dış</button><button id="view-top">Üst</button></div>
+</aside>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+
+const q = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+const r3 = (x) => Math.round(x * 1000) / 1000;
+const vec = (v) => `[${v.toArray().map(r3).join(', ')}]`;
+const uvBox = (b) => `[${[b.min.x, b.max.x, b.min.y, b.max.y].map(r3).join(', ')}]`;
+
+// ---------- What to load
+const carId = q.get('car');
+const which = q.get('model') || 'source';
+let file = q.get('file');
+let rotateY = +(q.get('rotate') || 0);
+let scale = +(q.get('scale') || 0);
+let length = 0;
+let drop = [];
+let eyeHint = null;
+if (carId) {
+  const conv = (await import(`/src/cars/${carId}/convert.mjs`).catch(() => null))?.default;
+  const car = (await import('/src/cars/index.js')).CARS[carId];
+  const pub = (p) => '/' + p.replace(/^public\//, '');
+  if (which === 'source') {
+    if (!conv) throw new Error(`src/cars/${carId}/convert.mjs yok`);
+    file = '/' + conv.source;
+    rotateY = conv.transform?.rotateY ?? 0;
+    scale = conv.transform?.scale ?? 0;
+    length = conv.transform?.length ?? 0;
+    drop = conv.dropNodes || [];
+  } else if (which === 'cockpit') {
+    file = conv?.cockpit?.out ? pub(conv.cockpit.out) : car?.cockpit?.modelUrl;
+  } else {
+    file = conv?.exterior?.out ? pub(conv.exterior.out) : car?.exterior?.url;
+  }
+  eyeHint = conv?.cockpit?.eye || car?.cockpit?.defaultEye || null;
+  $('title').textContent = `${car?.label || carId} — ${{ source: 'kaynak model', cockpit: 'kokpit modeli', exterior: 'dış model' }[which]}`;
+}
+if (!file) {
+  $('subtitle').textContent = 'Adres: ?car=<id>[&model=source|cockpit|exterior] veya ?file=/model-kaynak/x.glb&rotate=180&scale=2.8';
+  throw new Error('no model');
+}
+
+// ---------- Scene
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x3a4150);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(-3, 6, -4);
+scene.add(sun);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.GridHelper(10, 20, 0x667085, 0x4b5363));
+scene.add(new THREE.AxesHelper(0.5)); // red +X (right), green +Y (up), blue +Z (rear)
+
+const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(file);
+const model = gltf.scene;
+const group = new THREE.Group();
+group.add(model);
+group.rotation.y = THREE.MathUtils.degToRad(rotateY);
+scene.add(group);
+const isDropped = (o) => drop.some((p) => (p instanceof RegExp ? p.test(o.name) : p === o.name));
+model.traverse((o) => { if (o.isMesh && isDropped(o)) o.visible = false; });
+group.updateMatrixWorld(true);
+if (!scale && length) {
+  const box = new THREE.Box3();
+  model.traverse((o) => { if (o.isMesh && o.visible) box.expandByObject(o); });
+  scale = length / (box.max.z - box.min.z);
+}
+group.scale.setScalar(scale || 1);
+group.updateMatrixWorld(true);
+const bbox = new THREE.Box3().setFromObject(group);
+const size = bbox.getSize(new THREE.Vector3());
+$('subtitle').textContent = `${file} · ölçek ${r3(scale || 1)} · boyut x ${r3(size.x)} y ${r3(size.y)} z ${r3(size.z)} m` +
+  (size.x > size.z ? ' · ! araç yan duruyor (rotateY 90/-90)' : '') + ' · Yeşil ok aracın burnunu göstermeli; göstermiyorsa convert.mjs → transform.rotateY: 180';
+
+// Arrow along -Z from the car's centre: the game expects the nose there (not needed inside
+// an already converted cockpit)
+if (which !== 'cockpit') {
+  const c = bbox.getCenter(new THREE.Vector3());
+  const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(c.x, bbox.max.y + 0.15, c.z), size.z * 0.75, 0x22c55e, 0.35, 0.22);
+  scene.add(arrow);
+  const tag = document.createElement('canvas');
+  tag.width = 256; tag.height = 64;
+  const tx = tag.getContext('2d');
+  tx.fillStyle = '#22c55e'; tx.font = '700 40px system-ui'; tx.textAlign = 'center'; tx.fillText('ÖN (-Z)', 128, 46);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(tag), depthTest: false }));
+  sprite.position.set(c.x, bbox.max.y + 0.35, c.z - size.z * 0.8);
+  sprite.scale.set(1.2, 0.3, 1);
+  scene.add(sprite);
+}
+
+function setView(kind) {
+  const c = bbox.getCenter(new THREE.Vector3());
+  if (kind === 'eye' && eyeHint) {
+    camera.position.fromArray(eyeHint);
+    controls.target.set(eyeHint[0], eyeHint[1] - 0.15, eyeHint[2] - 1);
+  } else if (kind === 'top') {
+    camera.position.set(c.x, bbox.max.y + size.z * 1.2, c.z + 0.01);
+    controls.target.copy(c);
+  } else {
+    camera.position.set(c.x + size.x * 1.4, c.y + size.y * 1.2, c.z - size.z * 0.9);
+    controls.target.copy(c);
+  }
+  controls.update();
+}
+setView(eyeHint && which !== 'exterior' ? 'eye' : 'out');
+$('view-eye').onclick = () => setView('eye');
+$('view-out').onclick = () => setView('out');
+$('view-top').onclick = () => setView('top');
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+// ---------- Geometry helpers. The group applies convert.mjs's turn and scale, so world
+// coordinates here are game/cockpit coordinates.
+const toGame = (worldPoint) => worldPoint.clone();
+// glTF node name as convert.mjs sees it (three.js strips '.' etc. from object names but keeps
+// the original in userData.name; multi-primitive nodes become a group of child meshes)
+const nodeName = (o) => {
+  const own = o.userData.name;
+  if (own) return own;
+  const p = o.parent;
+  return p && p !== model && p.userData.name && o.name.startsWith(p.name) ? p.userData.name : o.name;
+};
+const pieceCache = new Map();
+function pieces(mesh) {
+  if (pieceCache.has(mesh)) return pieceCache.get(mesh);
+  const g = mesh.geometry, pos = g.attributes.position, N = pos.count;
+  const idx = g.index ? g.index.array : Uint32Array.from({ length: N }, (_, i) => i);
+  const parent = new Int32Array(N).map((_, i) => i);
+  const find = (a) => { while (parent[a] !== a) a = parent[a] = parent[parent[a]]; return a; };
+  const key = new Map();
+  for (let i = 0; i < N; i++) {
+    const k = `${Math.round(pos.getX(i) * 4000)},${Math.round(pos.getY(i) * 4000)},${Math.round(pos.getZ(i) * 4000)}`;
+    if (key.has(k)) parent[find(i)] = find(key.get(k)); else key.set(k, i);
+  }
+  for (let t = 0; t < idx.length; t += 3) { parent[find(idx[t + 1])] = find(idx[t]); parent[find(idx[t + 2])] = find(idx[t]); }
+  const res = { idx, find };
+  pieceCache.set(mesh, res);
+  return res;
+}
+const texCache = new Map();
+function sampler(mesh) {
+  const img = mesh.material?.map?.image;
+  if (!img?.width) return null;
+  if (texCache.has(img)) return texCache.get(img);
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  const f = (u, v) => {
+    const px = Math.min(c.width - 1, Math.floor((u - Math.floor(u)) * c.width));
+    const py = Math.min(c.height - 1, Math.floor((v - Math.floor(v)) * c.height));
+    const i = (py * c.width + px) * 4;
+    return [d[i], d[i + 1], d[i + 2]];
+  };
+  texCache.set(img, f);
+  return f;
+}
+function triUv(mesh, t) {
+  const uv = mesh.geometry.attributes.uv, { idx } = pieces(mesh);
+  let u = 0, v = 0;
+  for (let k = 0; k < 3; k++) { u += uv.getX(idx[t * 3 + k]) / 3; v += uv.getY(idx[t * 3 + k]) / 3; }
+  return [u, v];
+}
+// Triangles of the clicked piece, optionally only the island around the hit: neighbours on the
+// same flat surface (normals within ~20°) with the same atlas colour, e.g. a mirror glass or a
+// button strip inside a larger piece
+function selectTris(mesh, face, island) {
+  const { idx, find } = pieces(mesh);
+  const root = find(idx[face * 3]);
+  let tris = [];
+  for (let t = 0; t < idx.length / 3; t++) if (find(idx[t * 3]) === root) tris.push(t);
+  const sample = island && mesh.geometry.attributes.uv && sampler(mesh);
+  if (sample) {
+    const ref = sample(...triUv(mesh, face));
+    const near = (c) => Math.abs(c[0] - ref[0]) + Math.abs(c[1] - ref[1]) + Math.abs(c[2] - ref[2]) < 40;
+    const pa = new THREE.Vector3(), pb2 = new THREE.Vector3(), pc = new THREE.Vector3();
+    const P = mesh.geometry.attributes.position;
+    const faceNormal = (t) => {
+      pa.fromBufferAttribute(P, idx[t * 3]); pb2.fromBufferAttribute(P, idx[t * 3 + 1]); pc.fromBufferAttribute(P, idx[t * 3 + 2]);
+      return pb2.sub(pa).cross(pc.sub(pa)).normalize().clone();
+    };
+    // flood through triangles sharing a welded vertex
+    const pos = mesh.geometry.attributes.position;
+    const keyOf = (t, k) => {
+      const i = idx[t * 3 + k];
+      return `${Math.round(pos.getX(i) * 4000)},${Math.round(pos.getY(i) * 4000)},${Math.round(pos.getZ(i) * 4000)}`;
+    };
+    const byVert = new Map();
+    for (const t of tris) for (let k = 0; k < 3; k++) {
+      const key = keyOf(t, k);
+      if (!byVert.has(key)) byVert.set(key, []);
+      byVert.get(key).push(t);
+    }
+    const seedNormal = faceNormal(face);
+    const seen = new Set([face]);
+    const stack = [face];
+    while (stack.length) {
+      const t = stack.pop();
+      for (let k = 0; k < 3; k++) for (const n of byVert.get(keyOf(t, k)) || []) {
+        if (seen.has(n) || Math.abs(faceNormal(n).dot(seedNormal)) < 0.94 || !near(sample(...triUv(mesh, n)))) continue;
+        seen.add(n);
+        stack.push(n);
+      }
+    }
+    tris = [...seen];
+  }
+  return tris;
+}
+function trisInfo(mesh, tris) {
+  const uv = mesh.geometry.attributes.uv, pos = mesh.geometry.attributes.position, { idx } = pieces(mesh);
+  const ub = new THREE.Box2(), pb = new THREE.Box3(), p = new THREE.Vector3();
+  for (const t of tris) {
+    const shift = uv ? Math.floor(triUv(mesh, t)[0]) : 0;
+    for (let k = 0; k < 3; k++) {
+      const i = idx[t * 3 + k];
+      if (uv) ub.expandByPoint(new THREE.Vector2(uv.getX(i) - shift, uv.getY(i)));
+      pb.expandByPoint(toGame(p.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)));
+    }
+  }
+  return { ub, pb };
+}
+let highlight = null;
+function showTris(mesh, tris) {
+  if (highlight) { highlight.parent.remove(highlight); highlight.geometry.dispose(); highlight = null; }
+  if (!$('xray').checked || !tris?.length) return;
+  const { idx } = pieces(mesh);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', mesh.geometry.attributes.position);
+  g.setIndex(tris.flatMap((t) => [idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]]));
+  highlight = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  mesh.add(highlight);
+}
+$('xray').checked = true;
+
+// ---------- Tools
+const out = $('out');
+const emit = (text) => { out.value += (out.value ? '\n' : '') + text; out.scrollTop = out.scrollHeight; };
+$('copy').onclick = () => navigator.clipboard.writeText(out.value);
+$('clear').onclick = () => { out.value = ''; };
+
+const TOOLS = {
+  point: { label: 'Nokta / bilgi', steps: ['Bir yere tıkla'] },
+  wheel: { label: 'Direksiyon (3 nokta)', steps: ['Çemberin üstüne tıkla', 'Çemberin sağına tıkla', 'Çemberin soluna tıkla'] },
+  cluster: { label: 'Gösterge (4 köşe)', steps: ['Gösterge camı: sol üst köşe', 'sağ üst köşe', 'sol alt köşe', 'sağ alt köşe'] },
+  mirror: { label: 'Ayna camı', steps: ['Sol dış aynanın camına tıkla', 'Sağ dış aynanın camına tıkla', 'İç aynanın camına tıkla'] },
+  patch: { label: 'Bulanık detay (UV kutusu)', steps: ['Netleştirilecek detaya tıkla (düğme şeridi, logo…)'] },
+  piece: { label: 'Metal parça (kapı kolu)', steps: ['Parçaya tıkla'] },
+  led: { label: 'Ambiyans şeridi', steps: ['Atlasta boyalı ışık şeridine tıkla'] },
+  keep: { label: 'Kokpite al (keepNodes)', steps: ['Kokpitte kalacak parçalara tek tek tıkla'] },
+};
+let tool = 'point';
+let clicks = [];
+const keepSet = new Set();
+for (const [key, t] of Object.entries(TOOLS)) {
+  const b = document.createElement('button');
+  b.textContent = t.label;
+  b.dataset.tool = key;
+  b.onclick = () => { tool = key; clicks = []; document.querySelectorAll('#tools button').forEach((x) => x.classList.toggle('on', x === b)); updateStep(); };
+  $('tools').appendChild(b);
+}
+$('tools').firstChild.classList.add('on');
+const updateStep = () => { $('step').textContent = TOOLS[tool].steps[Math.min(clicks.length, TOOLS[tool].steps.length - 1)]; };
+updateStep();
+
+function circleFrom3(a, b, c) {
+  const ab = b.clone().sub(a), ac = c.clone().sub(a);
+  const n = ab.clone().cross(ac);
+  const center = a.clone().add(
+    n.clone().cross(ab).multiplyScalar(ac.lengthSq()).add(ac.clone().cross(n).multiplyScalar(ab.lengthSq())).divideScalar(2 * n.lengthSq())
+  );
+  n.normalize();
+  if (n.z < 0) n.negate(); // column axis points to the driver (+Z)
+  return { center, axis: n, radius: center.distanceTo(a) };
+}
+
+function onPick(hit) {
+  const mesh = hit.object;
+  const node = nodeName(mesh);
+  const p = toGame(hit.point);
+  const n = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
+  const piece = selectTris(mesh, hit.faceIndex, false);
+  const island = mesh.geometry.attributes.uv ? selectTris(mesh, hit.faceIndex, true) : piece;
+  const pi = trisInfo(mesh, piece), ii = trisInfo(mesh, island);
+  $('info').textContent = [
+    `düğüm:     ${node}${node !== mesh.name ? `  (mesh ${mesh.name})` : ''}`,
+    `malzeme:   ${mesh.material?.name || '-'}`,
+    `nokta:     ${vec(p)}`,
+    `normal:    ${vec(n)}`,
+    hit.uv ? `uv:        [${r3(hit.uv.x)}, ${r3(hit.uv.y)}]` : 'uv:        -',
+    `parça:     ${piece.length} üçgen, uv ${uvBox(pi.ub)}`,
+    `renk adası: ${island.length} üçgen, uv ${uvBox(ii.ub)}`,
+    `kutu:      ${vec(pi.pb.min)} .. ${vec(pi.pb.max)}`,
+  ].join('\n');
+
+  if (tool === 'point') { showTris(mesh, piece); return; }
+  if (tool === 'keep') {
+    showTris(mesh, piece);
+    keepSet.add(node);
+    $('step').textContent = `${keepSet.size} düğüm seçildi`;
+    out.value = out.value.replace(/^keepNodes: .*$/m, '').trim();
+    emit(`keepNodes: [${[...keepSet].map((k) => `'${k}'`).join(', ')}],`);
+    return;
+  }
+  if (tool === 'piece') {
+    showTris(mesh, piece);
+    const c = pi.pb.getCenter(new THREE.Vector3());
+    if (piece.length > 400) emit(`// ! ${node}: tıklanan parça ${piece.length} üçgen (büyük bir panel); satinPieces 400'e kadar kabul eder. Küçük parçaya tıkla.`);
+    else emit(`// cockpit.satinPieces (car.js), ${piece.length} üçgen\n['${node}', ${vec(c)}],`);
+    return;
+  }
+  if (tool === 'patch') {
+    showTris(mesh, island);
+    emit(`// cockpit.atlasPatches (car.js) — ${island.length} üçgen; paint fonksiyonunu aracın klasörüne yaz\n{ meshes: ['${node}'], uv: ${uvBox(ii.ub)}, scale: 8, paint: paintXxx },`);
+    return;
+  }
+  if (tool === 'led') {
+    showTris(mesh, island);
+    const c = sampler(mesh)?.(hit.uv.x, hit.uv.y);
+    emit(`// convert.mjs → cockpit.ambientLed (şerit rengi rgb ${c?.join(',')}; mavi değilse eşikleri ayarla)\nambientLed: { from: ['${node}'] },`);
+    return;
+  }
+  if (tool === 'mirror') {
+    showTris(mesh, island);
+    const names = ['mirror_left', 'mirror_right', 'mirror_center'];
+    emit(`{ name: '${names[clicks.length]}', from: '${node}', uv: ${uvBox(ii.ub)} }, // ${island.length} üçgen`);
+    clicks.push(p);
+    if (clicks.length === 3) { emit('// ↑ convert.mjs → cockpit.mirrors'); clicks = []; }
+    updateStep();
+    return;
+  }
+  clicks.push(p);
+  if (tool === 'wheel' && clicks.length === 3) {
+    const { center, axis, radius } = circleFrom3(...clicks);
+    const eye = center.clone().add(new THREE.Vector3(0, 0.26, 0.52));
+    emit(`// convert.mjs → cockpit (direksiyon düğümü: ${node})
+steering: { node: '${node}', pivot: ${vec(center)}, axis: ${vec(axis)}, radius: ${r3(radius)}, columnBeyondZ: ${r3(center.z - 0.17)} },
+eye: ${vec(eye)}, // göbeğin 0.52 m arkası, 0.26 m üstü (tarif §5.1)
+wheelTrim: { from: ['…'], radius: ${r3(radius + 0.015)}, axial: [-0.1, 0.02] },`);
+    clicks = [];
+  }
+  if (tool === 'cluster' && clicks.length === 4) {
+    const [tl, tr, bl, br] = clicks;
+    const right = tr.clone().sub(tl), up = tl.clone().sub(bl);
+    const nn = right.clone().cross(up).normalize();
+    const lift = (v) => vec(v.clone().addScaledVector(nn, 0.004)); // 4 mm in front of the glass
+    const w = right.length(), h = up.length();
+    emit(`// car.js → cockpit.screens (kavisli camda köşeleri kenarlardan ölç)
+cluster: { tl: ${lift(tl)}, tr: ${lift(tr)}, bl: ${lift(bl)}, br: ${lift(br)}, n: ${vec(nn)}, logical: [240, ${Math.round((240 * h) / w)}], px: [1024, ${Math.round((1024 * h) / w)}] },`);
+    clicks = [];
+  }
+  updateStep();
+}
+
+// Click (not drag) picks
+const ray = new THREE.Raycaster();
+let down = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4 || e.button !== 0) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), camera);
+  const hit = ray.intersectObject(model, true).find((h) => h.object.visible && h.object !== highlight);
+  if (hit) onPick(hit);
+});
+window.__lab = { scene, camera, model, group, onPick, ray };
+</script>
+</body>
+</html>
