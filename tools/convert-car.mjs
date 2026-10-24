@@ -349,9 +349,11 @@ function moveWheelTrim(doc, nodeByName, wheelMesh, st, trim) {
     const d = v.dot(A);
     return d > a0 && d < a1 && v.addScaledVector(A, -d).length() < radius;
   };
-  for (const src of trim.from) {
+  // '*' scans every kept node (the safest choice: hand-picked lists tend to miss a trim piece)
+  const sources = trim.from === '*' ? cfg.cockpit.keepNodes : trim.from;
+  for (const src of sources) {
     const prim = nodeByName(src)?.getMesh()?.listPrimitives()[0];
-    if (!prim) continue;
+    if (!prim?.getIndices()) continue;
     const pos = prim.getAttribute('POSITION');
     const idx = prim.getIndices().getArray();
     const find = connectedPieces(pos.getCount(), (i) => pos.getElement(i, []), idx, 4000);

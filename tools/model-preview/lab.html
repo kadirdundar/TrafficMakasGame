@@ -405,7 +405,7 @@ function onPick(hit) {
     emit(`// convert.mjs → cockpit (direksiyon düğümü: ${node})
 steering: { node: '${node}', pivot: ${vec(center)}, axis: ${vec(axis)}, radius: ${r3(radius)}, columnBeyondZ: ${r3(center.z - 0.17)} },
 eye: ${vec(eye)}, // göbeğin 0.52 m arkası, 0.26 m üstü (tarif §5.1)
-wheelTrim: { from: ['…'], radius: ${r3(radius + 0.015)}, axial: [-0.1, 0.02] },`);
+wheelTrim: { from: '*', radius: ${r3(radius + 0.03)}, axial: [-0.17, 0.03] }, // diskin içindeki her parça döner`);
     clicks = [];
   }
   if (tool === 'cluster' && clicks.length === 4) {

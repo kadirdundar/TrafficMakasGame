@@ -71,8 +71,9 @@ export default {
       axis: [0, 0.28, 0.96],
       radius: 0.18,
     },
-    // Spoke chrome, hub, AMG button panels (tex1/tex2) and a small trim inside the wheel disc
-    wheelTrim: { from: ['Object_422', 'Object_127', 'Object_37', 'Object_734', 'Object_737'], radius: 0.21, axial: [-0.15, 0.03] },
+    // Every kept piece lying completely inside the wheel disc turns with it: spoke and hub
+    // chrome, AMG button panels (tex1/tex2), shift paddles (reach 0.16 m behind the rim)
+    wheelTrim: { from: '*', radius: 0.21, axial: [-0.17, 0.03] },
     mirrors: [
       { name: 'mirror_left', from: 'Object_401', x: [-2, 0] }, // chrome glass, both doors in one node
       { name: 'mirror_right', from: 'Object_401', x: [0, 2] },

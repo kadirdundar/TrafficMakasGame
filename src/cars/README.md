@@ -102,7 +102,7 @@ Düğüm adları `npm run car:inspect` çıktısındaki adlardır; desenler RegE
 | `cockpit.out`, `cockpit.keepNodes` | Kokpit çıktısı ve sürücüden görünen düğümler (boşsa kokpit atlanır). |
 | `cockpit.eye` | Göz noktası (sahne extras'ına yazılır). |
 | `cockpit.steering` | `{ node, pivot, axis, radius, columnBeyondZ }`: direksiyonu dönen çember ve sabit kolon olarak ayırır (kolon = `columnBeyondZ`'den öne uzanan parçalar). |
-| `cockpit.wheelTrim` | `{ from, radius, axial }`: başka düğümlerde olup direksiyon diskinin içinde kalan parçaları (karbon kollar, logo, pedallar) direksiyona taşır. |
+| `cockpit.wheelTrim` | `{ from, radius, axial }`: başka düğümlerde olup direksiyon diskinin tamamen içinde kalan parçaları (krom/karbon kollar, logo, düğmeler, vites pedalları) direksiyona taşır. `from: '*'` tüm `keepNodes`'u tarar (önerilen; elle liste parça kaçırır). Kontrol: `cockpit.html?car=<id>&steer=1.6`. |
 | `cockpit.mirrors` | `{ name: 'mirror_left' / 'mirror_right' / 'mirror_center', from, uv?, x?, y?, z?, facing? }`: modelin ayna camı üçgenleri; UV kutusu ve/veya üçgen merkezinin konum aralığı ve yönü ile seçilir. |
 | `cockpit.join`, `cockpit.keepSeparate` | Statik parçaları malzemeye göre birleştirir; oyunun adla aradığı düğümler (direksiyon, aynalar, LED, zemin) ve `keepSeparate` ayrı kalır (`atlasPatches`/`satinPieces` düğümlerini buraya yaz). |
 | `cockpit.ambientLed` | `{ from, minBlue, overRed, overGreen }`: atlasta mavi boyalı şeritleri `ambient_led` mesh'ine ayırır. |

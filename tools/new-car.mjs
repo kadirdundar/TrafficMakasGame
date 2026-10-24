@@ -175,7 +175,7 @@ ${candidates.map((c) => `    //   '${c.n}'  ${c.mat}`).join('\n') || '    //   (
     keepNodes: [],
     // eye: [x, y, z],
     // steering: { node: '...', pivot: [x, y, z], axis: [x, y, z], radius: 0.18, columnBeyondZ: -0.5 },
-    // wheelTrim: { from: ['...'], radius: 0.2, axial: [-0.1, 0.02] },
+    // wheelTrim: { from: '*', radius: 0.21, axial: [-0.17, 0.03] }, // '*' = tüm keepNodes taranır
     // mirrors: [{ name: 'mirror_left', from: '...', uv: [u0, u1, v0, v1] }],  // veya x/y/z aralığı, facing
     // ambientLed: { from: ['...'] },
     // floor: { y: 0.3, x: [-0.85, 0.85], z: [-1.2, -0.2] },

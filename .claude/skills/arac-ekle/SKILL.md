@@ -40,5 +40,6 @@ Değerleri asla tahmin etme; ölç. Her adımdan sonra ekran görüntüsüyle do
    bloğunu doldur; `cluster: 'audi' | 'mercedes' | 'bmw'`.
 7. **Doğrulama:** `cockpit.html?car=<id>&preset=0|1|2`, `&night=1`, `&steer=0.8`, dikey ekran
    (`&w=420&h=740`). Direksiyon dönüşünde tüm direksiyon parçaları dönmeli; aynalar canlı,
-   gösterge canlı olmalı. Sonra oyunda garajdan aracı seçip sürüşe başla.
+   gösterge canlı olmalı. Test: `steering_wheel` düğümünü gizleyip render al; direksiyon
+   bölgesinde sadece kolon kılıfı kalmalı. Sonra oyunda garajdan aracı seçip sürüşe başla.
 8. **Bitiş:** `draft: true` satırını sil, `npm run build`. Commit/push için kullanıcıya sor.
