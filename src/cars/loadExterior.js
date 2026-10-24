@@ -37,7 +37,7 @@ function haloAnchor(def, boxes, front) {
   ];
 }
 
-export async function loadExterior(cfg, { paintHex = 0x0e6f9c } = {}) {
+export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(cfg.url);
   const model = gltf.scene;

@@ -31,10 +31,10 @@ const CONNECT_TIMEOUT_MS = 4000;
 
 // Per-slot paint & nameplate colour so every friend is recognisable (slot 0 = host)
 export const SLOT_STYLES = [
-  { paint: 0x0e6f9c, tag: '#10b981' },
-  { paint: 0x8f1020, tag: '#f59e0b' },
-  { paint: 0xe4e8ec, tag: '#38bdf8' },
-  { paint: 0x17191f, tag: '#e879f9' },
+  { paint: 0xd6182c, tag: '#ff4d5e' }, // Spor Kırmızı
+  { paint: 0x9b111e, tag: '#f87171' }, // Tango Kırmızısı
+  { paint: 0x5e0811, tag: '#fb7185' }, // Koyu Bordo
+  { paint: 0xef233c, tag: '#f43f5e' }, // Alev Kırmızısı
 ];
 
 // Everyone launches side by side, one lane each
