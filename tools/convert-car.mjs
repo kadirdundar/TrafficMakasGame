@@ -233,8 +233,21 @@ async function buildExterior(matrices) {
   scene.addChild(carRoot);
   root.listNodes().forEach((n) => {
     const mesh = n.getMesh();
-    const m = mesh && matrices.get(n.getName());
+    let m = mesh && matrices.get(n.getName());
     if (!m) return;
+    if (ex.wheelOffset) {
+      const matchNode = ex.wheelOffset.nodes && matches(ex.wheelOffset.nodes, n.getName());
+      const matchMat =
+        ex.wheelOffset.materials &&
+        mesh.listPrimitives().some((p) => {
+          const matName = p.getMaterial()?.getName() || '';
+          return matches(ex.wheelOffset.materials, matName);
+        });
+      if ((matchNode || matchMat) && !n.getName().includes('Steering')) {
+        const shift = new THREE.Matrix4().makeTranslation(...ex.wheelOffset.offset);
+        m = shift.multiply(m.clone());
+      }
+    }
     transformMesh(mesh, Array.from(m.elements));
     if (m.determinant() < 0) {
       for (const prim of mesh.listPrimitives()) {

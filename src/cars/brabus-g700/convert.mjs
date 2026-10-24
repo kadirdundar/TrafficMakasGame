@@ -10,6 +10,13 @@ export default {
 
   exterior: {
     out: 'public/models/brabus-g700.glb',
+    // Brabus G700 is an off-road luxury SUV (factory G63 ground clearance is ~24 cm, height 1.97 m).
+    // The raw 3D model had slammed suspension with only 15 cm ground clearance.
+    // Lowering wheels relative to body by 0.09 m raises clearance to 24.8 cm and height to 1.95 m.
+    wheelOffset: {
+      materials: /^(MT_15|Profiel02|ADVAN|pirelli|2021_Lamborghini_Essenza_SCV12_CSR2_(Wheel|Calliper)|Tyre_Side)/i,
+      offset: [0, -0.09, 0],
+    },
     renameMaterials: [
       [/^(Vehicle_Exterior_mm_ext|CarPaint)$/, 'paint'],
       [/^(Vehicle_Exterior_mm_windows|2020_Mercedes-AMG_G63_Brabus_G700_Windows|2020_Mercedes-AMG_G63_Brabus_G700_HeadLights_Glass)$/, 'glass'],

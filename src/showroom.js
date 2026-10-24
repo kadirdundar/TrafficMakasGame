@@ -127,8 +127,10 @@ export class A8Showroom {
     this.scene.add(key, new THREE.HemisphereLight(0xbcd2ff, 0x0b0d12, 0.35));
 
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 120);
+    this.target = TARGET.clone();
+    this.frameHalfHeight = FRAME_HALF_HEIGHT;
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target.copy(TARGET);
+    this.controls.target.copy(this.target);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.enablePan = false;
@@ -258,6 +260,12 @@ export class A8Showroom {
       this.car = car;
       this.scene.add(car.group);
 
+      const box = new THREE.Box3().setFromObject(car.group);
+      const height = box.max.y - box.min.y;
+      this.target.set(0, Math.max(0.62, height * 0.44), 0);
+      this.frameHalfHeight = Math.max(FRAME_HALF_HEIGHT, height * 0.9);
+      this.controls.target.copy(this.target);
+
       // Mirror image under the semi-transparent floor gives the glossy-floor reflection
       const reflection = car.group.clone();
       reflection.scale.y = -1;
@@ -265,6 +273,7 @@ export class A8Showroom {
       this.scene.add(reflection);
 
       car.setLights({ night: this.lightsOn });
+      this.resize();
       this.goToView('front34', 1.8);
       this.onReady?.(true);
     } catch (err) {
@@ -309,7 +318,7 @@ export class A8Showroom {
     this.camera.updateProjectionMatrix();
 
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const fitV = FRAME_HALF_HEIGHT / (tanHalf * (free.height / h));
+    const fitV = this.frameHalfHeight / (tanHalf * (free.height / h));
     const fitH = FRAME_HALF_WIDTH / (tanHalf * this.camera.aspect * (free.width / w));
     const fit = Math.max(fitV, fitH);
     const scale = fit / this.fitDistance;
@@ -317,7 +326,7 @@ export class A8Showroom {
     this.controls.minDistance = fit * 0.5;
     this.controls.maxDistance = fit * 1.45;
     if (!this.tween) {
-      const s = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(TARGET));
+      const s = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.target));
       this.setCameraSpherical(s.theta, s.phi, THREE.MathUtils.clamp(s.radius * scale, fit * 0.5, fit * 1.45));
     } else {
       this.tween.from.radius *= scale;
@@ -327,14 +336,14 @@ export class A8Showroom {
   }
 
   setCameraSpherical(theta, phi, radius) {
-    this.camera.position.setFromSphericalCoords(radius, phi, theta).add(TARGET);
-    this.camera.lookAt(TARGET);
+    this.camera.position.setFromSphericalCoords(radius, phi, theta).add(this.target);
+    this.camera.lookAt(this.target);
   }
 
   goToView(key, duration = 1.1) {
     const view = VIEWS[key];
     if (!view) return;
-    const from = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(TARGET));
+    const from = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.target));
     // Take the short way round
     const turn = THREE.MathUtils.euclideanModulo(view.azimuth - from.theta + Math.PI, Math.PI * 2) - Math.PI;
     this.tween = {
