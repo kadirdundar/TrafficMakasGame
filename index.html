@@ -330,15 +330,6 @@
             <!-- Cockpit & controls -->
             <section id="page-cockpit" class="tab-page" role="tabpanel" aria-labelledby="tab-cockpit">
               <div class="panel-section">
-                <h3>Koltuk / Kamera Açısı</h3>
-                <div class="segmented-control" id="camera-preset-group">
-                  <button type="button" class="seg-btn active" data-camera="0">Standart</button>
-                  <button type="button" class="seg-btn" data-camera="1">Tam Kabin</button>
-                  <button type="button" class="seg-btn" data-camera="2">Yakın Sürüş</button>
-                </div>
-              </div>
-
-              <div class="panel-section">
                 <h3>Ambiyans Aydınlatması</h3>
                 <div class="color-swatches" id="ambient-select-group">
                   <button type="button" class="swatch active" data-color="cyan" style="--sw-color: #00f0ff" title="Buz Mavisi"></button>
@@ -355,15 +346,6 @@
                   <button type="button" class="seg-btn active" data-steermode="wheel">Direksiyon</button>
                   <button type="button" class="seg-btn" data-steermode="buttons">Ok Tuşları</button>
                   <button type="button" class="seg-btn" data-steermode="tilt">Sensör (Eğim)</button>
-                </div>
-              </div>
-
-              <div class="panel-section">
-                <h3>Dokunmatik Kontrolleri Göster</h3>
-                <div class="segmented-control" id="touch-vis-group">
-                  <button type="button" class="seg-btn active" data-touchvis="auto">Otomatik</button>
-                  <button type="button" class="seg-btn" data-touchvis="always">Her Zaman</button>
-                  <button type="button" class="seg-btn" data-touchvis="hide">Gizle (PC)</button>
                 </div>
               </div>
             </section>
@@ -485,18 +467,7 @@
             <button id="btn-quick-resume" type="button" class="secondary-btn resume-quick-btn hidden">
               ▶ Sürüşe Hemen Dön
             </button>
-            <button id="btn-reset-car" type="button" class="secondary-btn hidden">
-              ↺ Yolu Sıfırla &amp; Tamir Et
-            </button>
-            <!-- Android/desktop Chrome: shown once the browser offers installation -->
-            <button id="btn-install-app" type="button" class="secondary-btn install-btn hidden">
-              📲 Ana Ekrana Ekle
-            </button>
           </div>
-          <!-- iPhone/iPad Safari has no install prompt: explain the manual way -->
-          <p id="ios-install-hint" class="install-hint hidden">
-            📲 Tam ekran için Safari'de <strong>Paylaş</strong> ⬆︎ → <strong>Ana Ekrana Ekle</strong>
-          </p>
         </footer>
       </aside>
     </div>

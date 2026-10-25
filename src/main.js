@@ -263,9 +263,6 @@ class OtobanMakasGame {
 
     const label = document.getElementById('camera-label');
     if (label) label.textContent = preset.name;
-    document.querySelectorAll('#camera-preset-group .seg-btn').forEach((btn) => {
-      btn.classList.toggle('active', Number(btn.dataset.camera) === this.cameraPresetIndex);
-    });
   }
 
   updateCameraProjection() {
@@ -447,11 +444,6 @@ class OtobanMakasGame {
     document.getElementById('btn-start-game')?.addEventListener('click', startOrResumeGame);
     document.getElementById('btn-quick-resume')?.addEventListener('click', startOrResumeGame);
 
-    document.getElementById('btn-reset-car')?.addEventListener('click', () => {
-      this.resetRun();
-      this.setMenuOpen(false);
-    });
-
     // Drone Replay Modal & Controls (triggered from the Pause Menu)
     document.getElementById('btn-drone-replay')?.addEventListener('click', () => {
       this.openDroneReplay();
@@ -551,10 +543,6 @@ class OtobanMakasGame {
       });
     });
 
-    document.querySelectorAll('#camera-preset-group .seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => this.applyCameraPreset(Number(btn.dataset.camera)));
-    });
-
     document.querySelectorAll('#road-mode-group .seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => this.setRoadMode(btn.dataset.road, { remember: true }));
     });
@@ -575,19 +563,6 @@ class OtobanMakasGame {
     });
 
     this.loadCockpit3D();
-
-    document.querySelectorAll('#touch-vis-group .seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#touch-vis-group .seg-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        const vis = btn.getAttribute('data-touchvis');
-        const tc = document.getElementById('touch-controls');
-        if (tc) {
-          tc.style.display = vis === 'hide' ? 'none' : 'flex';
-        }
-      });
-    });
-
     this.setupTouchControls();
   }
 
@@ -790,31 +765,6 @@ class OtobanMakasGame {
     // Installability needs a service worker; ours caches nothing (see public/sw.js)
     if ('serviceWorker' in navigator && import.meta.env.PROD) {
       navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
-    }
-
-    // Chrome / Android: keep the browser's install offer for our own button
-    const installBtn = document.getElementById('btn-install-app');
-    let installPrompt = null;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      installPrompt = e;
-      installBtn?.classList.remove('hidden');
-    });
-    installBtn?.addEventListener('click', async () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      await installPrompt.userChoice.catch(() => null);
-      installPrompt = null;
-      installBtn.classList.add('hidden');
-    });
-    window.addEventListener('appinstalled', () => installBtn?.classList.add('hidden'));
-
-    // iPhone / iPad Safari has no install prompt: tell how to add it to the home screen
-    const isIOS =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    if (isIOS && !this.isInstalledApp()) {
-      document.getElementById('ios-install-hint')?.classList.remove('hidden');
     }
 
     const portrait = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
@@ -1355,10 +1305,7 @@ class OtobanMakasGame {
     document.getElementById('hud-top')?.classList.remove('hidden');
     document.getElementById('hud-mini-cluster')?.classList.remove('hidden');
     document.getElementById('desktop-hints')?.classList.remove('hidden');
-    const activeVis = document.querySelector('#touch-vis-group .seg-btn.active')?.getAttribute('data-touchvis');
-    if (activeVis !== 'hide') {
-      document.getElementById('touch-controls')?.classList.remove('hidden');
-    }
+    document.getElementById('touch-controls')?.classList.remove('hidden');
 
     if (reopenMenu && this.paused) {
       document.getElementById('menu-overlay')?.classList.remove('hidden');
@@ -1409,10 +1356,9 @@ class OtobanMakasGame {
     }
   }
 
-  // Once driving, the menu's main button resumes the drive and the road can be reset
+  // Once driving, the menu's main button resumes the drive
   showResumeButtons() {
     this.hasStartedDriving = true;
-    document.getElementById('btn-reset-car')?.classList.remove('hidden');
     document.getElementById('btn-quick-resume')?.classList.toggle('hidden', this.menuStep === 3);
     this.setHudText('start-label', 'SÜRÜŞE DEVAM ET');
     this.setHudText('start-sublabel', 'KALDIĞIN YERDEN');
