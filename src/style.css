@@ -554,7 +554,22 @@
     gap: 10px;
   }
 
-  /* Selektör & horn stack beside the pedals so the left thumb has the whole left side to steer */
+  .touch-left {
+    align-items: flex-start;
+  }
+
+  /* Selektör on the left: elevated above the lower-left thumb steering zone so left-thumb swipe steering is never disrupted */
+  .touch-left-aux {
+    display: flex;
+    align-items: flex-start;
+    margin-block-end: clamp(65px, 15vh, 90px);
+  }
+
+  .touch-left:has(#button-steer-zone:not(.hidden)) .touch-left-aux {
+    margin-block-end: 0;
+  }
+
+  /* Horn stands beside the pedals on the right */
   .touch-aux-row {
     display: flex;
     flex-direction: column;
@@ -621,11 +636,22 @@
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   }
 
+  .aux-action-btn.selektor-btn {
+    border-color: rgba(0, 200, 255, 0.4);
+    background: rgba(10, 24, 46, 0.85);
+  }
+
+  .aux-action-btn.selektor-btn .aux-icon {
+    color: var(--accent-cyan);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.65);
+    font-size: 0.82rem;
+  }
+
   .aux-action-btn.selektor-btn:active,
   .aux-action-btn.selektor-btn.active {
-    background: rgba(0, 140, 255, 0.45);
-    border-color: #4da6ff;
-    box-shadow: 0 0 20px rgba(0, 160, 255, 0.65);
+    background: rgba(0, 140, 255, 0.55);
+    border-color: #00f0ff;
+    box-shadow: 0 0 24px rgba(0, 200, 255, 0.8);
   }
 
   .aux-action-btn.horn-btn:active,
@@ -3087,6 +3113,14 @@
   .touch-controls {
     inset-block-end: max(8px, env(safe-area-inset-bottom)) !important;
     inset-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right)) !important;
+  }
+
+  .touch-left-aux {
+    margin-block-end: clamp(50px, 13vh, 75px) !important;
+  }
+
+  .touch-left:has(#button-steer-zone:not(.hidden)) .touch-left-aux {
+    margin-block-end: 0 !important;
   }
 
   .aux-action-btn {
