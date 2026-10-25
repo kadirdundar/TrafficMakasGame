@@ -1361,7 +1361,6 @@ class OtobanMakasGame {
     this.hasStartedDriving = true;
     document.getElementById('btn-quick-resume')?.classList.toggle('hidden', this.menuStep === 3);
     this.setHudText('start-label', 'SÜRÜŞE DEVAM ET');
-    this.setHudText('start-sublabel', 'KALDIĞIN YERDEN');
   }
 
   showMenuTab(name) {
