@@ -150,15 +150,18 @@
     color: var(--text-main);
   }
 
-  .combo-row {
+  .combo-row,
+  .time-row {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
-  .combo-val {
+  .combo-val,
+  .time-val {
     color: var(--accent-cyan);
     text-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+    font-variant-numeric: tabular-nums;
   }
 
   .combo-card.hot .combo-val {

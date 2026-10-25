@@ -175,6 +175,8 @@ class OtobanMakasGame {
     this.health = 100;
     this.odometerKm = 1428.4;
     this.tripDistanceKm = 0;
+    this.playTimeSec = 0;
+    this.startTimeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
     this.playerX = -1.8; // Start in left-center fast lane (two-way road: see setRoadMode below)
     this.overtakeRun = null; // two-way road: an excursion into the oncoming lane (see updateOvertakeRun)
@@ -1380,6 +1382,8 @@ class OtobanMakasGame {
     this.comboTimer = 0;
     this.health = 100;
     this.tripDistanceKm = 0;
+    this.playTimeSec = 0;
+    this.startTimeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     this.speedKmh = 0;
     this.playerX = this.startX();
     this.lateralVel = 0;
@@ -1543,6 +1547,17 @@ class OtobanMakasGame {
     const s = Math.floor(rem);
     const ms = Math.floor((rem - s) * 10);
     return `${String(mins).padStart(2, '0')}:${String(s).padStart(2, '0')}.${ms}`;
+  }
+
+  formatPlayTime(sec) {
+    const total = Math.max(0, Math.floor(sec || 0));
+    const hrs = Math.floor(total / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${String(mins).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
   updateTrackProgression() {
@@ -1981,6 +1996,7 @@ class OtobanMakasGame {
     const frameDistanceKm = (speedMs * dt) / 1000;
     this.odometerKm += frameDistanceKm;
     this.tripDistanceKm += frameDistanceKm;
+    this.playTimeSec += dt;
 
     if (this.speedKmh > 120) {
       this.score += (this.speedKmh - 100) * 0.35 * this.combo * dt;
@@ -2251,6 +2267,16 @@ class OtobanMakasGame {
 
     this.setHudText('hud-score', Math.floor(this.score).toLocaleString('tr-TR'));
     this.setHudText('hud-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
+
+    // Sürüş / Oyun Süresi Sayacı (MM:SS)
+    const playTimeStr = this.formatPlayTime(this.playTimeSec);
+    this.setHudText('hud-play-time', playTimeStr);
+    const timeCard = this.hudEls['time-card'] ?? (this.hudEls['time-card'] = document.getElementById('time-card'));
+    if (timeCard && this.hudCache.timeTooltip !== playTimeStr) {
+      this.hudCache.timeTooltip = playTimeStr;
+      timeCard.title = `Başlangıç: ${this.startTimeStr || '--:--'} • Sürüş Süresi: ${playTimeStr}`;
+    }
+
     this.setHudText('hud-combo', `${this.combo.toFixed(1)}x`);
     this.setHudStyle(
       'hud-combo-bar',
