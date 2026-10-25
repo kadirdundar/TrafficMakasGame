@@ -67,6 +67,10 @@ export class MultiplayerManager {
     this.connected = false; // host: at least one guest in the room; guest: welcomed by the host
     this.playerName = localStorage.getItem('otoban_player_name') || 'OYUNCU';
     this.localCarModel = getCar(localStorage.getItem('otoban_selected_car')).id;
+    const savedPaint = Number(localStorage.getItem('otoban_selected_paint') ?? 0);
+    this.localPaintSlot = (Number.isFinite(savedPaint) && savedPaint >= 0 && savedPaint < SLOT_STYLES.length)
+      ? savedPaint
+      : 0;
     this.localId = null;
     this.localSlot = 0;
     this.hostId = null; // who hosts the room right now (changes on a hand-over)
@@ -184,6 +188,7 @@ export class MultiplayerManager {
 
     const peerCar = {
       group,
+      paintHex: style.paint,
       badge: { canvas, ctx: canvas.getContext('2d'), texture, spriteMat },
       active: fallback,
       lights: { night: false, braking: false, highBeam: false },
@@ -196,6 +201,16 @@ export class MultiplayerManager {
         group.add(model.group);
         peerCar.active = model;
         model.setLights(peerCar.lights);
+        if (model.bodyMat && Number.isFinite(peerCar.paintHex)) {
+          model.bodyMat.color.setHex(peerCar.paintHex);
+        }
+      },
+      setPaint(paintHex) {
+        peerCar.paintHex = paintHex;
+        if (fallback.bodyMat) fallback.bodyMat.color.setHex(paintHex);
+        if (peerCar.active && peerCar.active !== fallback && peerCar.active.bodyMat) {
+          peerCar.active.bodyMat.color.setHex(paintHex);
+        }
       },
     };
     return peerCar;
@@ -204,17 +219,28 @@ export class MultiplayerManager {
   // Each friend gets their own optimized car model (separate chunk + glb, fetched once and
   // then served from the HTTP cache); single-player never downloads it.
   loadPeerModel(player) {
-    loadCarExterior(player.carModel, { paintHex: player.style.paint })
+    const paintHex = player.style?.paint ?? SLOT_STYLES[player.paintSlot % SLOT_STYLES.length]?.paint;
+    loadCarExterior(player.carModel, { paintHex })
       .then((model) => {
-        if (!player.removed) player.car.swapModel(model);
+        if (!player.removed) {
+          player.car.swapModel(model);
+          if (model.bodyMat && Number.isFinite(paintHex)) {
+            model.bodyMat.color.setHex(paintHex);
+          }
+        }
       })
       .catch((err) => {
         console.warn('Araç modeli yüklenemedi, yedek model kullanılıyor:', err);
       });
   }
 
-  addRemotePlayer(id, name, slot, carModel = DEFAULT_CAR_ID) {
-    const style = SLOT_STYLES[slot % SLOT_STYLES.length];
+  addRemotePlayer(id, name, slot, carModel = DEFAULT_CAR_ID, paintSlot = null) {
+    const assignedPaintSlot = (paintSlot !== null && Number.isFinite(Number(paintSlot)))
+      ? (Number(paintSlot) % SLOT_STYLES.length)
+      : (slot % SLOT_STYLES.length);
+    const slotStyle = SLOT_STYLES[slot % SLOT_STYLES.length];
+    const paintHex = SLOT_STYLES[assignedPaintSlot].paint;
+    const style = { paint: paintHex, tag: slotStyle.tag };
     const car = this.createPeerCarMesh(style);
     car.group.visible = false;
     this.scene.add(car.group);
@@ -223,6 +249,7 @@ export class MultiplayerManager {
       id,
       name: cleanName(name, `OYUNCU ${slot + 1}`),
       slot,
+      paintSlot: assignedPaintSlot,
       carModel,
       style,
       conn: null,
@@ -478,7 +505,7 @@ export class MultiplayerManager {
         this._helloInterval = null;
         return;
       }
-      this.broadcast({ type: 'join_hello', name: this.playerName, carModel: this.localCarModel });
+      this.broadcast({ type: 'join_hello', name: this.playerName, carModel: this.localCarModel, paintSlot: this.localPaintSlot });
     };
     sayHello();
     this._helloInterval = setInterval(sayHello, 450);
@@ -495,7 +522,7 @@ export class MultiplayerManager {
     conn.on('data', (data) => this.handlePacket(data, conn));
     conn.on('open', () => {
       clearTimeout(this._connectTimer);
-      this.broadcast({ type: 'join_hello', name: this.playerName, carModel: this.localCarModel });
+      this.broadcast({ type: 'join_hello', name: this.playerName, carModel: this.localCarModel, paintSlot: this.localPaintSlot });
     });
     conn.on('close', () => {
       if (this.hostConn !== conn) return;
@@ -654,8 +681,8 @@ export class MultiplayerManager {
 
   roster() {
     return [
-      { id: this.localId, name: this.playerName, slot: this.localSlot, carModel: this.localCarModel },
-      ...this.getRemotePlayers().map((p) => ({ id: p.id, name: p.name, slot: p.slot, carModel: p.carModel })),
+      { id: this.localId, name: this.playerName, slot: this.localSlot, carModel: this.localCarModel, paintSlot: this.localPaintSlot },
+      ...this.getRemotePlayers().map((p) => ({ id: p.id, name: p.name, slot: p.slot, carModel: p.carModel, paintSlot: p.paintSlot })),
     ];
   }
 
@@ -681,7 +708,7 @@ export class MultiplayerManager {
           this.localWorldDistM = 0;
           this.traffic.resetTraffic();
         }
-        player = this.addRemotePlayer(data.from, data.name, slot, data.carModel || DEFAULT_CAR_ID);
+        player = this.addRemotePlayer(data.from, data.name, slot, data.carModel || DEFAULT_CAR_ID, data.paintSlot);
       }
       if (conn) player.conn = conn;
       player.lastRecvTime = Math.max(player.lastRecvTime, performance.now());
@@ -717,6 +744,15 @@ export class MultiplayerManager {
       player.carModel = data.carModel;
       this.loadPeerModel(player);
     }
+    if (data.paintSlot !== undefined) {
+      const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+      if (player.paintSlot !== pSlot) {
+        player.paintSlot = pSlot;
+        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        player.style.paint = newPaintHex;
+        player.car.setPaint(newPaintHex);
+      }
+    }
 
     if (data.type === 'state') {
       const prevHighBeam = player.highBeam;
@@ -735,6 +771,28 @@ export class MultiplayerManager {
       this.trafficSyncAccum = 1.0;
     } else if (data.type === 'leave') {
       this.onGuestGone(player.id);
+    } else if (data.type === 'paint_changed') {
+      if (data.paintSlot !== undefined) {
+        const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+        player.paintSlot = pSlot;
+        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        player.style.paint = newPaintHex;
+        player.car.setPaint(newPaintHex);
+        this.broadcast({ type: 'roster', players: this.roster() });
+      }
+    } else if (data.type === 'car_changed') {
+      if (data.carModel && player.carModel !== data.carModel) {
+        player.carModel = data.carModel;
+        this.loadPeerModel(player);
+      }
+      if (data.paintSlot !== undefined) {
+        const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+        player.paintSlot = pSlot;
+        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        player.style.paint = newPaintHex;
+        player.car.setPaint(newPaintHex);
+      }
+      this.broadcast({ type: 'roster', players: this.roster() });
     }
   }
 
@@ -834,6 +892,30 @@ export class MultiplayerManager {
       }
     } else if (data.type === 'host_left') {
       this.startMigration();
+    } else if (data.type === 'car_changed') {
+      const p = this.players.get(data.from);
+      if (p) {
+        if (data.carModel && p.carModel !== data.carModel) {
+          p.carModel = data.carModel;
+          this.loadPeerModel(p);
+        }
+        if (data.paintSlot !== undefined) {
+          const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+          p.paintSlot = pSlot;
+          const newPaintHex = SLOT_STYLES[pSlot].paint;
+          p.style.paint = newPaintHex;
+          p.car.setPaint(newPaintHex);
+        }
+      }
+    } else if (data.type === 'paint_changed') {
+      const p = this.players.get(data.from);
+      if (p && data.paintSlot !== undefined) {
+        const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+        p.paintSlot = pSlot;
+        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        p.style.paint = newPaintHex;
+        p.car.setPaint(newPaintHex);
+      }
     }
   }
 
@@ -850,8 +932,17 @@ export class MultiplayerManager {
           existing.carModel = entry.carModel;
           this.loadPeerModel(existing);
         }
+        if (entry.paintSlot !== undefined) {
+          const pSlot = Number(entry.paintSlot) % SLOT_STYLES.length;
+          if (existing.paintSlot !== pSlot) {
+            existing.paintSlot = pSlot;
+            const newPaintHex = SLOT_STYLES[pSlot].paint;
+            existing.style.paint = newPaintHex;
+            existing.car.setPaint(newPaintHex);
+          }
+        }
       } else {
-        const player = this.addRemotePlayer(entry.id, entry.name, num(entry.slot, 1), entry.carModel || DEFAULT_CAR_ID);
+        const player = this.addRemotePlayer(entry.id, entry.name, num(entry.slot, 1), entry.carModel || DEFAULT_CAR_ID, entry.paintSlot);
         if (announce) this.callbacks.onPlayerJoined?.({ name: player.name });
       }
     }
@@ -867,6 +958,15 @@ export class MultiplayerManager {
     if (d.carModel && player.carModel !== d.carModel) {
       player.carModel = d.carModel;
       this.loadPeerModel(player);
+    }
+    if (d.paintSlot !== undefined) {
+      const pSlot = Number(d.paintSlot) % SLOT_STYLES.length;
+      if (player.paintSlot !== pSlot) {
+        player.paintSlot = pSlot;
+        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        player.style.paint = newPaintHex;
+        player.car.setPaint(newPaintHex);
+      }
     }
     player.targetX = num(d.x, player.targetX);
     player.targetWorldDistM = num(d.worldDistM, player.targetWorldDistM);
@@ -926,7 +1026,15 @@ export class MultiplayerManager {
   setLocalCarModel(carModel) {
     this.localCarModel = carModel;
     if (this.connected) {
-      this.broadcast({ type: 'car_changed', carModel });
+      this.broadcast({ type: 'car_changed', carModel, paintSlot: this.localPaintSlot });
+    }
+  }
+
+  setLocalPaintSlot(paintSlot) {
+    const slot = Number(paintSlot) % SLOT_STYLES.length;
+    this.localPaintSlot = (Number.isFinite(slot) && slot >= 0) ? slot : 0;
+    if (this.connected) {
+      this.broadcast({ type: 'paint_changed', paintSlot: this.localPaintSlot });
     }
   }
 
@@ -934,6 +1042,7 @@ export class MultiplayerManager {
     return {
       name: this.playerName,
       carModel: this.localCarModel,
+      paintSlot: this.localPaintSlot,
       x: Number(localState.playerX.toFixed(2)),
       worldDistM: Number(this.localWorldDistM.toFixed(2)),
       speedKmh: Math.round(localState.speedKmh),
@@ -993,6 +1102,7 @@ export class MultiplayerManager {
             slot: p.slot,
             name: p.name,
             carModel: p.carModel,
+            paintSlot: p.paintSlot,
             x: p.targetX,
             worldDistM: Number(p.targetWorldDistM.toFixed(2)),
             speedKmh: p.speedKmh,

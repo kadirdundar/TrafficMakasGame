@@ -121,7 +121,10 @@ class OtobanMakasGame {
       },
     });
     this.lastTandemTime = 0;
-    this.selectedPaintSlot = 0;
+    const savedPaint = Number(localStorage.getItem('otoban_selected_paint') ?? 0);
+    this.selectedPaintSlot = (Number.isFinite(savedPaint) && savedPaint >= 0 && savedPaint < SLOT_STYLES.length)
+      ? savedPaint
+      : 0;
 
     // Zero-overhead 10-second Drone Replay & Video Exporter
     this.replay = new DroneReplayManager(
@@ -147,7 +150,7 @@ class OtobanMakasGame {
         document.getElementById('garage-canvas'),
         document.getElementById('garage-stage'),
         {
-          paintHex: SLOT_STYLES[0].paint,
+          paintHex: SLOT_STYLES[this.selectedPaintSlot].paint,
           accent: AMBIENT_COLORS[this.cockpit.ambientKey]?.css,
           carType: this.selectedCar,
           onReady: (ok) => document.getElementById('garage-loader')?.classList.add(ok ? 'done' : 'failed'),
@@ -513,6 +516,7 @@ class OtobanMakasGame {
     document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
       sw.addEventListener('click', () => this.setGaragePaint(Number(sw.dataset.paint)));
     });
+    this.setGaragePaint(this.selectedPaintSlot);
 
     // Modal Settings Selectors
     document.querySelectorAll('#weather-select-group .opt-card').forEach((btn) => {
@@ -1046,8 +1050,7 @@ class OtobanMakasGame {
       this.multiplayer.setLocalCarModel(carId);
     }
     if (this.replay) {
-      const slot = this.multiplayer?.connected ? this.multiplayer.localSlot : (this.selectedPaintSlot || 0);
-      this.replay.ensurePlayerExteriorModel(carId, slot);
+      this.replay.ensurePlayerExteriorModel(carId, this.selectedPaintSlot || 0);
     }
     this.updateWizardSummaries?.();
   }
@@ -1122,13 +1125,17 @@ class OtobanMakasGame {
 
   // Garage paint preview: the four colours friends see online, one per room slot
   setGaragePaint(slot) {
-    this.selectedPaintSlot = slot % SLOT_STYLES.length;
+    this.selectedPaintSlot = (Number.isFinite(slot) && slot >= 0 && slot < SLOT_STYLES.length) ? slot : 0;
+    try {
+      localStorage.setItem('otoban_selected_paint', String(this.selectedPaintSlot));
+    } catch (_) {}
     this.showroom?.setPaint(SLOT_STYLES[this.selectedPaintSlot].paint);
     document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
-      const on = Number(sw.dataset.paint) === slot;
+      const on = Number(sw.dataset.paint) === this.selectedPaintSlot;
       sw.classList.toggle('active', on);
       if (on) this.setHudText('garage-paint-name', sw.getAttribute('aria-label'));
     });
+    this.multiplayer?.setLocalPaintSlot(this.selectedPaintSlot);
     this.replay?.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot);
   }
 
@@ -1183,12 +1190,6 @@ class OtobanMakasGame {
       quickLabel.textContent = connected ? `Oda ${roomCode} · ${playerCount}/${MAX_PLAYERS}` : `${MAX_PLAYERS} Kişilik`;
     }
     document.getElementById('tab-online-dot')?.classList.toggle('on', Boolean(connected));
-    // In a room the garage shows the car in the colour the others see it in
-    const slot = connected ? this.multiplayer.localSlot : null;
-    if (slot !== this.syncedPaintSlot) {
-      this.syncedPaintSlot = slot;
-      if (slot !== null) this.setGaragePaint(slot);
-    }
   }
 
   toggleSound() {
@@ -2182,7 +2183,7 @@ class OtobanMakasGame {
       highBeam: this.keys.highBeam,
       braking: brake > 0,
       carId: this.selectedCar,
-      paintSlot: this.multiplayer.connected ? this.multiplayer.localSlot : (this.selectedPaintSlot || 0),
+      paintSlot: this.selectedPaintSlot || 0,
       score: this.score,
       combo: this.combo,
     });
