@@ -127,9 +127,19 @@ async function simplifyDoc(doc, opts) {
     console.log(`  Sadeleştirme: ${before} → ${countTris(doc)} üçgen`);
     return;
   }
+  const excludedMeshes = new Set();
+  if (opts.excludeNodes) {
+    const nodeNames = new Set(opts.excludeNodes);
+    for (const node of doc.getRoot().listNodes()) {
+      if (nodeNames.has(node.getName()) && node.getMesh()) {
+        excludedMeshes.add(node.getMesh());
+      }
+    }
+  }
   const prims = doc
     .getRoot()
     .listMeshes()
+    .filter((m) => !excludedMeshes.has(m))
     .flatMap((m) => m.listPrimitives())
     .filter((p) => p.getIndices() && p.getMode() === 4)
     .map((p) => ({
@@ -138,6 +148,9 @@ async function simplifyDoc(doc, opts) {
       pos: new Float32Array(p.getAttribute('POSITION').getArray()),
       nrm: p.getAttribute('NORMAL') ? new Float32Array(p.getAttribute('NORMAL').getArray()) : null,
     }));
+  const primsBefore = prims.reduce((sum, { idx }) => sum + idx.length / 3, 0);
+  const excludedTris = before - primsBefore;
+  const targetForPrims = Math.max(0, opts.targetTris - excludedTris);
   const flags = ['ErrorAbsolute', 'Permissive', 'Prune'];
   const run = (err, apply) => {
     let total = 0;
@@ -153,19 +166,19 @@ async function simplifyDoc(doc, opts) {
   const maxError = opts.maxError ?? 0.01;
   let lo = 0.0001;
   let hi = maxError;
-  if (run(hi, false) <= opts.targetTris) {
+  if (run(hi, false) <= targetForPrims) {
     for (let i = 0; i < 10; i++) {
       const mid = Math.sqrt(lo * hi);
-      if (run(mid, false) > opts.targetTris) lo = mid;
+      if (run(mid, false) > targetForPrims) lo = mid;
       else hi = mid;
     }
   }
-  const after = run(hi, true);
+  const after = run(hi, true) + excludedTris;
   for (const { p } of prims) {
     if (p.getIndices().getCount() === 0) p.dispose();
     else compactPrimitive(p);
   }
-  console.log(`  Sadeleştirme: ${before} → ${after} üçgen (hata ${(hi * 1000).toFixed(1)} mm)` +
+  console.log(`  Sadeleştirme: ${before} → ${after} üçgen (hata ${(hi * 1000).toFixed(1)} mm${excludedTris ? `, ${excludedTris} üçgen korundu` : ''})` +
     (after > opts.targetTris ? ` — hedefe inmedi: maxError'ı büyüt ya da görünmeyen düğümleri dropNodes ile at` : ''));
 }
 
@@ -444,9 +457,90 @@ function moveWheelTrim(doc, nodeByName, wheelMesh, st, trim) {
     const arr = piece.getAttribute('POSITION').getArray().slice();
     for (let i = 0; i < arr.length; i += 3) for (let k = 0; k < 3; k++) arr[i + k] -= st.pivot[k];
     piece.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(arr));
+
+    const shiftUV = trim.shiftUV?.[src];
+    if (shiftUV) {
+      const uvAcc = piece.getAttribute('TEXCOORD_0');
+      if (uvAcc) {
+        const uvs = uvAcc.getArray().slice();
+        for (let i = 0; i < uvs.length; i += 2) {
+          uvs[i] += shiftUV[0] || 0;
+          uvs[i + 1] += shiftUV[1] || 0;
+        }
+        piece.setAttribute('TEXCOORD_0', doc.createAccessor().setType('VEC2').setArray(uvs));
+      }
+    }
+
     wheelMesh.addPrimitive(piece);
     console.log(`  Direksiyona taşındı: ${piece.getIndices().getCount() / 3} üçgen (${src})`);
   }
+}
+
+function addSteeringBezel(doc, root, wheelMesh, st) {
+  const b = st.bezel;
+  if (!b) return;
+  const A = new THREE.Vector3(...st.axis).normalize();
+  const up = new THREE.Vector3(0, 1, 0).addScaledVector(A, -A.y).normalize();
+  const right = new THREE.Vector3().crossVectors(up, A).normalize();
+
+  const C = new THREE.Vector3(
+    b.center[0] - st.pivot[0],
+    b.center[1] - st.pivot[1],
+    b.center[2] - st.pivot[2]
+  );
+  if (b.offset) C.addScaledVector(A, b.offset);
+
+  const radSegs = b.radialSegments || 64;
+  const tubSegs = b.tubularSegments || 12;
+  const radius = b.radius || 0.0385;
+  const tubeRadius = b.tubeRadius || 0.0012;
+
+  const pos = [];
+  const nrm = [];
+  const idx = [];
+
+  for (let i = 0; i <= radSegs; i++) {
+    const phi = (i / radSegs) * Math.PI * 2;
+    const cPt = C.clone()
+      .addScaledVector(right, Math.cos(phi) * radius)
+      .addScaledVector(up, Math.sin(phi) * radius);
+    const radDir = cPt.clone().sub(C).addScaledVector(A, -cPt.clone().sub(C).dot(A)).normalize();
+
+    for (let j = 0; j <= tubSegs; j++) {
+      const psi = (j / tubSegs) * Math.PI * 2;
+      const pt = cPt.clone()
+        .addScaledVector(radDir, Math.cos(psi) * tubeRadius)
+        .addScaledVector(A, Math.sin(psi) * tubeRadius);
+      const n = pt.clone().sub(cPt).normalize();
+
+      pos.push(pt.x, pt.y, pt.z);
+      nrm.push(n.x, n.y, n.z);
+    }
+  }
+
+  for (let i = 0; i < radSegs; i++) {
+    for (let j = 0; j < tubSegs; j++) {
+      const a = i * (tubSegs + 1) + j;
+      const b = (i + 1) * (tubSegs + 1) + j;
+      const c = (i + 1) * (tubSegs + 1) + (j + 1);
+      const d = i * (tubSegs + 1) + (j + 1);
+      idx.push(a, b, d);
+      idx.push(b, c, d);
+    }
+  }
+
+  const matName = b.material || 'chrome';
+  const mat = root.listMaterials().find((m) => m.getName() === matName) ||
+    doc.createMaterial(matName).setMetallicFactor(0.9).setRoughnessFactor(0.18).setBaseColorFactor([0.85, 0.85, 0.88, 1]);
+
+  const prim = doc.createPrimitive()
+    .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(new Float32Array(pos)))
+    .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(new Float32Array(nrm)))
+    .setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(idx)))
+    .setMaterial(mat);
+
+  wheelMesh.addPrimitive(prim);
+  console.log(`  Direksiyon halkası eklendi: ${idx.length / 3} üçgen (${matName})`);
 }
 
 async function buildCockpit(matrices) {
@@ -494,6 +588,7 @@ async function buildCockpit(matrices) {
     root.listNodes().find((n) => n.getName() === name) ||
     (columnNode && (name === 'steering_column' || name === ck.steering?.node) ? columnNode : null);
   if (wheelMesh && ck.wheelTrim) moveWheelTrim(doc, nodeByName, wheelMesh, ck.steering, ck.wheelTrim);
+  if (wheelMesh && ck.steering?.bezel) addSteeringBezel(doc, root, wheelMesh, ck.steering);
 
   // Mirrors: the model's own glass triangles. Picked by UV island (u taken modulo 1) and/or by
   // the triangle centre's x/y/z ranges and facing (for untextured glass, or both mirrors in one node)
