@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-D5pwaBTI.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CxFJc2MW.css">
+  <script type="module" crossorigin src="./assets/index-hWUhiaKN.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-OcGgupdQ.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -143,8 +143,14 @@
 
   <!-- Mobile & Touch Controls Overlay -->
   <div id="touch-controls" class="touch-controls">
-    <!-- Left Side: kept free for the thumb steering pad; shows ◀ ▶ only in button-steering mode -->
+    <!-- Left Side: Selektör on upper-mid left (safe from steering swipes) + Button Steering Mode -->
     <div class="touch-left">
+      <div class="touch-left-aux">
+        <button id="touch-selektor" class="aux-action-btn selektor-btn" type="button" aria-label="Selektör (Farları Yak / Flaş)">
+          <span class="aux-icon">≡O</span>
+          <span>SELEKTÖR</span>
+        </button>
+      </div>
       <!-- Button Steering Mode (Hidden unless selected in settings; Wheel mode uses the real Audi steering wheel!) -->
       <div id="button-steer-zone" class="button-steer-zone hidden">
         <button id="touch-left-btn" class="steer-btn" type="button" aria-label="Sola Dön">◀</button>
@@ -152,14 +158,10 @@
       </div>
     </div>
 
-    <!-- Right Side: Selektör & Horn next to the Brake & Gas Pedals -->
+    <!-- Right Side: Horn next to the Brake & Gas Pedals -->
     <div class="touch-right">
       <div class="touch-aux-row">
-        <button id="touch-selektor" class="aux-action-btn selektor-btn" type="button">
-          <span class="aux-icon">≡O</span>
-          <span>SELEKTÖR</span>
-        </button>
-        <button id="touch-horn" class="aux-action-btn horn-btn" type="button">
+        <button id="touch-horn" class="aux-action-btn horn-btn" type="button" aria-label="Korna">
           <span class="aux-icon">📯</span>
           <span>KORNA</span>
         </button>
