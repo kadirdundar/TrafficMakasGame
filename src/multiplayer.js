@@ -1053,10 +1053,12 @@ export class MultiplayerManager {
       const curveX = world ? world.getCurveOffsetAtZ(relZ) : 0;
       const curveYaw = world ? world.getCurveYawAtZ(relZ) : 0;
       const group = p.car.group;
-      group.visible = relZ > -290 && relZ < 65;
-      group.position.set(p.x + curveX, 0, relZ);
-      group.rotation.y = -p.headingAngle + curveYaw;
-      group.rotation.z = p.bodyRoll;
+      if (world !== null) {
+        group.visible = relZ > -290 && relZ < 65;
+        group.position.set(p.x + curveX, 0, relZ);
+        group.rotation.y = -p.headingAngle + curveYaw;
+        group.rotation.z = p.bodyRoll;
+      }
 
       // Brake lights & High-Beam Selektör visuals
       p.car.setLights({ night, braking: p.braking, highBeam: p.highBeam });

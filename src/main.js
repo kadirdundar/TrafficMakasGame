@@ -7,6 +7,7 @@ import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './mu
 import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
 import { CAR_LIST, CARS, getCar } from './cars/index.js';
+import { DroneReplayManager } from './replay.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -120,6 +121,22 @@ class OtobanMakasGame {
       },
     });
     this.lastTandemTime = 0;
+    this.selectedPaintSlot = 0;
+
+    // Zero-overhead 10-second Drone Replay & Video Exporter
+    this.replay = new DroneReplayManager(
+      this.scene,
+      this.renderer,
+      this.world,
+      this.traffic,
+      this.multiplayer,
+      this.sound,
+      {
+        onClipAvailable: () => this.syncDroneReplayButton(),
+        onFrameUpdate: (info) => this.updateDroneReplayHUD(info),
+        onVideoStatus: (status) => this.syncDroneVideoStatus(status),
+      }
+    );
 
     // Start-menu garage with the rotatable car. Optional: the game runs without it if a second
     // WebGL context is not available.
@@ -274,6 +291,22 @@ class OtobanMakasGame {
       }
       if (e.repeat) return;
       const code = e.code;
+
+      if (this.replay?.active) {
+        if (code === 'Escape') {
+          this.closeDroneReplay();
+        } else if (code === 'Space') {
+          e.preventDefault();
+          const playing = this.replay.togglePlay();
+          this.setHudText('drone-play-icon', playing ? '⏸' : '▶');
+          this.setHudText('drone-play-label', playing ? 'Duraklat' : 'Oynat');
+        } else if (code === 'KeyC') {
+          const angle = this.replay.cycleAngle();
+          this.setHudText('drone-angle-label', angle.label);
+        }
+        return;
+      }
+
       if (code === 'KeyW' || code === 'ArrowUp') this.keys.gas = true;
       if (code === 'KeyS' || code === 'ArrowDown') this.keys.brake = true;
       if (code === 'KeyA' || code === 'ArrowLeft') this.keys.left = true;
@@ -417,6 +450,39 @@ class OtobanMakasGame {
     document.getElementById('btn-reset-car')?.addEventListener('click', () => {
       this.resetRun();
       this.setMenuOpen(false);
+    });
+
+    // Drone Replay Modal & Controls (triggered from the Pause Menu)
+    document.getElementById('btn-drone-replay')?.addEventListener('click', () => {
+      this.openDroneReplay();
+    });
+    document.getElementById('btn-drone-close')?.addEventListener('click', () => {
+      this.closeDroneReplay();
+    });
+    document.getElementById('btn-drone-playpause')?.addEventListener('click', () => {
+      if (!this.replay?.active) return;
+      const playing = this.replay.togglePlay();
+      this.setHudText('drone-play-icon', playing ? '⏸' : '▶');
+      this.setHudText('drone-play-label', playing ? 'Duraklat' : 'Oynat');
+    });
+    document.getElementById('btn-drone-angle')?.addEventListener('click', () => {
+      if (!this.replay?.active) return;
+      const angle = this.replay.cycleAngle();
+      this.setHudText('drone-angle-label', angle.label);
+    });
+    document.getElementById('btn-drone-download')?.addEventListener('click', () => {
+      if (!this.replay?.active) return;
+      if (this.replay.isRecordingVideo) {
+        this.replay.stopVideoRecording();
+      } else {
+        this.replay.startVideoRecording();
+      }
+    });
+    const scrubber = document.getElementById('drone-scrubber');
+    scrubber?.addEventListener('input', (e) => {
+      if (!this.replay?.active) return;
+      const ratio = Number(e.target.value) / 1000;
+      this.replay.seekToRatio(ratio);
     });
 
     // Step-by-step wizard navigation (Step 1 -> Step 2 -> Step 3)
@@ -1027,6 +1093,10 @@ class OtobanMakasGame {
     if (this.multiplayer) {
       this.multiplayer.setLocalCarModel(carId);
     }
+    if (this.replay) {
+      const slot = this.multiplayer?.connected ? this.multiplayer.localSlot : (this.selectedPaintSlot || 0);
+      this.replay.ensurePlayerExteriorModel(carId, slot);
+    }
     this.updateWizardSummaries?.();
   }
 
@@ -1100,12 +1170,14 @@ class OtobanMakasGame {
 
   // Garage paint preview: the four colours friends see online, one per room slot
   setGaragePaint(slot) {
-    this.showroom?.setPaint(SLOT_STYLES[slot % SLOT_STYLES.length].paint);
+    this.selectedPaintSlot = slot % SLOT_STYLES.length;
+    this.showroom?.setPaint(SLOT_STYLES[this.selectedPaintSlot].paint);
     document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
       const on = Number(sw.dataset.paint) === slot;
       sw.classList.toggle('active', on);
       if (on) this.setHudText('garage-paint-name', sw.getAttribute('aria-label'));
     });
+    this.replay?.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot);
   }
 
   syncMultiplayerUI({ connected, connecting, role, roomCode, playerCount, message }) {
@@ -1213,6 +1285,9 @@ class OtobanMakasGame {
 
   // The start / pause menu is the A8 garage: the game is paused exactly while it is open
   setMenuOpen(open, tab) {
+    if (!open && this.replay?.active) {
+      this.closeDroneReplay({ reopenMenu: false });
+    }
     this.paused = open;
     document.getElementById('menu-overlay')?.classList.toggle('hidden', !open);
     if (tab) {
@@ -1226,8 +1301,112 @@ class OtobanMakasGame {
     if (open) {
       this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
       this.updateWizardSummaries?.();
+      this.syncDroneReplayButton();
     }
-    this.showroom?.setActive(open && !this.portraitPhone?.matches);
+    this.showroom?.setActive(open && !this.portraitPhone?.matches && !this.replay?.active);
+  }
+
+  syncDroneReplayButton() {
+    const btn = document.getElementById('btn-drone-replay');
+    if (!btn || !this.replay) return;
+    const hasClip = this.hasStartedDriving && this.replay.hasPlayableClip();
+    btn.classList.toggle('hidden', !hasClip);
+    if (hasClip) {
+      const meta = this.replay.getActiveClipMeta();
+      if (meta) {
+        this.setHudText('drone-btn-title', 'DRONE VİDEOSUNU İZLE (10 SN)');
+        this.setHudText('drone-btn-sub', `${meta.title} • ${meta.subtitle}`);
+      }
+    }
+  }
+
+  openDroneReplay() {
+    if (!this.replay || !this.paused) return;
+    const started = this.replay.startReplay(this.cockpit);
+    if (!started) {
+      this.showMakasNotification('⚠️ HENÜZ KAYDEDİLMİŞ BİR MAKAS YOK', 0, 'normal');
+      return;
+    }
+
+    // Hide menu & HUD overlays so the 3D Drone camera has a clean fullscreen view
+    document.getElementById('menu-overlay')?.classList.add('hidden');
+    document.getElementById('hud-top')?.classList.add('hidden');
+    document.getElementById('hud-mini-cluster')?.classList.add('hidden');
+    document.getElementById('desktop-hints')?.classList.add('hidden');
+    document.getElementById('touch-controls')?.classList.add('hidden');
+    document.getElementById('drone-replay-overlay')?.classList.remove('hidden');
+    this.showroom?.setActive(false);
+
+    const clip = this.replay.currentClip;
+    if (clip) {
+      this.setHudText('drone-clip-title', clip.title);
+      this.setHudText('drone-clip-subtitle', clip.subtitle);
+    }
+    this.setHudText('drone-play-icon', '⏸');
+    this.setHudText('drone-play-label', 'Duraklat');
+  }
+
+  closeDroneReplay({ reopenMenu = true } = {}) {
+    if (!this.replay?.active) return;
+    this.replay.stopReplay();
+    this.updateCameraProjection();
+
+    document.getElementById('drone-replay-overlay')?.classList.add('hidden');
+    document.getElementById('hud-top')?.classList.remove('hidden');
+    document.getElementById('hud-mini-cluster')?.classList.remove('hidden');
+    document.getElementById('desktop-hints')?.classList.remove('hidden');
+    const activeVis = document.querySelector('#touch-vis-group .seg-btn.active')?.getAttribute('data-touchvis');
+    if (activeVis !== 'hide') {
+      document.getElementById('touch-controls')?.classList.remove('hidden');
+    }
+
+    if (reopenMenu && this.paused) {
+      document.getElementById('menu-overlay')?.classList.remove('hidden');
+      this.showroom?.setActive(!this.portraitPhone?.matches);
+      this.syncDroneReplayButton();
+    }
+  }
+
+  updateDroneReplayHUD(info) {
+    this.setHudText('drone-stat-speed', `${info.speedKmh} KM/S`);
+    this.setHudText('drone-stat-combo', `${info.combo.toFixed(1)}x`);
+    this.setHudText('drone-time-cur', `${info.playTime.toFixed(1).padStart(4, '0')}s`);
+    this.setHudText('drone-time-dur', `${info.duration.toFixed(1).padStart(4, '0')}s`);
+
+    const scrubber = document.getElementById('drone-scrubber');
+    if (scrubber && document.activeElement !== scrubber) {
+      scrubber.value = String(Math.round((info.playTime / Math.max(0.1, info.duration)) * 1000));
+    }
+
+    const banner = document.getElementById('drone-event-banner');
+    if (banner) {
+      if (info.eventText) {
+        banner.textContent = info.eventText;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+  }
+
+  syncDroneVideoStatus({ recording, completed, error }) {
+    const btn = document.getElementById('btn-drone-download');
+    const dot = document.getElementById('drone-rec-dot');
+    if (btn) btn.classList.toggle('recording', Boolean(recording));
+    if (dot) dot.classList.toggle('recording', Boolean(recording));
+
+    if (recording) {
+      this.setHudText('drone-download-icon', '⏹');
+      this.setHudText('drone-download-label', 'Kaydediliyor… (Bitir & İndir)');
+      this.setHudText('drone-rec-label', '🔴 VİDEO KAYDEDİLİYOR (10 SN)…');
+    } else {
+      this.setHudText('drone-download-icon', '⬇️');
+      this.setHudText('drone-download-label', 'Videoyu İndir (10 sn)');
+      this.setHudText(
+        'drone-rec-label',
+        completed ? '✅ VİDEO İNDİRİLDİ • DRONE REPLAY' : error ? `⚠️ ${error}` : 'DRONE REPLAY • 1080P 60FPS'
+      );
+    }
   }
 
   // Once driving, the menu's main button resumes the drive and the road can be reset
@@ -1528,6 +1707,13 @@ class OtobanMakasGame {
     this.cockpit.triggerMakasCockpitPulse();
     this.sound.playMakasWhoosh(this.combo, style === 'gold', speedKmh, true);
     this.showMakasNotification(label, totalPts, style);
+    this.replay?.notifyHighlightEvent({
+      kind,
+      lateralGap,
+      speedKmh,
+      isRazorClose: style === 'gold',
+      combo: this.combo,
+    });
   }
 
   handleMakas(data) {
@@ -1570,6 +1756,13 @@ class OtobanMakasGame {
     this.cockpit.triggerMakasCockpitPulse();
     this.sound.playMakasWhoosh(this.combo, isDoubleMakas, speedKmh, isRazorClose);
     this.showMakasNotification(label, totalPts, style);
+    this.replay?.notifyHighlightEvent({
+      lateralGap,
+      speedKmh,
+      isRazorClose,
+      isDoubleMakas,
+      combo: this.combo,
+    });
   }
 
   handleCollision(message = '💥 SÜRTME / KAZA! KOMBO SIFIRLANDI', headOn = false) {
@@ -1966,6 +2159,12 @@ class OtobanMakasGame {
           tandemPts,
           'gold'
         );
+        this.replay?.notifyHighlightEvent({
+          kind: 'tandem',
+          peerName: peer.name,
+          speedKmh: this.speedKmh,
+          combo: this.combo,
+        });
       }
     }
 
@@ -2008,6 +2207,24 @@ class OtobanMakasGame {
 
     this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, this.lateralG);
     this.updateHUD();
+
+    // Zero-overhead 10s ring buffer recording (writes flat typed arrays only, ~0.01ms)
+    this.replay?.recordFrame(dt, {
+      playerX: this.playerX,
+      speedKmh: this.speedKmh,
+      rpm: this.rpm,
+      gear: this.gear,
+      throttle,
+      headingAngle: this.headingAngle,
+      bodyRoll: this.bodyRoll,
+      bodyPitch: this.bodyPitch,
+      highBeam: this.keys.highBeam,
+      braking: brake > 0,
+      carId: this.selectedCar,
+      paintSlot: this.multiplayer.connected ? this.multiplayer.localSlot : (this.selectedPaintSlot || 0),
+      score: this.score,
+      combo: this.combo,
+    });
   }
 
   // One row per friend in the room (name in their slot colour, gap, speed/combo/score).
@@ -2209,6 +2426,26 @@ class OtobanMakasGame {
       }
     } else if (!this.paused) {
       this.updatePhysics(dt);
+    } else if (this.replay?.active) {
+      // While watching the 10-second Drone Replay in the pause menu:
+      // keep multiplayer heartbeats alive in the background, and render from the aerial drone camera!
+      this.multiplayer.update(
+        dt,
+        {
+          playerX: this.playerX,
+          speedKmh: 0,
+          headingAngle: 0,
+          bodyRoll: 0,
+          highBeam: false,
+          braking: false,
+          horn: false,
+          score: this.score,
+          combo: this.combo,
+        },
+        null
+      );
+      this.replay.updateAndRender(dt);
+      return;
     } else {
       // Even when paused on the start menu, keep multiplayer synced and render an idle preview!
       this.multiplayer.update(
