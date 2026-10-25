@@ -78,6 +78,7 @@ export class SoundEngine {
     this.setupEngine();
     this.setupRoadNoise();
     this.setupTunnelAcoustics();
+    this.setupTireSound();
 
     // Setup Horn Oscillators (Dual-tone F4 + A4 automotive horn)
     this.hornGain = this.ctx.createGain();
@@ -217,10 +218,88 @@ export class SoundEngine {
 
     this.rainGain = silent();
     band('bandpass', 1100, 0.7, this.rainGain);
+  }
 
-    // Tire cornering load / asphalt scrub
-    this.tireGain = silent();
-    this.tireFilter = band('bandpass', 920, 4.5, this.tireGain);
+  // Gerçekçi lastik sürtünme & yol tutuş sınır sesi sentezleyicisi (stick-slip rubber friction & asphalt grit)
+  setupTireSound() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+
+    // Ana lastik sürtünme kazancı (Kabin içi yalıtımlı, kısık ve gerçekçi lastik sesi)
+    this.tireGain = ctx.createGain();
+    this.tireGain.gain.value = 0.0;
+
+    // 1. Lastik Diş Bloğu Titreşim / Kayma Katmanı (Stick-Slip Friction Resonators)
+    // Üçgen + testere dişi osilatör çifti, hafif detune ile kauçuk esnemesi ve yol tutuş sınırını simüle eder
+    this.tireOsc1 = ctx.createOscillator();
+    this.tireOsc2 = ctx.createOscillator();
+    this.tireOsc1.type = 'triangle';
+    this.tireOsc2.type = 'sawtooth';
+    this.tireOsc1.frequency.value = 720;
+    this.tireOsc2.frequency.value = 732;
+
+    // Asfalt pürüzlülüğü mikro-titreşimi (LFO) - kauçuk blokların asfalta takılıp kurtulma salınımı
+    this.tireLfo = ctx.createOscillator();
+    this.tireLfo.type = 'sine';
+    this.tireLfo.frequency.value = 26; // 26 Hz mikro-titreşim
+    this.tireLfoGain = ctx.createGain();
+    this.tireLfoGain.gain.value = 14; // ±14 Hz hafif frekans salınımı
+    this.tireLfo.connect(this.tireLfoGain);
+    this.tireLfoGain.connect(this.tireOsc1.frequency);
+    this.tireLfoGain.connect(this.tireOsc2.frequency);
+
+    // Rezonans bant filtresi (Kauçuk sürtünme gövdesi)
+    this.tireSquealFilter = ctx.createBiquadFilter();
+    this.tireSquealFilter.type = 'bandpass';
+    this.tireSquealFilter.frequency.value = 740;
+    this.tireSquealFilter.Q.value = 3.6;
+
+    // Kabin içi akustik yalıtım (Sert dijital tizleri sönümleyip tok ve kısık tutar)
+    this.tireCabinDamp = ctx.createBiquadFilter();
+    this.tireCabinDamp.type = 'lowpass';
+    this.tireCabinDamp.frequency.value = 1180;
+    this.tireCabinDamp.Q.value = 0.7;
+
+    const squealGain = ctx.createGain();
+    squealGain.gain.value = 0.42;
+
+    this.tireOsc1.connect(this.tireSquealFilter);
+    this.tireOsc2.connect(this.tireSquealFilter);
+    this.tireSquealFilter.connect(this.tireCabinDamp);
+    this.tireCabinDamp.connect(squealGain);
+    squealGain.connect(this.tireGain);
+
+    // 2. Asfalt Aşınma ve Taş Pürüzlülüğü Katmanı (Rüzgar değil, saf granüler asfalt sürtünmesi)
+    // 480-720 Hz dar bant + 820 Hz sert üst kesim filtresi ile hava/rüzgar tıslaması tamamen engellenir
+    this.tireGritFilter = ctx.createBiquadFilter();
+    this.tireGritFilter.type = 'bandpass';
+    this.tireGritFilter.frequency.value = 520;
+    this.tireGritFilter.Q.value = 2.4;
+
+    this.tireGritLowcut = ctx.createBiquadFilter();
+    this.tireGritLowcut.type = 'lowpass';
+    this.tireGritLowcut.frequency.value = 820;
+    this.tireGritLowcut.Q.value = 1.0;
+
+    const gritGain = ctx.createGain();
+    gritGain.gain.value = 0.28;
+
+    if (this.noise) {
+      this.noise.connect(this.tireGritFilter);
+      this.tireGritFilter.connect(this.tireGritLowcut);
+      this.tireGritLowcut.connect(gritGain);
+      gritGain.connect(this.tireGain);
+    }
+
+    // Ana kompresöre ve tünel yankısına bağla
+    this.tireGain.connect(this.master);
+    if (this.tunnelDelay) {
+      this.tireGain.connect(this.tunnelDelay);
+    }
+
+    this.tireOsc1.start();
+    this.tireOsc2.start();
+    this.tireLfo.start();
   }
 
   setRainAmbience(enabled) {
@@ -333,13 +412,30 @@ export class SoundEngine {
     this.windFilter.frequency.setTargetAtTime(600 + speedNorm * 800, now, 0.2);
     this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.5) * 0.0045, now, 0.2);
 
-    // Tire cornering load / scrub sound when weaving hard at speed
-    if (this.tireGain && this.tireFilter) {
+    // Kısık lastik sesi: sert sağ-sol slalom ve viraj yükünde kademeli devreye girer
+    if (this.tireGain) {
       const absG = Math.abs(lateralG);
-      const speedFactor = Math.min(1, speedKmh / 120);
-      const scrubVol = absG > 0.42 ? Math.min(0.055, (absG - 0.42) * 0.075 * speedFactor) : 0.0;
-      this.tireFilter.frequency.setTargetAtTime(780 + absG * 340, now, 0.05);
-      this.tireGain.gain.setTargetAtTime(scrubVol, now, 0.05);
+      // Düşük hızlarda (< 25 km/s) lastik sürtünmesi duyulmaz
+      const speedFactor = clamp01((speedKmh - 25) / 55);
+      // G kuvveti 0.35G üzerine çıktığında yumuşakça başlar, ~0.85G üzerinde maksimuma ulaşır
+      const scrubExcess = Math.max(0, absG - 0.35);
+      // Kullanıcının istediği gibi "kısık" bir seviyede tutulur (maks ~0.034)
+      const scrubVol = (paused || this.muted) ? 0.0 : Math.min(0.034, scrubExcess * 0.065 * speedFactor);
+
+      // G kuvveti ve hıza bağlı doğal kauçuk sürtünme ton kayması (660 Hz - 860 Hz)
+      const basePitch = 660 + Math.min(1.1, absG) * 145 + speedFactor * 45;
+
+      if (this.tireOsc1 && this.tireOsc2) {
+        this.tireOsc1.frequency.setTargetAtTime(basePitch, now, 0.035);
+        this.tireOsc2.frequency.setTargetAtTime(basePitch * 1.018, now, 0.035);
+      }
+      if (this.tireSquealFilter) {
+        this.tireSquealFilter.frequency.setTargetAtTime(basePitch * 1.03, now, 0.035);
+      }
+      if (this.tireGritFilter) {
+        this.tireGritFilter.frequency.setTargetAtTime(480 + absG * 200, now, 0.04);
+      }
+      this.tireGain.gain.setTargetAtTime(scrubVol, now, 0.04);
     }
   }
 
@@ -372,6 +468,37 @@ export class SoundEngine {
     gain.connect(this.master);
     osc.start(now);
     osc.stop(now + 0.035);
+  }
+
+  // Ani yön değiştirme veya apex viraj sınırında tatlı, kısık bir lastik ötüşü (chirp)
+  playTireChirp(speedKmh = 140) {
+    if (!this.ctx || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'triangle';
+    const baseFreq = 720 + Math.min(160, Math.max(0, (speedKmh - 80) * 1.1));
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.08, now + 0.04);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.94, now + 0.12);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(baseFreq * 1.02, now);
+    filter.Q.value = 3.8;
+
+    // Kısık ses seviyesi (rahatsız etmeyen, tok kauçuk sürtünme hissi)
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.026, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+
+    osc.start(now);
+    osc.stop(now + 0.13);
   }
 
   playMakasWhoosh(comboLevel = 1, isDouble = false, speedKmh = 140, isRazor = false) {

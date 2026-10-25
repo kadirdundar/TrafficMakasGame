@@ -1597,7 +1597,7 @@ class OtobanMakasGame {
           this.combo = Math.min(10.0, this.combo + 0.5);
           this.comboTimer = 1.0;
           this.showMakasNotification(`🏎️ MÜKEMMEL APEX (+${pts})`, pts, 'combo');
-          this.sound.playMakasWhoosh(this.combo, false, this.speedKmh, false);
+          this.sound.playTireChirp(this.speedKmh);
         }
       }
     }
