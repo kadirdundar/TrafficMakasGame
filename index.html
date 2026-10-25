@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-BNOd5gNL.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-C9BAZNUZ.css">
+  <script type="module" crossorigin src="./assets/index-fDP3_Wyr.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DyxPcSNj.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -476,6 +476,13 @@
           </div>
 
           <div class="secondary-actions">
+            <button id="btn-drone-replay" type="button" class="secondary-btn drone-replay-btn hidden">
+              <span class="drone-btn-icon">🚁</span>
+              <span class="drone-btn-copy">
+                <strong id="drone-btn-title">DRONE VİDEOSUNU İZLE (10 SN)</strong>
+                <small id="drone-btn-sub">SON MAKAS KESİTİ HAZIR</small>
+              </span>
+            </button>
             <button id="btn-quick-resume" type="button" class="secondary-btn resume-quick-btn hidden">
               ▶ Sürüşe Hemen Dön
             </button>
@@ -494,6 +501,71 @@
         </footer>
       </aside>
     </div>
+  </div>
+
+  <!-- Drone Replay HUD Overlay (Shown only when watching the 10s aerial highlight while paused) -->
+  <div id="drone-replay-overlay" class="drone-replay-overlay hidden" role="dialog" aria-label="Drone Kamerası Tekrar İzleme">
+    <div class="drone-hud-corners" aria-hidden="true">
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <span class="corner bl"></span>
+      <span class="corner br"></span>
+    </div>
+
+    <header class="drone-top-bar">
+      <div class="drone-rec-badge">
+        <span class="rec-dot" id="drone-rec-dot"></span>
+        <span id="drone-rec-label">DRONE REPLAY • 1080P 60FPS</span>
+      </div>
+
+      <div class="drone-clip-info">
+        <strong id="drone-clip-title">🔥 KUSURSUZ MAKAS KESİTİ</strong>
+        <small id="drone-clip-subtitle">OTOBAN HAVA KAMERASI</small>
+      </div>
+
+      <div class="drone-telemetry">
+        <div class="drone-stat">
+          <small>HIZ</small>
+          <strong id="drone-stat-speed">180 KM/S</strong>
+        </div>
+        <div class="drone-stat">
+          <small>KOMBO</small>
+          <strong id="drone-stat-combo">4.5x</strong>
+        </div>
+      </div>
+    </header>
+
+    <div id="drone-event-banner" class="drone-event-banner hidden"></div>
+
+    <footer class="drone-bottom-bar">
+      <div class="drone-timeline-row">
+        <span id="drone-time-cur" class="drone-time">00.0s</span>
+        <input id="drone-scrubber" type="range" min="0" max="1000" value="0" class="drone-scrubber" aria-label="Tekrar Zaman Çubuğu" />
+        <span id="drone-time-dur" class="drone-time">10.0s</span>
+      </div>
+
+      <div class="drone-controls-row">
+        <div class="drone-left-btns">
+          <button id="btn-drone-playpause" type="button" class="drone-ctrl-btn" title="Oynat / Duraklat (Boşluk)">
+            <span id="drone-play-icon">⏸</span>
+            <span id="drone-play-label">Duraklat</span>
+          </button>
+          <button id="btn-drone-angle" type="button" class="drone-ctrl-btn" title="Drone Kamera Açısını Değiştir (C)">
+            <span id="drone-angle-label">🚁 FPV Takip Drone</span>
+          </button>
+        </div>
+
+        <div class="drone-right-btns">
+          <button id="btn-drone-download" type="button" class="drone-ctrl-btn download-btn" title="Bu 10 Saniyelik Drone Videosunu Cihaza İndir">
+            <span id="drone-download-icon">⬇️</span>
+            <span id="drone-download-label">Videoyu İndir (10 sn)</span>
+          </button>
+          <button id="btn-drone-close" type="button" class="drone-ctrl-btn close-btn" title="Menüye Dön (ESC)">
+            <span>✖ Menüye Dön</span>
+          </button>
+        </div>
+      </div>
+    </footer>
   </div>
 
   <!-- Shown on phones held upright: the game is played in landscape -->
