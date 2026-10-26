@@ -42,4 +42,7 @@ Değerleri asla tahmin etme; ölç. Her adımdan sonra ekran görüntüsüyle do
    (`&w=420&h=740`). Direksiyon dönüşünde tüm direksiyon parçaları dönmeli; aynalar canlı,
    gösterge canlı olmalı. Test: `steering_wheel` düğümünü gizleyip render al; direksiyon
    bölgesinde sadece kolon kılıfı kalmalı. Sonra oyunda garajdan aracı seçip sürüşe başla.
-8. **Bitiş:** `draft: true` satırını sil, `npm run build`. Commit/push için kullanıcıya sor.
+8. **Fiyat ve performans (yeni sürüm):** `car.js` → `price` ve `performance` alanlarını gerçek
+   araca göre doldur; diğer araçlarla kıyasla (README → `performance`). Garajda "Yeni Sürüm"
+   açıkken son hız ve 0-100 değerlerini kontrol et.
+9. **Bitiş:** `draft: true` satırını sil, `npm run build`. Commit/push için kullanıcıya sor.

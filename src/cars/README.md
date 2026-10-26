@@ -44,9 +44,30 @@ Claude Code içinde `/arac-ekle` komutu bu adımları sırayla yürütür.
 | `label` | Garaj düğmesindeki yazı. |
 | `make`, `model`, `variant` | Garajdaki başlık (ör. `BMW` / `M4 CS` / `G82 · VR46 Edition`). |
 | `aliases` | Eski veya gevşek adlar (ör. `['bmw']`). Eski sürümden gelen kayıtları bu araca yönlendirir. |
+| `price` | Yeni sürümde garaj fiyatı (para). `0` = başlangıç aracı, herkeste vardır. Yazılmazsa `DEFAULT_CAR_PRICE` (`src/progression/config.js`). |
+| `performance` | Yeni sürümde aracın değerleri (aşağıda). Yazılmazsa klasik oyunun değerleri. |
 | `credit` | Model künyesi: `title`, `url`, `author`, `license`, `licenseUrl`, `note`. CC BY modellerde zorunludur. |
 | `exterior` | Dış model (aşağıda). |
 | `cockpit` | Kokpit (aşağıda). |
+
+### `performance` (yeni sürüm)
+
+Klasik oyunda (garajdaki "Yeni Sürüm" anahtarı kapalıyken) bu alan okunmaz; her araç aynı
+fiziği kullanır. Açıkken aracın fiziği bu değerlerden ve alınan yükseltmelerden hesaplanır
+(`src/progression/performance.js`). Çarpanlar klasik araca göredir (`1` = bugünkü oyun).
+
+| Alan | Anlamı |
+| --- | --- |
+| `topSpeed` | Son hız (km/s). Hava direnci buna göre çözülür; son 25 km/s klasik oyundaki gibi yavaş tırmanılır. |
+| `power` | Motor gücü: 100 km/s üstü çekiş (100→200). |
+| `traction` | Kalkış çekişi: 0-100. Dört çeker / arkadan motorlu araçlarda yüksek. |
+| `handling` | Manevra: direksiyona yanal tepki ve lastiklerin bunu alma hızı. |
+| `braking` | Fren gücü. |
+| `upgradeCost` | Yükseltme fiyat çarpanı (pahalı araçta yükseltme de pahalı). |
+
+Mevcut araçlar: A8 (başlangıç, 250 km/s, 0-100 3,9 sn), M4 CS (15.000), G 700 (18.000, hızlı
+kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Yükseltmeler, kazanç ve fiyat
+basamakları `src/progression/config.js` içinde.
 
 ### `exterior`
 

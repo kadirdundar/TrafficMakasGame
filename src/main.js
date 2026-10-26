@@ -8,6 +8,11 @@ import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
 import { CAR_LIST, CARS, getCar } from './cars/index.js';
 import { DroneReplayManager } from './replay.js';
+import { CLASSIC_PHYSICS, carStats, longitudinalAccel, resolvePhysics } from './progression/performance.js';
+import { PlayerProfile } from './progression/profile.js';
+import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js';
+import { COINS_PER_KM, COINS_PER_POINT } from './progression/config.js';
+import { GarageProgressUI } from './progression/garageUI.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -144,6 +149,21 @@ class OtobanMakasGame {
     // Start-menu garage with the rotatable car. Optional: the game runs without it if a second
     // WebGL context is not available.
     this.selectedCar = getCar(localStorage.getItem('otoban_selected_car')).id;
+
+    // New version (per-car performance, coins from driving, cars and upgrades to buy) behind a
+    // temporary switch in the garage. Off, every car drives with CLASSIC_PHYSICS as before.
+    this.newVersion = isNewVersionEnabled();
+    this.profile = new PlayerProfile();
+    this.carPhysics = CLASSIC_PHYSICS;
+    this.coinScoreMark = 0; // score already paid out (see earnCoins)
+    this.coinCarry = 0; // fraction of a coin not paid out yet
+    this.runCoins = 0; // coins earned since the menu was last closed
+    this.garageUI = new GarageProgressUI({
+      profile: this.profile,
+      enabled: this.newVersion,
+      onToggle: (on) => this.setNewVersion(on),
+      onPurchase: () => this.onGaragePurchase(),
+    });
 
     try {
       this.showroom = new A8Showroom(
@@ -433,6 +453,10 @@ class OtobanMakasGame {
 
     // Start / Resume & Reset Buttons in Modal
     const startOrResumeGame = () => {
+      if (!this.canDriveSelectedCar()) {
+        this.setMenuStep(1);
+        return;
+      }
       this.enterAppFullscreen();
       if (nameInput?.value) {
         this.multiplayer.setPlayerName(nameInput.value);
@@ -773,6 +797,12 @@ class OtobanMakasGame {
       navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
     }
 
+    // Coins are saved a few seconds after they are earned; going to the background saves at once
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.profile.flush();
+    });
+    window.addEventListener('pagehide', () => this.profile.flush());
+
     const portrait = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
     this.portraitPhone = portrait;
     portrait.addEventListener('change', () => {
@@ -978,12 +1008,17 @@ class OtobanMakasGame {
         variant.className = 'car-card-variant';
         variant.textContent = car.variant;
 
+        // New version: price of a car not bought yet (src/progression/garageUI.js)
+        const price = document.createElement('span');
+        price.className = 'car-card-price';
+        price.hidden = true;
+
         const check = document.createElement('span');
         check.className = 'car-card-check';
         check.setAttribute('aria-hidden', 'true');
         check.textContent = '✓';
 
-        btn.append(info, variant, check);
+        btn.append(info, variant, price, check);
         return btn;
       })
     );
@@ -1052,7 +1087,55 @@ class OtobanMakasGame {
     if (this.replay) {
       this.replay.ensurePlayerExteriorModel(carId, this.selectedPaintSlot || 0);
     }
+    this.applyCarPerformance();
     this.updateWizardSummaries?.();
+  }
+
+  // Physics of the selected car: its own stats and upgrades in the new version, the shared
+  // classic tuning otherwise. The speedometer dial grows with cars faster than 260 km/h.
+  applyCarPerformance() {
+    const car = CARS[this.selectedCar];
+    this.carPhysics = this.newVersion
+      ? resolvePhysics(carStats(car, this.profile.levels(car.id)))
+      : CLASSIC_PHYSICS;
+    const top = this.carPhysics.maxSpeed;
+    this.cockpit?.setSpeedoMax(top <= 260 ? 260 : top <= 320 ? 320 : 360);
+    this.garageUI.render(car);
+  }
+
+  setNewVersion(on) {
+    this.newVersion = on;
+    setNewVersionEnabled(on);
+    this.garageUI.setEnabled(on);
+    this.coinScoreMark = this.score;
+    this.coinCarry = 0;
+    this.applyCarPerformance();
+  }
+
+  onGaragePurchase() {
+    this.sound.init();
+    this.sound.playSelektorClick();
+    this.applyCarPerformance();
+  }
+
+  // In the new version only cars bought (or the starter car) can be driven
+  canDriveSelectedCar() {
+    return !this.newVersion || this.profile.owns(CARS[this.selectedCar]);
+  }
+
+  // New version: a drive pays coins for the points scored (penalties take none back) and the
+  // distance covered. Whole coins go straight into the profile, which saves them shortly after.
+  earnCoins(distanceKm) {
+    const gained = this.score - this.coinScoreMark;
+    this.coinScoreMark = this.score;
+    if (!this.newVersion) return;
+    this.coinCarry += Math.max(0, gained) * COINS_PER_POINT + distanceKm * COINS_PER_KM;
+    if (this.coinCarry >= 1) {
+      const whole = Math.floor(this.coinCarry);
+      this.coinCarry -= whole;
+      this.runCoins += whole;
+      this.profile.earn(whole);
+    }
   }
 
   updateWizardSummaries() {
@@ -1071,7 +1154,11 @@ class OtobanMakasGame {
   }
 
   setMenuStep(stepNum) {
-    const step = Math.max(1, Math.min(3, Number(stepNum) || 1));
+    let step = Math.max(1, Math.min(3, Number(stepNum) || 1));
+    if (step > 1 && !this.canDriveSelectedCar()) {
+      step = 1;
+      this.garageUI.flashLocked();
+    }
     this.menuStep = step;
     const overlay = document.getElementById('menu-overlay');
     if (overlay) overlay.dataset.step = String(step);
@@ -1240,6 +1327,17 @@ class OtobanMakasGame {
   setMenuOpen(open, tab) {
     if (!open && this.replay?.active) {
       this.closeDroneReplay({ reopenMenu: false });
+    }
+    if (!open && !this.canDriveSelectedCar()) {
+      // Leaving the garage another way (Esc, an online match starting) with a car not bought
+      // yet: drive the first car that is
+      this.setCar((CAR_LIST.find((car) => this.profile.owns(car)) ?? CAR_LIST[0]).id);
+    }
+    if (open) {
+      this.profile.flush();
+      this.garageUI.setRunCoins(this.runCoins);
+    } else if (this.paused) {
+      this.runCoins = 0; // a new drive starts
     }
     this.paused = open;
     document.getElementById('menu-overlay')?.classList.toggle('hidden', !open);
@@ -1778,51 +1876,17 @@ class OtobanMakasGame {
     this.steerInput = THREE.MathUtils.lerp(this.steerInput, rawSteer, Math.min(1, dt * steerRate));
 
     // 2. Longitudinal Speed (KM/H)
-    // Top speed capped at 260 km/h; the car can roll to a full stop
-    const maxSpeed = 260;
-    const minSpeed = 0;
-
-    // Resistance grows with the square of speed (aero drag) plus a small rolling term,
-    // so the car pulls hard in town but has to fight the air past ~200 km/h.
-    const AERO_DRAG = 0.00027; // km/h/s per (km/h)^2
-    const ROLLING_DRAG = 1.5;
-    const resistance = AERO_DRAG * this.speedKmh * this.speedKmh + ROLLING_DRAG;
-
-    let accelKmhPerSec = 0;
-    if (throttle > 0) {
-      // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed.
-      // ~3.3 s 0→100, ~5.6 s 100→200, ~12.5 s 200→240
-      const ENGINE_POWER = 4200;
-      const TRACTION_LIMIT = 33;
-      const thrust = Math.min(TRACTION_LIMIT, ENGINE_POWER / Math.max(1, this.speedKmh));
-
-      let effectiveThrust;
-      if (this.speedKmh < 235) {
-        effectiveThrust = thrust;
-      } else {
-        // Extended 240-260 km/h top-speed climb:
-        // Past 240 km/h, aerodynamic drag is immense. Climbing from 240 to 260 km/h takes
-        // ~29 seconds of clean, wide-open throttle, tapering down smoothly to the 260 km/h limiter.
-        const progress235To260 = Math.min(1, Math.max(0, (this.speedKmh - 235) / 25));
-        const netFullThrottleAccel = 1.50 + (0.38 - 1.50) * Math.pow(progress235To260, 0.75);
-        effectiveThrust = resistance + netFullThrottleAccel;
-      }
-
-      // Part throttle settles at a cruising speed: ~125 km/h at 15%, ~185 km/h at 50%
-      accelKmhPerSec = effectiveThrust * throttle - resistance;
-    } else if (brake > 0) {
-      accelKmhPerSec = -115 * brake; // Strong Brembo sport brakes
-    } else {
-      // Off throttle: engine braking + drag (bleeds speed faster at 200+), rolling to a stop
-      accelKmhPerSec = -(6 + resistance);
-    }
+    // Engine, drag, brakes and the limiter come from the car's physics (classic: 260 km/h for
+    // every car, see src/progression/performance.js); the car can roll to a full stop
+    const phys = this.carPhysics;
+    let accelKmhPerSec = longitudinalAccel(phys, this.speedKmh, throttle, brake);
 
     // Slight cornering scrub when carving aggressively at high G
     const corneringDrag = Math.abs(this.lateralG) * 4.2;
     accelKmhPerSec -= corneringDrag;
 
     const prevSpeed = this.speedKmh;
-    this.speedKmh = Math.max(minSpeed, Math.min(maxSpeed, this.speedKmh + accelKmhPerSec * dt));
+    this.speedKmh = Math.max(0, Math.min(phys.maxSpeed, this.speedKmh + accelKmhPerSec * dt));
     this.longitudinalG = THREE.MathUtils.lerp(
       this.longitudinalG,
       (this.speedKmh - prevSpeed) / (Math.max(0.001, dt) * 90),
@@ -1900,6 +1964,11 @@ class OtobanMakasGame {
       steerPower = 4.6 + speedRatio * 2.0;
     }
 
+    // The car's handling (classic: 1) scales how far it moves sideways for a given steer, and
+    // part of it how quickly the tyres take that up
+    steerPower *= phys.handling;
+    const tireResponse = 0.6 + 0.4 * phys.handling;
+
     const steerLatVel =
       Math.sin(this.headingAngle) * speedMs * (this.traffic.roadMode === 'track' ? 0.95 : 0.62) +
       this.steerInput * steerPower * Math.min(1, this.speedKmh / 35); // no sideways creep when standing
@@ -1907,7 +1976,7 @@ class OtobanMakasGame {
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
       ? 12.5 * wetFactor
-      : (9.2 - speedRatio * 1.4) * wetFactor;
+      : (9.2 - speedRatio * 1.4) * wetFactor * tireResponse;
     this.lateralVel = THREE.MathUtils.lerp(
       this.lateralVel,
       desiredLatVel,
@@ -2005,6 +2074,7 @@ class OtobanMakasGame {
         this.bestScore = Math.floor(this.score);
       }
     }
+    this.earnCoins(frameDistanceKm);
 
     if (this.combo > 1.0) {
       this.comboTimer -= dt * 0.22; // ~4.5 seconds to chain the next Makas!
@@ -2301,6 +2371,8 @@ class OtobanMakasGame {
 
     this.setHudText('mini-speed', String(Math.round(this.speedKmh)));
     this.setHudText('mini-gear', `D${this.gear}`);
+
+    if (this.newVersion) this.setHudText('hud-coins', `+${this.runCoins.toLocaleString('tr-TR')}`);
 
     const distStr = (this.tripDistanceKm || 0).toFixed(2);
     this.setHudText('hud-distance', distStr);

@@ -3179,3 +3179,305 @@
     font-size: 1.25rem !important;
   }
 }
+
+/* ===== New version (src/progression/): switch, wallet, prices, stats and upgrades ===== */
+@layer hud {
+  .coins-card .stat-value {
+    color: #ffd166;
+  }
+}
+
+@layer modal {
+  .garage-wallet[hidden],
+  .wallet-run[hidden],
+  .garage-progress[hidden],
+  .car-card-price[hidden] {
+    display: none;
+  }
+
+  .garage-wallet strong {
+    color: #ffd166;
+  }
+
+  .wallet-run {
+    font-size: 0.7rem;
+    font-style: normal;
+    font-weight: 800;
+    color: #34d399;
+  }
+
+  /* Switch row */
+  .newver-toggle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 13px;
+    border-radius: 13px;
+    background: rgba(255, 209, 102, 0.06);
+    border: 1px solid rgba(255, 209, 102, 0.28);
+    cursor: pointer;
+  }
+
+  .newver-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+  }
+
+  .newver-copy strong {
+    font-size: 0.82rem;
+    font-weight: 900;
+    color: #fff;
+  }
+
+  .newver-copy em {
+    margin-inline-start: 4px;
+    padding: 1px 6px;
+    border-radius: 99px;
+    font-size: 0.56rem;
+    font-style: normal;
+    letter-spacing: 0.12em;
+    color: #1a1200;
+    background: #ffd166;
+    vertical-align: 0.15em;
+  }
+
+  .newver-copy small {
+    font-size: 0.66rem;
+    line-height: 1.35;
+    color: var(--text-muted);
+  }
+
+  .switch-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .switch-track {
+    position: relative;
+    flex: none;
+    margin-inline-start: auto;
+    inline-size: 42px;
+    block-size: 24px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: background 0.18s ease, border-color 0.18s ease;
+  }
+
+  .switch-track::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-start: 2px;
+    inline-size: 18px;
+    block-size: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transition: transform 0.18s ease;
+  }
+
+  .switch-input:checked + .switch-track {
+    background: #ffd166;
+    border-color: #ffd166;
+  }
+
+  .switch-input:checked + .switch-track::after {
+    transform: translateX(18px);
+  }
+
+  .switch-input:focus-visible + .switch-track {
+    outline: 2px solid #ffd166;
+    outline-offset: 2px;
+  }
+
+  /* Car cards: price of cars not bought yet */
+  .car-card-price {
+    margin-inline-start: auto;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #ffd166;
+    white-space: nowrap;
+  }
+
+  .car-select-card.locked .car-card-variant {
+    display: none;
+  }
+
+  .car-select-card.locked .car-card-name {
+    color: #cbd5e1;
+  }
+
+  /* Stats of the selected car: base in white, the part upgrades add in gold */
+  .perf-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 11px 13px;
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--line);
+  }
+
+  .perf-row {
+    display: grid;
+    grid-template-columns: 62px 1fr 64px;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .perf-label {
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .perf-bar {
+    display: flex;
+    block-size: 6px;
+    border-radius: 99px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .perf-fill {
+    display: block;
+    block-size: 100%;
+    background: #e2e8f0;
+    transition: inline-size 0.3s ease;
+  }
+
+  .perf-fill.up {
+    background: #ffd166;
+  }
+
+  .perf-value {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-align: end;
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  .upgrade-heading {
+    margin-block-start: 4px;
+  }
+
+  .upgrade-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .upgrade-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 8px 13px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--line);
+  }
+
+  .upgrade-copy {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    flex: 1;
+  }
+
+  .upgrade-copy strong {
+    font-size: 0.8rem;
+    font-weight: 900;
+    color: #fff;
+  }
+
+  .upgrade-copy small {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .upgrade-pips {
+    display: flex;
+    gap: 3px;
+  }
+
+  .upgrade-pips i {
+    inline-size: 9px;
+    block-size: 9px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .upgrade-pips i.on {
+    background: #ffd166;
+    box-shadow: 0 0 6px rgba(255, 209, 102, 0.5);
+  }
+
+  .upgrade-btn {
+    flex: none;
+    min-inline-size: 78px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 209, 102, 0.6);
+    background: rgba(255, 209, 102, 0.14);
+    color: #ffd166;
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .upgrade-btn:hover:not(:disabled) {
+    background: rgba(255, 209, 102, 0.26);
+  }
+
+  .upgrade-btn:disabled {
+    cursor: default;
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+  }
+
+  .buy-car-btn {
+    max-inline-size: none;
+    font-size: 0.82rem;
+    color: #1a1200;
+    background: linear-gradient(135deg, #ffe08a, #ffb703);
+    box-shadow: 0 8px 22px rgba(255, 183, 3, 0.3);
+  }
+
+  .buy-car-btn:disabled {
+    cursor: default;
+    transform: none;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: none;
+  }
+
+  .next-step-btn.locked {
+    filter: grayscale(0.85) brightness(0.7);
+  }
+
+  .buy-car-btn.shake {
+    animation: buyShake 0.4s ease;
+  }
+
+  @keyframes buyShake {
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+  }
+}

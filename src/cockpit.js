@@ -232,6 +232,7 @@ export class CarCockpit {
     this.overlayCtx = this.overlayCanvas ? this.overlayCanvas.getContext('2d') : null;
 
     this.ambientKey = 'cyan';
+    this.speedoMaxKmh = 260; // end of the speedometer scale (faster cars get a longer one)
     this.makasFlashIntensity = 0;
 
     // Wipers state
@@ -749,6 +750,10 @@ export class CarCockpit {
     this.viewPreset = index % 3;
   }
 
+  setSpeedoMax(kmh) {
+    this.speedoMaxKmh = kmh;
+  }
+
   setAmbientColor(key) {
     const info = AMBIENT_COLORS[key] || AMBIENT_COLORS.cyan;
     this.ambientKey = key;
@@ -1240,7 +1245,7 @@ export class CarCockpit {
 
     const { r, tach, speedo, centerX } = layout;
     this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), rpm > 6500 ? '#ff3b4f' : accent);
-    this.drawClusterNeedle(ctx, speedo.cx, speedo.cy, r, Math.min(1, speedKmh / 260), accent);
+    this.drawClusterNeedle(ctx, speedo.cx, speedo.cy, r, Math.min(1, speedKmh / this.speedoMaxKmh), accent);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1271,7 +1276,7 @@ export class CarCockpit {
   static DIAL_SWEEP = Math.PI * 1.5;
 
   getClusterFace(w, h, scale, brand = 'audi') {
-    const key = `${brand}|${w}x${h}@${scale.toFixed(2)}`;
+    const key = `${brand}|${this.speedoMaxKmh}|${w}x${h}@${scale.toFixed(2)}`;
     if (this._clusterFace?.key === key) return this._clusterFace.canvas;
 
     const canvas = document.createElement('canvas');
@@ -1293,7 +1298,7 @@ export class CarCockpit {
     const fh = Math.min(h, w * 0.385);
     const r = fh * 0.43;
     this.drawDialFace(c, w * 0.2, h * 0.52, r, { max: 8, major: 1, minor: 0.5, label: 1, redFrom: 6.5, unit: 'x1000/min' });
-    this.drawDialFace(c, w * 0.8, h * 0.52, r, { max: 260, major: 20, minor: 10, label: 40, unit: 'km/h' });
+    this.drawDialFace(c, w * 0.8, h * 0.52, r, { max: this.speedoMaxKmh, major: 20, minor: 10, label: 40, unit: 'km/h' });
 
     if (brand === 'mercedes' || brand === 'brabus' || brand === 'porsche') {
       // AMG / BRABUS / PORSCHE lettering above the digital speed
@@ -1444,7 +1449,7 @@ export class CarCockpit {
   }
 
   getBmwClusterFace(w, h, scale) {
-    const key = `bmw|${w}x${h}@${scale.toFixed(2)}`;
+    const key = `bmw|${this.speedoMaxKmh}|${w}x${h}@${scale.toFixed(2)}`;
     if (this._bmwClusterFace?.key === key) return this._bmwClusterFace.canvas;
 
     const canvas = document.createElement('canvas');
@@ -1461,7 +1466,7 @@ export class CarCockpit {
 
     const r = h * 0.44;
     const frames = [
-      { cx: w * 0.21, side: -1, max: 260, major: 20, label: 40, redFrom: null },
+      { cx: w * 0.21, side: -1, max: this.speedoMaxKmh, major: 20, label: 40, redFrom: null },
       { cx: w * 0.79, side: 1, max: 8, major: 1, label: 1, redFrom: 6.5 },
     ];
     c.lineJoin = 'round';
@@ -1521,7 +1526,7 @@ export class CarCockpit {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const [pts, t, color] of [
-      [speedPts, Math.min(1, speedKmh / 260), accent],
+      [speedPts, Math.min(1, speedKmh / this.speedoMaxKmh), accent],
       [revPts, revNorm, rpm > 6500 ? '#ff3b4f' : '#f97316'],
     ]) {
       ctx.strokeStyle = color;

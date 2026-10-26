@@ -89,6 +89,9 @@ export default {
   model: 'TODO',
   variant: '',
   aliases: [],
+  // Yeni sürüm: garaj fiyatı (para) ve performans. Alanlar: src/cars/README.md → performance
+  price: 25000, // TODO
+  performance: { topSpeed: 260, power: 1, traction: 1, handling: 1, braking: 1, upgradeCost: 1.3 }, // TODO
   credit: {
     title: '${title.replace(/'/g, "\\'")}',
     url: '${extras.source || 'TODO'}',

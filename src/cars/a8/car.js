@@ -11,6 +11,10 @@ export default {
   model: 'A8',
   variant: 'D5 · quattro',
   aliases: ['audi'],
+  // New version only (garage price in coins, stats): src/cars/README.md → performance
+  // Starter car: every profile owns it
+  price: 0,
+  performance: { topSpeed: 250, power: 0.84, traction: 0.86, handling: 0.9, braking: 0.92, upgradeCost: 1 },
   credit: {
     title: 'Audi A8 Custom 2018',
     url: 'https://sketchfab.com/3d-models/audi-a8-custom-2018-cd094d03f7684809900a929a9c88c8db',

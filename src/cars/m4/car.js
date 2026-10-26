@@ -13,6 +13,9 @@ export default {
   model: 'M4 CS',
   variant: 'G82 · VR46 Edition',
   aliases: ['bmw'],
+  // New version only (garage price in coins, stats): src/cars/README.md → performance
+  price: 15000,
+  performance: { topSpeed: 290, power: 1.06, traction: 1.0, handling: 1.08, braking: 1.05, upgradeCost: 1.25 },
   credit: {
     title: '2025 BMW M4 CS VR46 Edition',
     url: 'https://sketchfab.com/3d-models/2025-bmw-m4-cs-vr46-edition-3d111a7ed0f544bc9215e3038db4c8dc',

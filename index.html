@@ -46,6 +46,11 @@
           <small class="distance-unit">KM</small>
         </div>
       </div>
+      <!-- New version: coins earned in this drive (src/progression/) -->
+      <div id="hud-coins-card" class="stat-card coins-card hidden" title="Bu sürüşte kazandığın para">
+        <span class="stat-label">KAZANÇ</span>
+        <span id="hud-coins" class="stat-value">+0</span>
+      </div>
       <div class="stat-card best-card hide-mobile">
         <span class="stat-label">EN İYİ SKOR</span>
         <span id="hud-best" class="stat-value">0</span>
@@ -190,6 +195,10 @@
           <small>REKOR</small>
           <strong id="menu-best">0</strong>
         </div>
+        <div class="garage-record garage-wallet" id="garage-wallet" title="Paran (son sürüşte kazandığın yanında)" hidden>
+          <small>PARA</small>
+          <strong><span id="menu-coins">0</span> <em id="menu-run-coins" class="wallet-run" hidden>+0</em></strong>
+        </div>
       </header>
 
       <!-- Empty box the 3D car is framed into (see showroom.js) -->
@@ -238,12 +247,25 @@
               <p>Garajdan sürüş yapmak istediğin aracı ve gövde rengini seç.</p>
             </div>
 
+            <!-- Temporary switch for the new version (src/progression/flag.js) -->
+            <label class="newver-toggle" for="newver-switch">
+              <span class="newver-copy">
+                <strong>Yeni Sürüm <em>BETA</em></strong>
+                <small>Her aracın hızı ve manevrası farklı. Sürüşlerden para kazan, araç al, aracını yükselt.</small>
+              </span>
+              <input type="checkbox" id="newver-switch" class="switch-input" role="switch" />
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+
             <div class="panel-section">
               <h3>Araç Modeli</h3>
               <div class="car-card-list" id="garage-car-select" role="group" aria-label="Araç modeli seçimi">
                 <!-- Filled in by main.js -> buildCarSelect() -->
               </div>
             </div>
+
+            <!-- New version: stats, buying and upgrades of the selected car (src/progression/garageUI.js) -->
+            <div class="panel-section garage-progress" id="garage-progress" hidden></div>
 
             <div class="panel-section">
               <h3>Araç Rengi (Online Boya)</h3>

@@ -12,6 +12,10 @@ export default {
   model: '911 TARGA 4S',
   variant: '992 · Twin-Turbo',
   aliases: ['porsche', '911', 'targa'],
+  // New version only (garage price in coins, stats): src/cars/README.md → performance
+  // All-wheel drive launch and the sharpest turn-in
+  price: 30000,
+  performance: { topSpeed: 295, power: 1.04, traction: 1.08, handling: 1.16, braking: 1.12, upgradeCost: 1.5 },
   credit: {
     title: '2021 Porsche 911 Targa 4S',
     url: 'https://sketchfab.com/3d-models/2021-porsche-911-targa-4s-616ebc4356c74a3b8554c396eb3bd34c',
