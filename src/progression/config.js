@@ -66,3 +66,27 @@ export const SPOILERS = [
   { id: 'ducktail', label: 'Ördek Kuyruk', detail: 'Kalkık kuyruk spoyleri', price: 3000, per: { handling: 0.03, topSpeed: -2 } },
   { id: 'wing', label: 'GT Kanat', detail: 'Karbon kanat, ayaklı', price: 6000, per: { handling: 0.06, topSpeed: -6 } },
 ];
+
+// Rim colours (painted by src/cars/rims.js). Bought once per car like spoilers; looks only.
+// `hex: null` is the model's own factory finish.
+export const RIM_COLORS = [
+  { id: 'factory', label: 'Fabrika', hex: null, price: 0, per: {} },
+  { id: 'black', label: 'Parlak Siyah', hex: 0x101114, price: 1000, per: {} },
+  { id: 'gunmetal', label: 'Antrasit', hex: 0x3b4047, price: 1000, per: {} },
+  { id: 'silver', label: 'Gümüş', hex: 0xc4c8ce, price: 1000, per: {} },
+  { id: 'white', label: 'Beyaz', hex: 0xe8e9eb, price: 1500, per: {} },
+  { id: 'bronze', label: 'Bronz', hex: 0x8a6a3c, price: 1500, per: {} },
+  { id: 'red', label: 'Kırmızı', hex: 0xb3121f, price: 1500, per: {} },
+  { id: 'gold', label: 'Altın', hex: 0xc9a227, price: 2000, per: {} },
+];
+
+// Visual parts a car can be fitted with: where the profile keeps them, the catalogue, and what
+// a car has before anything is bought. A new kind of part is one more entry here.
+export const PARTS = {
+  spoiler: { key: 'spoilers', list: SPOILERS, none: 'none' },
+  rim: { key: 'rims', list: RIM_COLORS, none: 'factory' },
+};
+
+export function rimColorHex(id) {
+  return RIM_COLORS.find((c) => c.id === id)?.hex ?? null;
+}

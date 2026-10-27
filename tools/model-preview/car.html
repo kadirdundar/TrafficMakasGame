@@ -27,6 +27,7 @@ const c = await loadCarExterior(car, { paintHex: Number(q.get('paint') || 0x0e6f
 scene.add(c.group);
 c.setLights({ night, braking: q.get('brake') === '1', highBeam: q.get('high') === '1' });
 if (q.get('spoiler')) c.setSpoiler(q.get('spoiler')); // lip | ducktail | wing
+if (q.get('rim')) c.setRimColor(Number(q.get('rim'))); // e.g. 0xc9a227
 const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 35), W / H, 0.05, 100);
 const az = +(q.get('az') || -2.3), pol = +(q.get('pol') || 1.3), dist = +(q.get('dist') || 9.5);
 const tgt = new THREE.Vector3(...(q.get('t') || '0,0.65,0').split(',').map(Number));

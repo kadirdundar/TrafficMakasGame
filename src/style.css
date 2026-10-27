@@ -3552,3 +3552,37 @@
     content: '🔒 ';
   }
 }
+
+@layer modal {
+  /* New version: rim colours, as many to a row as fit */
+  .rim-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
+
+  .rim-grid .spoiler-card {
+    padding: 7px 8px;
+  }
+
+  .rim-grid .spoiler-card strong {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .rim-swatch {
+    flex: none;
+    inline-size: 12px;
+    block-size: 12px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.5), transparent 45%),
+      var(--rim);
+  }
+
+  .rim-swatch.factory {
+    background: conic-gradient(#c4c8ce 0 25%, #2a2d33 0 50%, #c4c8ce 0 75%, #2a2d33 0);
+  }
+}

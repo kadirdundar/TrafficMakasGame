@@ -1,4 +1,4 @@
-import { LEVEL_COST, MAX_UPGRADE_LEVEL, SPOILERS, UPGRADES } from './config.js';
+import { LEVEL_COST, MAX_UPGRADE_LEVEL, PARTS, UPGRADES } from './config.js';
 
 // Car performance in the new version. Each car declares its stats in car.js → `performance`,
 // bought upgrades add to them, and resolvePhysics() turns the result into the numbers
@@ -32,8 +32,9 @@ const ROLLING_DRAG = 1.5;
 const CLIMB_START_ACCEL = 1.5;
 const CLIMB_END_ACCEL = 0.38;
 
-// Stats of a car with the given upgrade levels ({ engine: 2, brakes: 1, ... }) and spoiler
-export function carStats(car, levels = {}, spoilerId = 'none') {
+// Stats of a car with the given upgrade levels ({ engine: 2, brakes: 1, ... }) and fitted parts
+// ({ spoiler: 'wing', rim: 'gold' }); a part's `per` adds like an upgrade level
+export function carStats(car, levels = {}, parts = {}) {
   const stats = { ...DEFAULT_PERFORMANCE, ...car?.performance };
   for (const upgrade of UPGRADES) {
     const level = Math.min(MAX_UPGRADE_LEVEL, Math.max(0, levels[upgrade.id] || 0));
@@ -41,9 +42,11 @@ export function carStats(car, levels = {}, spoilerId = 'none') {
       stats[key] += step * level;
     }
   }
-  const spoiler = SPOILERS.find((sp) => sp.id === spoilerId);
-  for (const [key, step] of Object.entries(spoiler?.per ?? {})) {
-    stats[key] += step;
+  for (const [kind, id] of Object.entries(parts)) {
+    const part = PARTS[kind]?.list.find((p) => p.id === id);
+    for (const [key, step] of Object.entries(part?.per ?? {})) {
+      stats[key] += step;
+    }
   }
   return stats;
 }
@@ -123,9 +126,10 @@ export function upgradeCost(car, upgrade, currentLevel) {
   return Math.round((upgrade.baseCost * LEVEL_COST[currentLevel] * mult) / 50) * 50;
 }
 
-export function spoilerCost(car, spoiler) {
+// Price of a part (spoiler, rim colour) for this car
+export function partCost(car, part) {
   const mult = car?.performance?.upgradeCost ?? DEFAULT_PERFORMANCE.upgradeCost;
-  return Math.round((spoiler.price * mult) / 50) * 50;
+  return Math.round((part.price * mult) / 50) * 50;
 }
 
 // Garage bars: each stat as 0..1 over the range the cars (and their upgrades) span

@@ -4,11 +4,13 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createGlowMaterial } from '../vehicleModels.js';
 import { createSpoilerMount } from './spoiler.js';
+import { createRimPaint } from './rims.js';
+import { rimColorHex } from '../progression/config.js';
 
 // Exterior car model for the garage turntable and online friends, driven by a car's `exterior`
 // config (src/cars/<id>/car.js, fields in src/cars/README.md). Returns
-// { group, bodyMat, setLights({ night, braking, highBeam }), setSpoiler(id) }; the garage
-// recolours bodyMat.
+// { group, bodyMat, setLights({ night, braking, highBeam }), setParts({ spoiler, rim }) }; the garage
+// recolours bodyMat. setSpoiler(id) and setRimColor(hex) fit one part directly (preview pages).
 
 function glowQuads(points, w, h, facingFront, material) {
   const geos = points.map(([x, y, z]) => {
@@ -140,8 +142,11 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     group.add(rearGlow);
   }
 
+  // Rim colour (src/cars/rims.js): the rims are split off their shared material once, here
+  const setRimColor = createRimPaint(model, cfg.rims);
+
   // Rear spoiler (src/cars/spoiler.js): measured on the model the first time one is fitted
-  const spoiler = createSpoilerMount(
+  const spoilerMount = createSpoilerMount(
     group,
     model,
     { halfLength: cfg.length / 2, halfWidth: (size.x * s) / 2, height: size.y * s },
@@ -155,7 +160,13 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
   return {
     group,
     bodyMat,
-    setSpoiler: spoiler.set,
+    setSpoiler: spoilerMount.set,
+    setRimColor,
+    // Parts the player fitted in the garage (ids from src/progression/config.js → PARTS)
+    setParts({ spoiler = 'none', rim = 'factory' } = {}) {
+      spoilerMount.set(spoiler);
+      setRimColor(rimColorHex(rim));
+    },
     setLights({ night = false, braking = false, highBeam = false }) {
       const key = `${night ? 1 : 0}${braking ? 1 : 0}${highBeam ? 1 : 0}`;
       if (key === lastKey) return;

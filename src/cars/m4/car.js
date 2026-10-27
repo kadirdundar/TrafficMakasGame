@@ -26,6 +26,9 @@ export default {
   },
 
   exterior: {
+    // Rim colour (src/cars/rims.js): tyres and rims are one textured material, so only the
+    // inner 72 % of the wheel (the rim) is painted
+    rims: { reach: 0.72 },
     url: `${BASE}models/bmw-m4.glb`,
     length: 4.8,
     envMapIntensity: 0.25,

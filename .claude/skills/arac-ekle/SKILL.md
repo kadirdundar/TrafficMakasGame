@@ -47,4 +47,6 @@ Değerleri asla tahmin etme; ölç. Her adımdan sonra ekran görüntüsüyle do
    açıkken son hız ve 0-100 değerlerini kontrol et.
    Spoylerin oturduğunu `car.html?car=<id>&spoiler=wing` (ve `lip`, `ducktail`) ile kontrol et;
    yanlışsa `exterior.spoiler: { z, y, width }`.
+   Jant boyamayı `car.html?car=<id>&rim=0xc9a227` ile kontrol et: sadece jant boyanmalı (lastik,
+   kaliper, krom çıtalar değil); değilse `exterior.rims` (README).
 9. **Bitiş:** `draft: true` satırını sil, `npm run build`. Commit/push için kullanıcıya sor.

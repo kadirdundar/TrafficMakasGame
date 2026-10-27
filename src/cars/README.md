@@ -66,8 +66,8 @@ fiziği kullanır. Açıkken aracın fiziği bu değerlerden ve alınan yükselt
 | `upgradeCost` | Yükseltme fiyat çarpanı (pahalı araçta yükseltme de pahalı). |
 
 Mevcut araçlar: A8 (başlangıç, 250 km/s, 0-100 3,9 sn), M4 CS (15.000), G 700 (18.000, hızlı
-kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Yükseltmeler, spoylerler, kazanç ve
-fiyat basamakları `src/progression/config.js` içinde.
+kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Yükseltmeler, spoylerler, jant renkleri,
+kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 
 ### `exterior`
 
@@ -80,6 +80,7 @@ fiyat basamakları `src/progression/config.js` içinde.
 | `head`, `tail` | Far/stop parlaklıkları: `{ day, night, highBeam }`, `{ day, night, brake }`. |
 | `lamps` | Malzeme adına göre lamba kuralları; ilk eşleşen kazanır. `match` (RegExp), `role` (`head`/`tail`), isteğe bağlı `emissive`, `color`, `removeMap`, `emissiveFromMap`, `intensity`, `box` (halenin konumu bu lambaların sınır kutusundan alınır). |
 | `spoiler` | İsteğe bağlı. Spoyler yeri modelden kendiliğinden ölçülür (bagaj kapağının ya da SUV'da tavanın arka kenarı, `src/cars/spoiler.js`). Yanlış yere oturursa `{ z, y, width }` (model metresi) ile elle verilir. Kontrol: `/tools/model-preview/car.html?car=<id>&spoiler=wing&az=0.8&pol=1.25&dist=5&t=0,0.9,1.4` (`lip`, `ducktail`, `wing`). |
+| `rims` | İsteğe bağlı. Jant boyama (`src/cars/rims.js`): `materials` jant malzemeleri (varsayılan adında `rim`/`wheel` geçenler), `tyres` lastik malzemeleri (tekerlek yerini bulmak için), `reach` jantın tekerlek yarıçapındaki payı (varsayılan 0.9; lastikle aynı malzemedeyse ~0.72), `outer` (m) sadece dış yüzü boyar (kaliperle aynı malzemedeki kollar için). Kontrol: `car.html?car=<id>&rim=0xc9a227`. |
 | `glow` | Haleler: `front`, `flare`, `rear`. Her biri `color`, `opacity`, `size: [w, h]`, `offset` (lambanın önüne/arkasına mesafe), ve ya `from: 'head'/'tail'` + `inset` (dış kenardan içeri) ya da modelden ölçülmüş `at: [x, y, z]`. |
 
 ### `cockpit`

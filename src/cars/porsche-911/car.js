@@ -26,6 +26,9 @@ export default {
   },
 
   exterior: {
+    // Rim colour (src/cars/rims.js): the spokes share a textured material with the calipers
+    // behind them, and 'rim' also holds the tyre: paint the outer face, inside the rim's radius
+    rims: { materials: ['caliper', 'rim'], reach: 0.82, outer: 0.07 },
     url: `${BASE}models/porsche-911.glb`,
     length: 4.52,
     envMapIntensity: 0.25,

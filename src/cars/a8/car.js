@@ -25,6 +25,8 @@ export default {
   },
 
   exterior: {
+    // Rim colour (src/cars/rims.js): the rims share 'chrome' with the window trim
+    rims: { materials: ['chrome'] },
     url: `${BASE}models/audi-a8.glb`,
     length: 4.85,
     envMapIntensity: 0.25,

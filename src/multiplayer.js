@@ -71,7 +71,7 @@ export class MultiplayerManager {
     this.localPaintSlot = (Number.isFinite(savedPaint) && savedPaint >= 0 && savedPaint < SLOT_STYLES.length)
       ? savedPaint
       : 0;
-    this.localSpoiler = 'none'; // rear spoiler of our car (src/cars/spoiler.js), sent with the state
+    this.localParts = {}; // spoiler and rim colour of our car (src/progression/config.js → PARTS), sent with the state
     this.localId = null;
     this.localSlot = 0;
     this.hostId = null; // who hosts the room right now (changes on a hand-over)
@@ -193,7 +193,7 @@ export class MultiplayerManager {
       badge: { canvas, ctx: canvas.getContext('2d'), texture, spriteMat },
       active: fallback,
       lights: { night: false, braking: false, highBeam: false },
-      spoiler: 'none',
+      parts: {},
       setLights(lights) {
         peerCar.lights = lights;
         peerCar.active.setLights(lights);
@@ -203,14 +203,14 @@ export class MultiplayerManager {
         group.add(model.group);
         peerCar.active = model;
         model.setLights(peerCar.lights);
-        model.setSpoiler?.(peerCar.spoiler);
+        model.setParts?.(peerCar.parts);
         if (model.bodyMat && Number.isFinite(peerCar.paintHex)) {
           model.bodyMat.color.setHex(peerCar.paintHex);
         }
       },
-      setSpoiler(id) {
-        peerCar.spoiler = id;
-        peerCar.active.setSpoiler?.(id);
+      setParts(parts) {
+        peerCar.parts = parts;
+        peerCar.active.setParts?.(parts);
       },
       setPaint(paintHex) {
         peerCar.paintHex = paintHex;
@@ -975,11 +975,14 @@ export class MultiplayerManager {
         player.car.setPaint(newPaintHex);
       }
     }
-    // Older versions send no spoiler: their car has none
+    // Parts come as flat fields; older versions send none: their car has none
     const spoiler = typeof d.spoiler === 'string' ? d.spoiler : 'none';
-    if (player.spoiler !== spoiler) {
+    const rim = typeof d.rim === 'string' ? d.rim : 'factory';
+    if (player.spoiler !== spoiler || player.rim !== rim) {
       player.spoiler = spoiler;
-      player.car.setSpoiler(spoiler);
+      player.rim = rim;
+      player.parts = { spoiler, rim };
+      player.car.setParts(player.parts);
     }
     player.targetX = num(d.x, player.targetX);
     player.targetWorldDistM = num(d.worldDistM, player.targetWorldDistM);
@@ -1043,8 +1046,8 @@ export class MultiplayerManager {
     }
   }
 
-  setLocalSpoiler(id) {
-    this.localSpoiler = id;
+  setLocalParts(parts) {
+    this.localParts = parts;
   }
 
   setLocalPaintSlot(paintSlot) {
@@ -1060,7 +1063,8 @@ export class MultiplayerManager {
       name: this.playerName,
       carModel: this.localCarModel,
       paintSlot: this.localPaintSlot,
-      spoiler: this.localSpoiler,
+      spoiler: this.localParts.spoiler ?? 'none',
+      rim: this.localParts.rim ?? 'factory',
       x: Number(localState.playerX.toFixed(2)),
       worldDistM: Number(this.localWorldDistM.toFixed(2)),
       speedKmh: Math.round(localState.speedKmh),
@@ -1122,6 +1126,7 @@ export class MultiplayerManager {
             carModel: p.carModel,
             paintSlot: p.paintSlot,
             spoiler: p.spoiler,
+            rim: p.rim,
             x: p.targetX,
             worldDistM: Number(p.targetWorldDistM.toFixed(2)),
             speedKmh: p.speedKmh,

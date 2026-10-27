@@ -1092,14 +1092,15 @@ class OtobanMakasGame {
   // classic tuning otherwise. The speedometer dial grows with cars faster than 260 km/h.
   applyCarPerformance() {
     const car = CARS[this.selectedCar];
-    const spoiler = this.fittedSpoiler();
+    const parts = this.fittedParts();
+    this.currentParts = parts; // recorded with every replay frame
     this.carPhysics = this.newVersion
-      ? resolvePhysics(carStats(car, this.profile.levels(car.id), spoiler))
+      ? resolvePhysics(carStats(car, this.profile.levels(car.id), parts))
       : CLASSIC_PHYSICS;
-    // The spoiler shows on the garage car, to online friends and in the drone replay
-    this.showroom?.setSpoiler(spoiler);
-    this.multiplayer?.setLocalSpoiler(spoiler);
-    this.replay?.ensurePlayerExteriorModel(car.id, this.selectedPaintSlot || 0, spoiler);
+    // Spoiler and rims show on the garage car, to online friends and in the drone replay
+    this.showroom?.setParts(parts);
+    this.multiplayer?.setLocalParts(parts);
+    this.replay?.ensurePlayerExteriorModel(car.id, this.selectedPaintSlot || 0, parts);
     const top = this.carPhysics.maxSpeed;
     this.cockpit?.setSpeedoMax(top <= 260 ? 260 : top <= 320 ? 320 : 360);
     this.garageUI.render(car);
@@ -1118,13 +1119,14 @@ class OtobanMakasGame {
     this.sound.init();
     this.sound.playSelektorClick();
     this.applyCarPerformance();
-    // Turn the garage car round so the new spoiler is in view
+    // Turn the garage car round so the new part is in view
     if (type === 'spoiler') this.showroom?.goToView('rear34');
+    if (type === 'rim') this.showroom?.goToView('front34');
   }
 
-  // Spoiler on the selected car (new version only)
-  fittedSpoiler() {
-    return this.newVersion ? this.profile.spoiler(this.selectedCar) : 'none';
+  // Parts on the selected car ({ spoiler, rim }); none in the classic game
+  fittedParts() {
+    return this.newVersion ? this.profile.parts(this.selectedCar) : {};
   }
 
   // In the new version only cars bought (or the starter car) can be driven
@@ -1232,7 +1234,7 @@ class OtobanMakasGame {
       if (on) this.setHudText('garage-paint-name', sw.getAttribute('aria-label'));
     });
     this.multiplayer?.setLocalPaintSlot(this.selectedPaintSlot);
-    this.replay?.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot, this.fittedSpoiler());
+    this.replay?.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot, this.fittedParts());
   }
 
   syncMultiplayerUI({ connected, connecting, role, roomCode, playerCount, message }) {
@@ -2263,7 +2265,7 @@ class OtobanMakasGame {
       braking: brake > 0,
       carId: this.selectedCar,
       paintSlot: this.selectedPaintSlot || 0,
-      spoiler: this.fittedSpoiler(),
+      parts: this.currentParts,
       score: this.score,
       combo: this.combo,
     });

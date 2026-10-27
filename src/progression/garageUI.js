@@ -1,10 +1,10 @@
 import { CAR_LIST } from '../cars/index.js';
-import { MAX_UPGRADE_LEVEL, SPOILERS, UPGRADES } from './config.js';
-import { carStats, spoilerCost, statBars } from './performance.js';
+import { MAX_UPGRADE_LEVEL, PARTS, UPGRADES } from './config.js';
+import { carStats, partCost, statBars } from './performance.js';
 import { carPrice } from './profile.js';
 
 // Garage side of the new version (step 1 of the menu): the switch, the wallet, prices on the
-// car cards, the selected car's stats, and buying cars, upgrades and spoilers. Everything here is hidden
+// car cards, the selected car's stats, and buying cars, upgrades and parts. Everything here is hidden
 // while the switch is off, so the classic garage looks exactly as before.
 
 const fmt = (n) => Math.round(n).toLocaleString('tr-TR');
@@ -98,7 +98,7 @@ export class GarageProgressUI {
   renderPanel(car) {
     const owned = this.profile.owns(car);
     const base = statBars(carStats(car));
-    const now = statBars(carStats(car, this.profile.levels(car.id), this.profile.spoiler(car.id)));
+    const now = statBars(carStats(car, this.profile.levels(car.id), this.profile.parts(car.id)));
 
     const stats = el('div', 'perf-stats');
     for (const row of STAT_ROWS) {
@@ -119,7 +119,9 @@ export class GarageProgressUI {
         el('h3', 'upgrade-heading', 'Yükseltmeler'),
         this.buildUpgrades(car),
         el('h3', 'upgrade-heading', 'Spoyler'),
-        this.buildSpoilers(car)
+        this.buildParts(car, 'spoiler'),
+        el('h3', 'upgrade-heading', 'Jant Rengi'),
+        this.buildParts(car, 'rim')
       );
     } else {
       children.push(this.buildBuyButton(car));
@@ -178,26 +180,33 @@ export class GarageProgressUI {
     return list;
   }
 
-  // One card per spoiler: price until bought, then fitted or swapped for free
-  buildSpoilers(car) {
-    const grid = el('div', 'spoiler-grid');
-    const fitted = this.profile.spoiler(car.id);
-    for (const spoiler of SPOILERS) {
-      const owned = this.profile.ownsSpoiler(car, spoiler.id);
-      const cost = spoilerCost(car, spoiler);
+  // One card per part of a kind: price until bought, then fitted or swapped for free. Rim
+  // colours get a swatch and a tighter grid.
+  buildParts(car, kind) {
+    const isRim = kind === 'rim';
+    const grid = el('div', isRim ? 'spoiler-grid rim-grid' : 'spoiler-grid');
+    const fitted = this.profile.fitted(kind, car.id);
+    for (const part of PARTS[kind].list) {
+      const owned = this.profile.ownsPart(car, kind, part.id);
+      const cost = partCost(car, part);
       const btn = el('button', 'spoiler-card');
       btn.type = 'button';
-      btn.setAttribute('aria-pressed', String(spoiler.id === fitted));
+      btn.setAttribute('aria-pressed', String(part.id === fitted));
       btn.disabled = !owned && cost > this.profile.coins;
-      const state = spoiler.id === fitted ? 'TAKILI' : owned ? 'TAK' : `${fmt(cost)}`;
-      btn.append(
-        el('strong', '', spoiler.label),
-        el('small', '', spoiler.detail),
-        el('span', owned ? 'spoiler-state' : 'spoiler-state price', state)
-      );
+      const state = part.id === fitted ? 'TAKILI' : owned ? 'TAK' : `${fmt(cost)}`;
+      const title = el('strong', '', part.label);
+      if (isRim) {
+        const dot = el('i', 'rim-swatch');
+        dot.style.setProperty('--rim', part.hex === null ? '' : `#${part.hex.toString(16).padStart(6, '0')}`);
+        dot.classList.toggle('factory', part.hex === null);
+        title.prepend(dot);
+      }
+      btn.append(title);
+      if (part.detail) btn.append(el('small', '', part.detail));
+      btn.append(el('span', owned ? 'spoiler-state' : 'spoiler-state price', state));
       btn.addEventListener('click', () => {
-        if (spoiler.id === fitted) return;
-        if (this.profile.fitSpoiler(car, spoiler.id)) this.onPurchase({ type: 'spoiler', car, spoiler });
+        if (part.id === fitted) return;
+        if (this.profile.fitPart(car, kind, part.id)) this.onPurchase({ type: kind, car, part });
       });
       grid.append(btn);
     }
