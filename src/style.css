@@ -3481,3 +3481,74 @@
     40%, 80% { transform: translateX(6px); }
   }
 }
+
+@layer modal {
+  /* New version: spoiler choice (src/progression/garageUI.js) */
+  .spoiler-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .spoiler-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 8px 11px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text-main);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .spoiler-card:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  .spoiler-card[aria-pressed='true'] {
+    border-color: rgba(255, 209, 102, 0.7);
+    background: rgba(255, 209, 102, 0.1);
+  }
+
+  .spoiler-card:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  .spoiler-card strong {
+    font-size: 0.78rem;
+    font-weight: 900;
+    color: #fff;
+  }
+
+  .spoiler-card small {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+
+  .spoiler-state {
+    margin-block-start: 3px;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #34d399;
+  }
+
+  .spoiler-card[aria-pressed='true'] .spoiler-state {
+    color: #ffd166;
+  }
+
+  .spoiler-state.price {
+    font-family: var(--font-mono);
+    color: #ffd166;
+  }
+
+  .spoiler-state.price::before {
+    content: '🔒 ';
+  }
+}

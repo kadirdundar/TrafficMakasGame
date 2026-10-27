@@ -51,6 +51,7 @@ export class DroneReplayManager {
         braking: false,
         carId: 'audi-a8',
         paintSlot: 0,
+        spoiler: 'none',
         score: 0,
         combo: 1.0,
         // Traffic flat typed arrays: [x, z, yaw, active(0/1), braking(0/1), blinker(-1/0/1), colorHex]
@@ -66,6 +67,7 @@ export class DroneReplayManager {
           name: '',
           slot: 1,
           carModel: 'audi-a8',
+          spoiler: 'none',
           x: 0,
           relZ: 0,
           speedKmh: 0,
@@ -145,11 +147,13 @@ export class DroneReplayManager {
   }
 
   // Pre-warm or switch the local player's exterior 3D car model
-  ensurePlayerExteriorModel(carId, paintSlot = 0) {
+  ensurePlayerExteriorModel(carId, paintSlot = 0, spoiler = 'none') {
     const cleanId = getCar(carId).id;
     const paintHex = SLOT_STYLES[paintSlot % SLOT_STYLES.length]?.paint ?? SLOT_STYLES[0].paint;
+    this.playerSpoiler = spoiler;
 
     if (this.loadedCarId === cleanId) {
+      this.playerActiveModel?.setSpoiler?.(spoiler);
       if (this.loadedPaintHex !== paintHex && this.playerActiveModel?.bodyMat) {
         this.playerActiveModel.bodyMat.color.setHex(paintHex);
         this.loadedPaintHex = paintHex;
@@ -168,6 +172,7 @@ export class DroneReplayManager {
         this.playerFallback.group.visible = false;
         this.playerCarGroup.add(model.group);
         this.playerActiveModel = model;
+        model.setSpoiler(this.playerSpoiler);
       })
       .catch(() => {
         this.playerFallback.group.visible = true;
@@ -175,13 +180,15 @@ export class DroneReplayManager {
       });
   }
 
-  ensureReplayPeerModel(slotIdx, carId, paintSlot) {
+  ensureReplayPeerModel(slotIdx, carId, paintSlot, spoiler = 'none') {
     const peerSlot = this.replayPeers[slotIdx];
     if (!peerSlot) return;
     const cleanId = getCar(carId).id;
     const paintHex = SLOT_STYLES[paintSlot % SLOT_STYLES.length]?.paint ?? SLOT_STYLES[1].paint;
+    peerSlot.spoiler = spoiler;
 
     if (peerSlot.loadedCarId === cleanId) {
+      peerSlot.activeModel?.setSpoiler?.(spoiler);
       if (peerSlot.paintHex !== paintHex && peerSlot.activeModel?.bodyMat) {
         peerSlot.activeModel.bodyMat.color.setHex(paintHex);
         peerSlot.paintHex = paintHex;
@@ -200,6 +207,7 @@ export class DroneReplayManager {
         peerSlot.fallback.group.visible = false;
         peerSlot.group.add(model.group);
         peerSlot.activeModel = model;
+        model.setSpoiler(peerSlot.spoiler);
       })
       .catch(() => {
         peerSlot.fallback.group.visible = true;
@@ -232,6 +240,7 @@ export class DroneReplayManager {
     f.braking = Boolean(state.braking);
     f.carId = state.carId;
     f.paintSlot = state.paintSlot || 0;
+    f.spoiler = state.spoiler || 'none';
     f.score = state.score;
     f.combo = state.combo;
 
@@ -274,6 +283,7 @@ export class DroneReplayManager {
           dst.name = p.name;
           dst.slot = p.slot;
           dst.carModel = p.carModel;
+          dst.spoiler = p.spoiler || 'none';
           dst.x = p.x;
           dst.relZ = p.relZ;
           dst.speedKmh = p.speedKmh;
@@ -476,6 +486,7 @@ export class DroneReplayManager {
       braking: src.braking,
       carId: src.carId,
       paintSlot: src.paintSlot,
+      spoiler: src.spoiler,
       score: src.score,
       combo: src.combo,
       tX: new Float32Array(src.tX),
@@ -604,7 +615,7 @@ export class DroneReplayManager {
 
     // Prepare player exterior car model
     const firstFrame = clip.frames[0];
-    this.ensurePlayerExteriorModel(firstFrame.carId, firstFrame.paintSlot);
+    this.ensurePlayerExteriorModel(firstFrame.carId, firstFrame.paintSlot, firstFrame.spoiler);
     this.playerCarGroup.visible = true;
 
     // Reset camera smoothing positions
@@ -761,7 +772,7 @@ export class DroneReplayManager {
     this.world.update(0.016, deltaDist / 0.016, px, f0.highBeam, worldDistM);
 
     // 2. Position Local Player Exterior 3D Car
-    this.ensurePlayerExteriorModel(f0.carId, f0.paintSlot);
+    this.ensurePlayerExteriorModel(f0.carId, f0.paintSlot, f0.spoiler);
     const playerCurveX = this.world.getCurveOffsetAtZ(0);
     const playerCurveYaw = this.world.getCurveYawAtZ(0);
     this.playerCarGroup.position.set(px + playerCurveX, 0, 0);
@@ -835,7 +846,7 @@ export class DroneReplayManager {
       const peerHeading = THREE.MathUtils.lerp(p0.headingAngle, p1.headingAngle, alpha);
       const peerRoll = THREE.MathUtils.lerp(p0.bodyRoll, p1.bodyRoll, alpha);
 
-      this.ensureReplayPeerModel(i, p0.carModel, p0.slot);
+      this.ensureReplayPeerModel(i, p0.carModel, p0.slot, p0.spoiler);
       const cX = this.world.getCurveOffsetAtZ(peerZ);
       const cYaw = this.world.getCurveYawAtZ(peerZ);
       rp.group.visible = true;

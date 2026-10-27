@@ -45,4 +45,6 @@ Değerleri asla tahmin etme; ölç. Her adımdan sonra ekran görüntüsüyle do
 8. **Fiyat ve performans (yeni sürüm):** `car.js` → `price` ve `performance` alanlarını gerçek
    araca göre doldur; diğer araçlarla kıyasla (README → `performance`). Garajda "Yeni Sürüm"
    açıkken son hız ve 0-100 değerlerini kontrol et.
+   Spoylerin oturduğunu `car.html?car=<id>&spoiler=wing` (ve `lip`, `ducktail`) ile kontrol et;
+   yanlışsa `exterior.spoiler: { z, y, width }`.
 9. **Bitiş:** `draft: true` satırını sil, `npm run build`. Commit/push için kullanıcıya sor.

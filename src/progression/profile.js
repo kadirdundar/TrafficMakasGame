@@ -1,7 +1,8 @@
-import { DEFAULT_CAR_PRICE, MAX_UPGRADE_LEVEL, STARTING_COINS, UPGRADES } from './config.js';
-import { upgradeCost } from './performance.js';
+import { DEFAULT_CAR_PRICE, MAX_UPGRADE_LEVEL, SPOILERS, STARTING_COINS, UPGRADES } from './config.js';
+import { spoilerCost, upgradeCost } from './performance.js';
 
-// The player's save in the new version: coins, cars bought and upgrade levels per car.
+// The player's save in the new version: coins, cars bought, and per car the upgrade levels and
+// the spoilers bought / fitted.
 // Stored in localStorage under one versioned key; cars are referred to by their car.js id, so
 // cars added later simply start out unowned and unupgraded.
 
@@ -13,7 +14,7 @@ export function carPrice(car) {
 }
 
 function freshProfile() {
-  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {} };
+  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, spoilers: {} };
 }
 
 function readStored() {
@@ -26,6 +27,7 @@ function readStored() {
       totalEarned: Math.max(0, Math.floor(Number(data.totalEarned) || 0)),
       owned: Array.isArray(data.owned) ? data.owned.filter((id) => typeof id === 'string') : [],
       upgrades: data.upgrades && typeof data.upgrades === 'object' ? data.upgrades : {},
+      spoilers: data.spoilers && typeof data.spoilers === 'object' ? data.spoilers : {},
     };
   } catch (_) {
     return freshProfile();
@@ -91,6 +93,34 @@ export class PlayerProfile {
     this.data.coins -= cost;
     const levels = (this.data.upgrades[car.id] ??= {});
     levels[upgradeId] = this.level(car.id, upgradeId) + 1;
+    this.flush();
+    this.emit();
+    return true;
+  }
+
+  // Spoiler fitted on a car ('none' when there is none)
+  spoiler(carId) {
+    const fitted = this.data.spoilers[carId]?.fitted;
+    return SPOILERS.some((sp) => sp.id === fitted) ? fitted : 'none';
+  }
+
+  ownsSpoiler(car, spoilerId) {
+    const spoiler = SPOILERS.find((sp) => sp.id === spoilerId);
+    return Boolean(spoiler) && (spoiler.price <= 0 || this.data.spoilers[car.id]?.owned?.includes(spoilerId));
+  }
+
+  // Buys the spoiler if needed and fits it; one bought stays the car's and swaps back for free
+  fitSpoiler(car, spoilerId) {
+    const spoiler = SPOILERS.find((sp) => sp.id === spoilerId);
+    if (!spoiler || !this.owns(car)) return false;
+    const entry = (this.data.spoilers[car.id] ??= { owned: [], fitted: 'none' });
+    if (!this.ownsSpoiler(car, spoilerId)) {
+      const cost = spoilerCost(car, spoiler);
+      if (this.data.coins < cost) return false;
+      this.data.coins -= cost;
+      entry.owned = [...(entry.owned || []), spoilerId];
+    }
+    entry.fitted = spoilerId;
     this.flush();
     this.emit();
     return true;

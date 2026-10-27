@@ -52,3 +52,13 @@ export const UPGRADES = [
 ];
 
 export const MAX_UPGRADE_LEVEL = LEVEL_COST.length;
+
+// Rear spoilers (parts in src/cars/spoiler.js). Bought once per car, then fitted or swapped
+// for free. Price × the car's `performance.upgradeCost`, rounded to 50. `per` works like an
+// upgrade level: more downforce turns in sharper but costs a little top speed.
+export const SPOILERS = [
+  { id: 'none', label: 'Yok', detail: 'Fabrika arka kaput', price: 0, per: {} },
+  { id: 'lip', label: 'Dudak', detail: 'İnce kaput dudağı', price: 1500, per: { handling: 0.015 } },
+  { id: 'ducktail', label: 'Ördek Kuyruk', detail: 'Kalkık kuyruk spoyleri', price: 3000, per: { handling: 0.03, topSpeed: -2 } },
+  { id: 'wing', label: 'GT Kanat', detail: 'Karbon kanat, ayaklı', price: 6000, per: { handling: 0.06, topSpeed: -6 } },
+];

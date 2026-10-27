@@ -1,10 +1,10 @@
 import { CAR_LIST } from '../cars/index.js';
-import { MAX_UPGRADE_LEVEL, UPGRADES } from './config.js';
-import { carStats, statBars } from './performance.js';
+import { MAX_UPGRADE_LEVEL, SPOILERS, UPGRADES } from './config.js';
+import { carStats, spoilerCost, statBars } from './performance.js';
 import { carPrice } from './profile.js';
 
 // Garage side of the new version (step 1 of the menu): the switch, the wallet, prices on the
-// car cards, the selected car's stats, and buying cars and upgrades. Everything here is hidden
+// car cards, the selected car's stats, and buying cars, upgrades and spoilers. Everything here is hidden
 // while the switch is off, so the classic garage looks exactly as before.
 
 const fmt = (n) => Math.round(n).toLocaleString('tr-TR');
@@ -98,7 +98,7 @@ export class GarageProgressUI {
   renderPanel(car) {
     const owned = this.profile.owns(car);
     const base = statBars(carStats(car));
-    const now = statBars(carStats(car, this.profile.levels(car.id)));
+    const now = statBars(carStats(car, this.profile.levels(car.id), this.profile.spoiler(car.id)));
 
     const stats = el('div', 'perf-stats');
     for (const row of STAT_ROWS) {
@@ -115,7 +115,12 @@ export class GarageProgressUI {
 
     const children = [el('h3', '', 'Performans'), stats];
     if (owned) {
-      children.push(el('h3', 'upgrade-heading', 'Yükseltmeler'), this.buildUpgrades(car));
+      children.push(
+        el('h3', 'upgrade-heading', 'Yükseltmeler'),
+        this.buildUpgrades(car),
+        el('h3', 'upgrade-heading', 'Spoyler'),
+        this.buildSpoilers(car)
+      );
     } else {
       children.push(this.buildBuyButton(car));
     }
@@ -171,6 +176,32 @@ export class GarageProgressUI {
       list.append(row);
     }
     return list;
+  }
+
+  // One card per spoiler: price until bought, then fitted or swapped for free
+  buildSpoilers(car) {
+    const grid = el('div', 'spoiler-grid');
+    const fitted = this.profile.spoiler(car.id);
+    for (const spoiler of SPOILERS) {
+      const owned = this.profile.ownsSpoiler(car, spoiler.id);
+      const cost = spoilerCost(car, spoiler);
+      const btn = el('button', 'spoiler-card');
+      btn.type = 'button';
+      btn.setAttribute('aria-pressed', String(spoiler.id === fitted));
+      btn.disabled = !owned && cost > this.profile.coins;
+      const state = spoiler.id === fitted ? 'TAKILI' : owned ? 'TAK' : `${fmt(cost)}`;
+      btn.append(
+        el('strong', '', spoiler.label),
+        el('small', '', spoiler.detail),
+        el('span', owned ? 'spoiler-state' : 'spoiler-state price', state)
+      );
+      btn.addEventListener('click', () => {
+        if (spoiler.id === fitted) return;
+        if (this.profile.fitSpoiler(car, spoiler.id)) this.onPurchase({ type: 'spoiler', car, spoiler });
+      });
+      grid.append(btn);
+    }
+    return grid;
   }
 
   // The selected car is not bought yet and the player tried to go on: point at the buy button

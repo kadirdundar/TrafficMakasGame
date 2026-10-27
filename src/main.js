@@ -162,7 +162,7 @@ class OtobanMakasGame {
       profile: this.profile,
       enabled: this.newVersion,
       onToggle: (on) => this.setNewVersion(on),
-      onPurchase: () => this.onGaragePurchase(),
+      onPurchase: (purchase) => this.onGaragePurchase(purchase),
     });
 
     try {
@@ -1084,10 +1084,7 @@ class OtobanMakasGame {
     if (this.multiplayer) {
       this.multiplayer.setLocalCarModel(carId);
     }
-    if (this.replay) {
-      this.replay.ensurePlayerExteriorModel(carId, this.selectedPaintSlot || 0);
-    }
-    this.applyCarPerformance();
+    this.applyCarPerformance(); // also loads the drone replay's exterior of this car
     this.updateWizardSummaries?.();
   }
 
@@ -1095,9 +1092,14 @@ class OtobanMakasGame {
   // classic tuning otherwise. The speedometer dial grows with cars faster than 260 km/h.
   applyCarPerformance() {
     const car = CARS[this.selectedCar];
+    const spoiler = this.fittedSpoiler();
     this.carPhysics = this.newVersion
-      ? resolvePhysics(carStats(car, this.profile.levels(car.id)))
+      ? resolvePhysics(carStats(car, this.profile.levels(car.id), spoiler))
       : CLASSIC_PHYSICS;
+    // The spoiler shows on the garage car, to online friends and in the drone replay
+    this.showroom?.setSpoiler(spoiler);
+    this.multiplayer?.setLocalSpoiler(spoiler);
+    this.replay?.ensurePlayerExteriorModel(car.id, this.selectedPaintSlot || 0, spoiler);
     const top = this.carPhysics.maxSpeed;
     this.cockpit?.setSpeedoMax(top <= 260 ? 260 : top <= 320 ? 320 : 360);
     this.garageUI.render(car);
@@ -1112,10 +1114,17 @@ class OtobanMakasGame {
     this.applyCarPerformance();
   }
 
-  onGaragePurchase() {
+  onGaragePurchase({ type }) {
     this.sound.init();
     this.sound.playSelektorClick();
     this.applyCarPerformance();
+    // Turn the garage car round so the new spoiler is in view
+    if (type === 'spoiler') this.showroom?.goToView('rear34');
+  }
+
+  // Spoiler on the selected car (new version only)
+  fittedSpoiler() {
+    return this.newVersion ? this.profile.spoiler(this.selectedCar) : 'none';
   }
 
   // In the new version only cars bought (or the starter car) can be driven
@@ -1223,7 +1232,7 @@ class OtobanMakasGame {
       if (on) this.setHudText('garage-paint-name', sw.getAttribute('aria-label'));
     });
     this.multiplayer?.setLocalPaintSlot(this.selectedPaintSlot);
-    this.replay?.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot);
+    this.replay?.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot, this.fittedSpoiler());
   }
 
   syncMultiplayerUI({ connected, connecting, role, roomCode, playerCount, message }) {
@@ -2254,6 +2263,7 @@ class OtobanMakasGame {
       braking: brake > 0,
       carId: this.selectedCar,
       paintSlot: this.selectedPaintSlot || 0,
+      spoiler: this.fittedSpoiler(),
       score: this.score,
       combo: this.combo,
     });

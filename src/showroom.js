@@ -275,6 +275,7 @@ export class A8Showroom {
       this.controls.target.copy(this.target);
 
       car.setLights({ night: this.lightsOn });
+      car.setSpoiler(this.spoiler);
       this.resize();
       this.goToView('front34', 1.8);
       this.onReady?.(true);
@@ -386,6 +387,12 @@ export class A8Showroom {
   setPaint(hex) {
     this.paintHex = hex;
     this.car?.bodyMat.color.setHex(hex);
+  }
+
+  // Rear spoiler (src/cars/spoiler.js); kept for the next car loaded
+  setSpoiler(id) {
+    this.spoiler = id;
+    this.car?.setSpoiler(id);
   }
 
   setAccent(cssColor) {
