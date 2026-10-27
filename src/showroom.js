@@ -264,8 +264,12 @@ export class A8Showroom {
       this.reflection = null;
     }
     try {
-      const car = await loadCarExterior(this.carType, { paintHex: this.paintHex });
+      const car = await loadCarExterior(type, { paintHex: this.paintHex });
+      // Another car was picked while this one downloaded (the garage's car strip): drop it
+      if (this.carType !== type) return;
+      if (this.car) this.scene.remove(this.car.group);
       this.car = car;
+      car.bodyMat.color.setHex(this.paintHex);
       this.scene.add(car.group);
 
       const box = new THREE.Box3().setFromObject(car.group);
@@ -281,7 +285,7 @@ export class A8Showroom {
       this.onReady?.(true);
     } catch (err) {
       console.warn('Garaj modeli yüklenemedi', err);
-      this.onReady?.(false);
+      if (this.carType === type) this.onReady?.(false);
     }
   }
 

@@ -13,6 +13,7 @@ import { PlayerProfile } from './progression/profile.js';
 import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js';
 import { COINS_PER_KM, COINS_PER_POINT } from './progression/config.js';
 import { GarageProgressUI } from './progression/garageUI.js';
+import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -31,6 +32,34 @@ const CAMERA_PRESETS = [
   { name: 'Tam Kabin', offset: new THREE.Vector3(0.0, 1.28, 0.35), baseFov: 62, horizonShiftY: 0.30 },
   { name: 'Yakın Sürüş', offset: new THREE.Vector3(0.0, 1.22, 0.05), baseFov: 54, horizonShiftY: 0.18 },
 ];
+
+// Touch steering choices, in Ayarlar and in the picker before the first drive
+const STEER_MODES = [
+  {
+    id: 'wheel',
+    title: 'Kaydırarak',
+    desc: 'Sol başparmağını ekranda sağa sola kaydır',
+    badge: 'Önerilen',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="2.2" /><path d="M3.8 11h6M14.2 11h6M12 14.2v6" /></svg>',
+  },
+  {
+    id: 'buttons',
+    title: 'Ok tuşları',
+    desc: 'Sol alttaki ◀ ▶ tuşlarına basılı tut',
+    icon: '<svg viewBox="0 0 24 24"><rect x="2.5" y="6.5" width="8.5" height="11" rx="2" /><rect x="13" y="6.5" width="8.5" height="11" rx="2" /><path d="M8 9.5 5.5 12 8 14.5M16 9.5l2.5 2.5-2.5 2.5" /></svg>',
+  },
+  {
+    id: 'tilt',
+    title: 'Eğerek',
+    desc: 'Telefonu direksiyon gibi sağa sola eğ',
+    icon: '<svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="9" rx="2" transform="rotate(-14 12 12.5)" /><path d="M3 6.5a10 10 0 0 1 5-3M21 18.5a10 10 0 0 1-5 3" /></svg>',
+  },
+];
+const STEER_MODE_KEY = 'otoban_steer_mode';
+
+const ROAD_LABELS = { highway: 'Otoban', twoway: 'Gidiş-Geliş', track: 'İstanbul Park' };
+// Each number of the 3-2-1 before a paused drive goes on
+const COUNTDOWN_STEP_MS = 650;
 
 class OtobanMakasGame {
   constructor() {
@@ -93,8 +122,7 @@ class OtobanMakasGame {
         this.headingAngle = 0;
         this.sound.init();
         this.sound.setRainAmbience(this.world.weatherKey === 'rain');
-        this.setMenuOpen(false);
-        this.showResumeButtons();
+        this.beginDrive();
         this.showMakasNotification(
           `🏁 ${remoteName} BAĞLANDI! BERABER SÜRÜŞ BAŞLADI!`,
           0,
@@ -157,12 +185,13 @@ class OtobanMakasGame {
     this.carPhysics = CLASSIC_PHYSICS;
     this.coinScoreMark = 0; // score already paid out (see earnCoins)
     this.coinCarry = 0; // fraction of a coin not paid out yet
-    this.runCoins = 0; // coins earned since the menu was last closed
+    this.runCoins = 0; // coins earned in the current drive
     this.garageUI = new GarageProgressUI({
       profile: this.profile,
       enabled: this.newVersion,
       onToggle: (on) => this.setNewVersion(on),
       onPurchase: (purchase) => this.onGaragePurchase(purchase),
+      onPreview: (parts, kind) => this.previewParts(parts, kind),
     });
 
     try {
@@ -191,8 +220,21 @@ class OtobanMakasGame {
 
     // Game & Vehicle Physics State
     this.paused = true;
+    // What the screen shows: 'menu' (home / garage / online), 'pause' (the pause card over the
+    // frozen road), 'countdown' (3-2-1 back into the drive) or 'drive'. Physics run only in 'drive'.
+    this.uiState = 'menu';
+    this.menuScreen = 'home';
+    this.runActive = false; // a drive the pause card or the home screen can resume
+    this.countdownTimers = [];
+    this.settingsOpen = false;
+    this.coach = new FirstDriveCoach();
     this.score = 0;
     this.bestScore = Number(localStorage.getItem('otoban_makas_best') || 0);
+    // Best score per road, on the home screen's mode cards (the track's record is its best lap)
+    this.modeBest = {};
+    for (const mode of ['highway', 'twoway']) {
+      this.modeBest[mode] = Number(localStorage.getItem(`otoban_best_${mode}`) || 0);
+    }
     this.combo = 1.0;
     this.comboTimer = 0; // 0.0 to 1.0
     this.health = 100;
@@ -239,7 +281,13 @@ class OtobanMakasGame {
     this.touchSteerValue = 0; // -1 to +1 from steering wheel drag or tilt
     this.touchThrottle = 0; // 0 to 1 from the analog drive pedal (pushing up)
     this.touchBrake = 0; // 0 to 1 from the analog drive pedal (pulling down)
-    this.steerMode = 'wheel'; // 'wheel' | 'buttons' | 'tilt'
+    // 'wheel' | 'buttons' | 'tilt', remembered once the player has picked one (see startFromHome)
+    let savedSteer = null;
+    try {
+      savedSteer = localStorage.getItem(STEER_MODE_KEY);
+    } catch (_) {}
+    this.steerModeChosen = STEER_MODES.some((mode) => mode.id === savedSteer);
+    this.steerMode = this.steerModeChosen ? savedSteer : 'wheel';
     this.tiltBaseline = null;
     this.steerInput = 0;
 
@@ -261,7 +309,7 @@ class OtobanMakasGame {
     } catch (_) {}
     if (savedDensity && ['normal', 'heavy', 'extreme'].includes(savedDensity)) {
       this.traffic.setDensity(savedDensity);
-      document.querySelectorAll('#traffic-density-group .seg-btn').forEach((b) => {
+      document.querySelectorAll('#traffic-density-group [data-density]').forEach((b) => {
         b.classList.toggle('active', b.getAttribute('data-density') === savedDensity);
       });
     }
@@ -274,7 +322,7 @@ class OtobanMakasGame {
     this.bindEvents();
     this.setupAppMode();
     this.updateHUD();
-    this.setMenuOpen(true);
+    this.openMenu('home');
     this.animate();
   }
 
@@ -288,6 +336,9 @@ class OtobanMakasGame {
 
     const label = document.getElementById('camera-label');
     if (label) label.textContent = preset.name;
+    document.querySelectorAll('#camera-select-group [data-camera]').forEach((btn) => {
+      btn.classList.toggle('active', Number(btn.dataset.camera) === this.cameraPresetIndex);
+    });
   }
 
   updateCameraProjection() {
@@ -371,7 +422,7 @@ class OtobanMakasGame {
         this.toggleFpsMeter();
       }
       if (code === 'Escape') {
-        this.togglePauseMenu();
+        this.handleEscape();
       }
     });
 
@@ -392,7 +443,7 @@ class OtobanMakasGame {
 
     // Quick Top HUD Buttons
     document.getElementById('btn-mp-quick')?.addEventListener('click', () => {
-      this.setMenuOpen(true, 'online');
+      this.openMenu('online');
     });
 
     document.getElementById('btn-mp-catchup')?.addEventListener('click', () => this.catchUpToFriend());
@@ -448,34 +499,56 @@ class OtobanMakasGame {
     });
 
     document.getElementById('btn-pause')?.addEventListener('click', () => {
-      this.togglePauseMenu();
+      this.openPause();
     });
 
-    // Start / Resume & Reset Buttons in Modal
-    const startOrResumeGame = () => {
+    // Home: a mode card starts a drive on that road, the banner resumes the one in progress
+    document.querySelectorAll('#road-mode-group [data-road]').forEach((card) => {
+      card.addEventListener('click', () => this.startFromHome(card.dataset.road));
+    });
+    document.getElementById('btn-resume-drive')?.addEventListener('click', () => this.resumeDrive());
+    document.getElementById('btn-open-garage')?.addEventListener('click', () => this.setScreen('garage'));
+    document.getElementById('btn-open-online')?.addEventListener('click', () => this.setScreen('online'));
+    document.getElementById('btn-open-settings')?.addEventListener('click', () => this.openSettings());
+    document.querySelectorAll('[data-menu-back]').forEach((btn) => {
+      btn.addEventListener('click', () => this.setScreen('home'));
+    });
+    document.getElementById('btn-garage-drive')?.addEventListener('click', () => {
       if (!this.canDriveSelectedCar()) {
-        this.setMenuStep(1);
-        return;
+        this.garageUI.flashLocked();
+      } else if (this.runActive) {
+        this.resumeDrive();
+      } else {
+        this.startFromHome(this.traffic.roadMode);
       }
-      this.enterAppFullscreen();
-      if (nameInput?.value) {
-        this.multiplayer.setPlayerName(nameInput.value);
-      }
-      if (this.multiplayer.connected) {
-        this.multiplayer.catchUpToPeer();
-      }
-      this.sound.init();
-      this.sound.setRainAmbience(this.world.weatherKey === 'rain');
-      this.setMenuOpen(false);
-      this.showResumeButtons();
-    };
+    });
 
-    document.getElementById('btn-start-game')?.addEventListener('click', startOrResumeGame);
-    document.getElementById('btn-quick-resume')?.addEventListener('click', startOrResumeGame);
+    // Pause card
+    document.getElementById('btn-pause-resume')?.addEventListener('click', () => this.resumeDrive());
+    document.getElementById('btn-pause-restart')?.addEventListener('click', () => this.restartDrive());
+    document.getElementById('btn-pause-settings')?.addEventListener('click', () => this.openSettings());
+    document.getElementById('btn-pause-garage')?.addEventListener('click', () => this.openMenu('garage'));
+    document.getElementById('btn-pause-end')?.addEventListener('click', () => this.endDrive());
 
-    // Drone Replay Modal & Controls (triggered from the Pause Menu)
-    document.getElementById('btn-drone-replay')?.addEventListener('click', () => {
-      this.openDroneReplay();
+    // Settings sheet and the first-drive control picker
+    document.getElementById('btn-settings-close')?.addEventListener('click', () => this.closeSettings());
+    document.querySelectorAll('[data-settings-tab]').forEach((tab) => {
+      tab.addEventListener('click', () => this.showSettingsTab(tab.dataset.settingsTab));
+    });
+    document.getElementById('btn-picker-cancel')?.addEventListener('click', () => this.closeControlPicker());
+    document.getElementById('sound-switch')?.addEventListener('change', (e) => {
+      if (e.target.checked === this.sound.muted) this.toggleSound();
+    });
+    const coachBtn = document.getElementById('btn-replay-coach');
+    coachBtn?.addEventListener('click', () => {
+      resetCoach();
+      coachBtn.textContent = 'İpuçları bir sonraki sürüşte gösterilecek ✓';
+      coachBtn.disabled = true;
+    });
+
+    // Drone Replay (from the pause card or the home screen) & its controls
+    document.querySelectorAll('.js-drone-replay').forEach((btn) => {
+      btn.addEventListener('click', () => this.openDroneReplay());
     });
     document.getElementById('btn-drone-close')?.addEventListener('click', () => {
       this.closeDroneReplay();
@@ -506,32 +579,14 @@ class OtobanMakasGame {
       this.replay.seekToRatio(ratio);
     });
 
-    // Step-by-step wizard navigation (Step 1 -> Step 2 -> Step 3)
-    this.menuStep = 1;
-    document.querySelectorAll('.step-pill[data-step-target]').forEach((pill) => {
-      pill.addEventListener('click', () => {
-        this.setMenuStep(Number(pill.dataset.stepTarget));
-      });
-    });
-    document.getElementById('btn-step-1-next')?.addEventListener('click', () => this.setMenuStep(2));
-    document.getElementById('btn-step-2-prev')?.addEventListener('click', () => this.setMenuStep(1));
-    document.getElementById('btn-step-2-next')?.addEventListener('click', () => this.setMenuStep(3));
-    document.getElementById('btn-step-3-prev')?.addEventListener('click', () => this.setMenuStep(2));
-
-    // Menu tabs (within Step 3)
-    document.querySelectorAll('.panel-tab').forEach((tab) => {
-      tab.addEventListener('click', () => this.showMenuTab(tab.dataset.tab));
-    });
-
-    // Garage: car model selection, camera angles, lights, turntable and the online paint preview
+    // Garage: the car strip, previous / next on the turntable, and the online paint preview
     this.buildCarSelect();
-    document.querySelectorAll('#garage-car-select .seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.setCar(btn.dataset.car);
-      });
+    document.querySelectorAll('#garage-car-select [data-car]').forEach((btn) => {
+      btn.addEventListener('click', () => this.setCar(btn.dataset.car));
     });
+    document.getElementById('btn-car-prev')?.addEventListener('click', () => this.stepCar(-1));
+    document.getElementById('btn-car-next')?.addEventListener('click', () => this.stepCar(1));
     this.setCar(this.selectedCar, false);
-    this.updateWizardSummaries();
 
     // Reduced motion: the turntable stands still
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -543,7 +598,7 @@ class OtobanMakasGame {
     this.setGaragePaint(this.selectedPaintSlot);
 
     // Modal Settings Selectors
-    document.querySelectorAll('#weather-select-group .opt-card').forEach((btn) => {
+    document.querySelectorAll('#weather-select-group [data-weather]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-weather');
         const preset = this.world.applyWeather(key);
@@ -559,27 +614,18 @@ class OtobanMakasGame {
       });
     });
 
-    document.querySelectorAll('#steer-mode-group .seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#steer-mode-group .seg-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.steerMode = btn.getAttribute('data-steermode');
-        this.updateSteerModeUI();
-        // iOS only delivers orientation events after an explicit permission prompt, which
-        // must be triggered from a user gesture like this click
-        if (this.steerMode === 'tilt' && typeof DeviceOrientationEvent?.requestPermission === 'function') {
-          DeviceOrientationEvent.requestPermission().catch(() => {});
-        }
-      });
+    // Touch steering: the same three choices in Ayarlar and in the first-drive picker
+    this.buildSteerOptions(document.getElementById('steer-mode-group'), (mode) => this.setSteerMode(mode));
+    this.buildSteerOptions(document.getElementById('picker-steer-options'), (mode) => this.pickControl(mode));
+    this.setSteerMode(this.steerMode, { remember: false });
+
+    document.querySelectorAll('#camera-select-group [data-camera]').forEach((btn) => {
+      btn.addEventListener('click', () => this.applyCameraPreset(Number(btn.dataset.camera)));
     });
 
-    document.querySelectorAll('#road-mode-group .seg-btn').forEach((btn) => {
-      btn.addEventListener('click', () => this.setRoadMode(btn.dataset.road, { remember: true }));
-    });
-
-    document.querySelectorAll('#traffic-density-group .seg-btn').forEach((btn) => {
+    document.querySelectorAll('#traffic-density-group [data-density]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('#traffic-density-group .seg-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('#traffic-density-group [data-density]').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         const density = btn.getAttribute('data-density');
         this.traffic.setDensity(density);
@@ -797,18 +843,25 @@ class OtobanMakasGame {
       navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
     }
 
-    // Coins are saved a few seconds after they are earned; going to the background saves at once
+    // Going to the background (a call, a notification, the app switcher) pauses the drive, and
+    // saves the coins (otherwise written a few seconds after they are earned) and records at once
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.profile.flush();
+      if (!document.hidden) return;
+      this.profile.flush();
+      this.saveRecords();
+      this.openPause();
     });
-    window.addEventListener('pagehide', () => this.profile.flush());
+    window.addEventListener('pagehide', () => {
+      this.profile.flush();
+      this.saveRecords();
+    });
 
     const portrait = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
     this.portraitPhone = portrait;
     portrait.addEventListener('change', () => {
-      if (portrait.matches && !this.paused) this.togglePauseMenu();
+      if (portrait.matches) this.openPause();
       // The rotate screen covers the garage: no need to draw it meanwhile
-      this.showroom?.setActive(this.paused && !portrait.matches);
+      this.showroom?.setActive(this.uiState === 'menu' && !portrait.matches && !this.replay?.active);
     });
 
     // Where the browser can lock the orientation (Android Chrome), one tap on the rotate
@@ -932,6 +985,68 @@ class OtobanMakasGame {
     el.addEventListener('touchend', preventSafariZoom, { passive: false });
   }
 
+  // Ayarlar / first-drive picker: one button per steering mode
+  buildSteerOptions(container, onPick) {
+    if (!container) return;
+    container.replaceChildren(
+      ...STEER_MODES.map((mode) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'steer-option';
+        btn.dataset.steermode = mode.id;
+        btn.setAttribute('aria-pressed', 'false');
+        const icon = document.createElement('span');
+        icon.className = 'steer-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = mode.icon;
+        const title = document.createElement('strong');
+        title.textContent = mode.title;
+        const desc = document.createElement('small');
+        desc.textContent = mode.desc;
+        btn.append(icon, title, desc);
+        if (mode.badge) {
+          const badge = document.createElement('em');
+          badge.className = 'steer-badge';
+          badge.textContent = mode.badge;
+          btn.append(badge);
+        }
+        btn.addEventListener('click', () => onPick(mode.id));
+        return btn;
+      })
+    );
+  }
+
+  setSteerMode(mode, { remember = true } = {}) {
+    if (!STEER_MODES.some((m) => m.id === mode)) return;
+    this.steerMode = mode;
+    this.touchSteerValue = 0;
+    if (remember) {
+      this.steerModeChosen = true;
+      try {
+        localStorage.setItem(STEER_MODE_KEY, mode);
+      } catch (_) {}
+      this.requestTiltPermission();
+    }
+    document.querySelectorAll('.steer-option[data-steermode]').forEach((btn) => {
+      const on = btn.dataset.steermode === mode;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+    this.updateSteerModeUI();
+  }
+
+  // iOS only delivers orientation events after an explicit permission prompt, which must be
+  // triggered from a user gesture (picking tilt, or the tap that starts or resumes the drive)
+  requestTiltPermission() {
+    if (this.steerMode === 'tilt' && typeof window.DeviceOrientationEvent?.requestPermission === 'function') {
+      window.DeviceOrientationEvent.requestPermission().catch(() => {});
+    }
+  }
+
+  isTouch() {
+    return window.matchMedia('(pointer: coarse)').matches;
+  }
+
   updateSteerModeUI() {
     const btnZone = document.getElementById('button-steer-zone');
     if (this.steerMode === 'buttons') {
@@ -958,16 +1073,17 @@ class OtobanMakasGame {
     if (iconEl) iconEl.textContent = preset.icon;
     if (labelEl) labelEl.textContent = preset.label;
 
-    document.querySelectorAll('#weather-select-group .opt-card').forEach((card) => {
+    document.querySelectorAll('#weather-select-group [data-weather]').forEach((card) => {
       card.classList.toggle('active', card.getAttribute('data-weather') === preset.key);
     });
+    this.setHudText('weather-current', preset.label);
     const overlay = document.getElementById('menu-overlay');
     if (overlay) overlay.dataset.weather = preset.key;
 
     // Automatically turn on wipers in Rainy weather
     this.cockpit.toggleWipers(preset.rain);
     this.sound.setRainAmbience(preset.rain);
-    this.updateWizardSummaries?.();
+    this.updateHomeSummary();
   }
 
   // The 3D interior is the only cockpit. While its model downloads (or if every attempt
@@ -991,8 +1107,9 @@ class OtobanMakasGame {
       ...CAR_LIST.map((car) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'seg-btn car-select-card';
+        btn.className = 'car-select-card';
         btn.dataset.car = car.id;
+        btn.setAttribute('aria-pressed', 'false');
 
         const info = document.createElement('span');
         info.className = 'car-card-info';
@@ -1062,8 +1179,11 @@ class OtobanMakasGame {
     if (modelEl) {
       modelEl.innerHTML = `${config.model} <small class="car-variant" id="garage-car-variant">${config.variant}</small>`;
     }
-    document.querySelectorAll('#garage-car-select .seg-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.car === carId);
+    document.querySelectorAll('#garage-car-select [data-car]').forEach((btn) => {
+      const on = btn.dataset.car === carId;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', String(on));
+      if (on && this.menuScreen === 'garage') btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     });
 
     const loader = document.getElementById('garage-loader');
@@ -1085,7 +1205,13 @@ class OtobanMakasGame {
       this.multiplayer.setLocalCarModel(carId);
     }
     this.applyCarPerformance(); // also loads the drone replay's exterior of this car
-    this.updateWizardSummaries?.();
+  }
+
+  // Garage arrows beside the turntable: the previous / next car in the strip
+  stepCar(step) {
+    const index = CAR_LIST.findIndex((car) => car.id === this.selectedCar);
+    const next = CAR_LIST[(index + step + CAR_LIST.length) % CAR_LIST.length];
+    this.setCar(next.id);
   }
 
   // Physics of the selected car: its own stats and upgrades in the new version, the shared
@@ -1113,6 +1239,13 @@ class OtobanMakasGame {
     this.coinScoreMark = this.score;
     this.coinCarry = 0;
     this.applyCarPerformance();
+  }
+
+  // Garage: parts tried on the turntable car before they are bought (null: back to the fitted ones)
+  previewParts(parts, kind) {
+    this.showroom?.setParts(parts ?? this.fittedParts());
+    if (kind === 'spoiler') this.showroom?.goToView('rear34');
+    if (kind === 'rim') this.showroom?.goToView('front34');
   }
 
   onGaragePurchase({ type }) {
@@ -1149,63 +1282,28 @@ class OtobanMakasGame {
     }
   }
 
-  updateWizardSummaries() {
-    const car = CARS[this.selectedCar];
-    if (car) {
-      this.setHudText('step-summary-car', car.label);
-    }
-    const roadNames = {
-      highway: 'Otoban',
-      twoway: 'Gidiş-Geliş',
-      track: 'İstanbul Park',
-    };
-    const roadLabel = roadNames[this.traffic?.roadMode] || 'Otoban';
-    const weatherLabel = WEATHER_PRESETS[this.world?.weatherKey]?.label || 'Gece';
-    this.setHudText('step-summary-world', `${roadLabel} · ${weatherLabel}`);
-  }
-
-  setMenuStep(stepNum) {
-    let step = Math.max(1, Math.min(3, Number(stepNum) || 1));
-    if (step > 1 && !this.canDriveSelectedCar()) {
-      step = 1;
-      this.garageUI.flashLocked();
-    }
-    this.menuStep = step;
-    const overlay = document.getElementById('menu-overlay');
-    if (overlay) overlay.dataset.step = String(step);
-
-    document.querySelectorAll('.step-pill[data-step-target]').forEach((pill) => {
-      const target = Number(pill.dataset.stepTarget);
-      const isCurrent = target === step;
-      const isDone = target < step;
-      pill.classList.toggle('active', isCurrent);
-      pill.classList.toggle('done', isDone);
-      if (isCurrent) {
-        pill.setAttribute('aria-current', 'step');
-      } else {
-        pill.removeAttribute('aria-current');
-      }
+  // Home screen: the mode cards (records, the road driven last) and the resume banner
+  updateHomeSummary() {
+    const road = this.traffic?.roadMode ?? 'highway';
+    document.querySelectorAll('#road-mode-group [data-road]').forEach((card) => {
+      card.classList.toggle('active', card.dataset.road === road);
     });
-
-    document.querySelectorAll('.wizard-step-page[data-step-page]').forEach((page) => {
-      page.hidden = Number(page.dataset.stepPage) !== step;
-    });
-
-    for (let i = 1; i <= 3; i++) {
-      const footer = document.getElementById(`footer-step-${i}`);
-      if (footer) footer.hidden = i !== step;
+    for (const mode of ['highway', 'twoway']) {
+      const best = this.modeBest?.[mode] ?? 0;
+      this.setHudText(`record-${mode}`, best > 0 ? Math.floor(best).toLocaleString('tr-TR') : '—');
     }
+    this.setHudText('record-track', this.bestLapTime > 0 ? this.formatLapTime(this.bestLapTime) : '—');
 
-    // Show quick resume on Steps 1 & 2 only if the player already started driving
-    const quickResume = document.getElementById('btn-quick-resume');
-    if (quickResume && this.hasStartedDriving) {
-      quickResume.classList.toggle('hidden', step === 3);
+    document.getElementById('menu-overlay')?.classList.toggle('run-active', this.runActive);
+    document.getElementById('btn-resume-drive')?.classList.toggle('hidden', !this.runActive);
+    this.setHudText('mode-kicker', this.runActive ? 'Yeni sürüş başlat' : 'Sürüş modu');
+    if (this.runActive) {
+      const weather = WEATHER_PRESETS[this.world?.weatherKey]?.label || 'Gece';
+      const score = Math.floor(this.score).toLocaleString('tr-TR');
+      this.setHudText('resume-sub', `${ROAD_LABELS[road] ?? ''} · ${weather} · ${score} puan`);
     }
-
-    const panelBody = document.querySelector('.garage-panel .panel-body');
-    if (panelBody) panelBody.scrollTop = 0;
+    this.garageUI?.setDriveLabel(this.runActive ? 'BU ARAÇLA DEVAM ET' : 'BU ARAÇLA SÜR');
   }
-
 
   syncAmbientUI(key, cssColor) {
     const dot = document.getElementById('ambient-dot');
@@ -1216,8 +1314,8 @@ class OtobanMakasGame {
     document.querySelectorAll('#ambient-select-group .swatch').forEach((sw) => {
       sw.classList.toggle('active', sw.getAttribute('data-color') === key);
     });
-    // The garage takes the cabin's ambient colour as its accent (turntable ring, buttons)
-    document.getElementById('menu-overlay')?.style.setProperty('--accent', cssColor);
+    // The menus take the cabin's ambient colour as their accent (turntable ring, buttons)
+    document.documentElement.style.setProperty('--accent', cssColor);
     this.showroom?.setAccent(cssColor);
   }
 
@@ -1294,6 +1392,8 @@ class OtobanMakasGame {
     const muted = this.sound.toggleMute();
     const icon = document.getElementById('sound-icon');
     if (icon) icon.textContent = muted ? '🔇' : '🔊';
+    const soundSwitch = document.getElementById('sound-switch');
+    if (soundSwitch) soundSwitch.checked = !muted;
     this.radio.setMuted(muted);
   }
 
@@ -1330,68 +1430,290 @@ class OtobanMakasGame {
     }
   }
 
-  togglePauseMenu() {
-    this.setMenuOpen(!this.paused);
+  setUiState(state) {
+    this.uiState = state;
+    this.paused = state !== 'drive';
+    document.body.dataset.ui = state;
   }
 
-  // The start / pause menu is the A8 garage: the game is paused exactly while it is open
-  setMenuOpen(open, tab) {
-    if (!open && this.replay?.active) {
-      this.closeDroneReplay({ reopenMenu: false });
+  // The menu around the turntable car. A drive in progress waits underneath (the home screen
+  // offers to resume it).
+  openMenu(screen = 'home') {
+    if (this.replay?.active) this.closeDroneReplay({ reopenMenu: false });
+    this.cancelCountdown();
+    this.closeSettings();
+    this.closeControlPicker();
+    this.releaseInputs();
+    this.saveRecords();
+    this.profile.flush();
+    this.garageUI.setRunCoins(this.runCoins);
+    this.setUiState('menu');
+    document.getElementById('pause-overlay')?.classList.add('hidden');
+    document.getElementById('menu-overlay')?.classList.remove('hidden');
+    this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
+    this.setScreen(screen);
+    this.syncDroneReplayButton();
+  }
+
+  // Home, garage or online panel of the menu
+  setScreen(screen) {
+    if (this.menuScreen === 'garage' && screen !== 'garage') this.garageUI.cancelPending();
+    this.menuScreen = screen;
+    const overlay = document.getElementById('menu-overlay');
+    if (overlay) overlay.dataset.screen = screen;
+    document.querySelectorAll('[data-screen-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.screenPanel !== screen;
+    });
+    if (screen === 'home') this.updateHomeSummary();
+    if (screen === 'garage') {
+      document.querySelector('#garage-car-select .active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }
-    if (!open && !this.canDriveSelectedCar()) {
-      // Leaving the garage another way (Esc, an online match starting) with a car not bought
-      // yet: drive the first car that is
+    this.showroom?.setActive(this.uiState === 'menu' && !this.portraitPhone?.matches && !this.replay?.active);
+  }
+
+  // Leaves every overlay and drives: a new drive, a resume, or an online match starting
+  beginDrive() {
+    if (this.replay?.active) this.closeDroneReplay({ reopenMenu: false });
+    if (!this.canDriveSelectedCar()) {
+      // An online match starting while a car not bought yet is selected: drive the first one that is
       this.setCar((CAR_LIST.find((car) => this.profile.owns(car)) ?? CAR_LIST[0]).id);
     }
-    if (open) {
-      this.profile.flush();
-      this.garageUI.setRunCoins(this.runCoins);
-    } else if (this.paused) {
-      this.runCoins = 0; // a new drive starts
+    this.cancelCountdown();
+    this.closeSettings();
+    this.closeControlPicker();
+    document.getElementById('menu-overlay')?.classList.add('hidden');
+    document.getElementById('pause-overlay')?.classList.add('hidden');
+    this.showroom?.setActive(false);
+    this.sound.init();
+    this.sound.setRainAmbience(this.world.weatherKey === 'rain');
+    this.runActive = true;
+    this.hasStartedDriving = true;
+    this.setUiState('drive');
+    if (!coachDone()) {
+      this.coach.start({ touch: this.isTouch(), steerMode: this.steerMode, roadMode: this.traffic.roadMode });
     }
-    this.paused = open;
-    document.getElementById('menu-overlay')?.classList.toggle('hidden', !open);
-    if (tab) {
-      if (tab === 'online' || tab === 'cockpit' || tab === 'guide') {
-        this.setMenuStep(3);
-      } else if (tab === 'drive') {
-        this.setMenuStep(2);
+  }
+
+  // Home: a mode card. A new drive on that road (one in progress ends); touch screens first
+  // pick how to steer, once.
+  startFromHome(road) {
+    if (!this.canDriveSelectedCar()) {
+      this.setScreen('garage');
+      this.garageUI.flashLocked();
+      return;
+    }
+    if (this.isTouch() && !this.steerModeChosen) {
+      this.showControlPicker(road);
+      return;
+    }
+    this.enterAppFullscreen();
+    this.requestTiltPermission();
+    const nameInput = document.getElementById('mp-player-name');
+    if (nameInput?.value) this.multiplayer.setPlayerName(nameInput.value);
+    this.setRoadMode(road, { remember: true });
+    this.resetRun();
+    if (this.multiplayer.connected) this.multiplayer.catchUpToPeer();
+    this.beginDrive();
+  }
+
+  // Pause card over the frozen road. Only from a drive (the button, Esc, the app going to the
+  // background, the phone turned upright).
+  openPause() {
+    if (this.uiState !== 'drive' && this.uiState !== 'countdown') return;
+    this.cancelCountdown();
+    this.releaseInputs();
+    this.saveRecords();
+    this.profile.flush();
+    this.setUiState('pause');
+    this.setHudText('pause-score', Math.floor(this.score).toLocaleString('tr-TR'));
+    this.setHudText('pause-time', this.formatPlayTime(this.playTimeSec));
+    this.setHudText('pause-km', (this.tripDistanceKm || 0).toFixed(2));
+    document.getElementById('pause-overlay')?.classList.remove('hidden');
+    this.syncDroneReplayButton();
+  }
+
+  // Back into the drive in progress: 3-2-1 first while the car is moving. Online the others keep
+  // driving, so the car catches up with them and goes on straight away.
+  resumeDrive() {
+    if (!this.runActive) return;
+    if (!this.canDriveSelectedCar()) {
+      this.openMenu('garage');
+      this.garageUI.flashLocked();
+      return;
+    }
+    this.enterAppFullscreen();
+    this.requestTiltPermission();
+    if (this.multiplayer.connected) {
+      this.multiplayer.catchUpToPeer();
+      this.beginDrive();
+    } else if (this.speedKmh < 5) {
+      this.beginDrive();
+    } else {
+      this.startCountdown();
+    }
+  }
+
+  startCountdown() {
+    this.cancelCountdown();
+    this.closeSettings();
+    document.getElementById('menu-overlay')?.classList.add('hidden');
+    document.getElementById('pause-overlay')?.classList.add('hidden');
+    this.showroom?.setActive(false);
+    this.setUiState('countdown');
+    this.sound.init();
+
+    const box = document.getElementById('countdown');
+    const num = document.getElementById('countdown-num');
+    const show = (text, go) => {
+      box.classList.remove('hidden');
+      box.classList.toggle('go', go);
+      num.textContent = text;
+      num.classList.remove('tick');
+      void num.offsetWidth;
+      num.classList.add('tick');
+      this.sound.playSelektorClick();
+    };
+    show('3', false);
+    ['2', '1', 'HAYDİ!'].forEach((text, i) => {
+      const go = i === 2;
+      const timer = setTimeout(() => {
+        if (go) {
+          this.beginDrive(); // also hides the countdown: GO stays up a moment longer
+          this.countdownTimers.push(setTimeout(() => box.classList.add('hidden'), COUNTDOWN_STEP_MS));
+        }
+        show(text, go);
+      }, (i + 1) * COUNTDOWN_STEP_MS);
+      this.countdownTimers.push(timer);
+    });
+  }
+
+  cancelCountdown() {
+    this.countdownTimers.forEach(clearTimeout);
+    this.countdownTimers = [];
+    document.getElementById('countdown')?.classList.add('hidden');
+  }
+
+  // Pause card: the same road again from a standstill
+  restartDrive() {
+    this.resetRun();
+    if (this.multiplayer.connected) this.multiplayer.catchUpToPeer();
+    this.beginDrive();
+  }
+
+  // Pause card: the drive ends and the home screen opens; the coins it earned stay beside the
+  // wallet until the next drive
+  endDrive() {
+    this.openMenu('home');
+    this.runActive = false;
+    this.resetRun();
+    this.updateHomeSummary();
+  }
+
+  handleEscape() {
+    if (!document.getElementById('control-picker')?.classList.contains('hidden')) {
+      this.closeControlPicker();
+    } else if (this.settingsOpen) {
+      this.closeSettings();
+    } else if (this.uiState === 'drive' || this.uiState === 'countdown') {
+      this.openPause();
+    } else if (this.uiState === 'pause') {
+      this.resumeDrive();
+    } else if (this.menuScreen !== 'home') {
+      this.setScreen('home');
+    } else if (this.runActive) {
+      this.resumeDrive();
+    }
+  }
+
+  // Keys and pedals held when the drive stops would otherwise still be held when it goes on
+  releaseInputs() {
+    for (const key of Object.keys(this.keys)) this.keys[key] = false;
+    this.sound.setHorn(false);
+    this.touchThrottle = 0;
+    this.touchBrake = 0;
+  }
+
+  openSettings() {
+    this.settingsOpen = true;
+    this.showSettingsTab('prefs');
+    document.getElementById('settings-sheet')?.classList.remove('hidden');
+  }
+
+  closeSettings() {
+    this.settingsOpen = false;
+    document.getElementById('settings-sheet')?.classList.add('hidden');
+  }
+
+  showSettingsTab(name) {
+    document.querySelectorAll('[data-settings-tab]').forEach((tab) => {
+      const on = tab.dataset.settingsTab === name;
+      tab.classList.toggle('active', on);
+      tab.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('[data-settings-page]').forEach((page) => {
+      page.hidden = page.dataset.settingsPage !== name;
+    });
+  }
+
+  showControlPicker(road) {
+    this.pickerRoad = road;
+    document.getElementById('control-picker')?.classList.remove('hidden');
+  }
+
+  closeControlPicker() {
+    document.getElementById('control-picker')?.classList.add('hidden');
+  }
+
+  // First-drive picker: remember the choice and start the drive it was asked for
+  pickControl(mode) {
+    this.setSteerMode(mode);
+    this.closeControlPicker();
+    this.startFromHome(this.pickerRoad ?? this.traffic.roadMode);
+  }
+
+  // A higher score is a record of the whole game and of the road it was driven on. Kept in
+  // memory while driving; saveRecords() writes them (at events, pauses and the end of a drive).
+  noteScore({ save = false } = {}) {
+    if (this.score > this.bestScore) this.bestScore = Math.floor(this.score);
+    const mode = this.traffic.roadMode;
+    if (mode in this.modeBest && this.score > this.modeBest[mode]) this.modeBest[mode] = Math.floor(this.score);
+    if (save) this.saveRecords();
+  }
+
+  saveRecords() {
+    try {
+      localStorage.setItem('otoban_makas_best', String(Math.floor(this.bestScore)));
+      for (const [mode, best] of Object.entries(this.modeBest)) {
+        localStorage.setItem(`otoban_best_${mode}`, String(Math.floor(best)));
       }
-      this.showMenuTab(tab);
-    }
-    if (open) {
-      this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
-      this.updateWizardSummaries?.();
-      this.syncDroneReplayButton();
-    }
-    this.showroom?.setActive(open && !this.portraitPhone?.matches && !this.replay?.active);
+    } catch (_) {}
   }
 
   syncDroneReplayButton() {
-    const btn = document.getElementById('btn-drone-replay');
-    if (!btn || !this.replay) return;
+    if (!this.replay) return;
     const hasClip = this.hasStartedDriving && this.replay.hasPlayableClip();
-    btn.classList.toggle('hidden', !hasClip);
-    if (hasClip) {
-      const meta = this.replay.getActiveClipMeta();
-      if (meta) {
-        this.setHudText('drone-btn-title', 'DRONE VİDEOSUNU İZLE (10 SN)');
-        this.setHudText('drone-btn-sub', `${meta.title} • ${meta.subtitle}`);
-      }
+    document.querySelectorAll('.js-drone-replay').forEach((btn) => btn.classList.toggle('hidden', !hasClip));
+    const meta = hasClip ? this.replay.getActiveClipMeta() : null;
+    if (meta) {
+      document.querySelectorAll('.js-drone-sub').forEach((el) => {
+        el.textContent = `${meta.title} • ${meta.subtitle}`;
+      });
     }
   }
 
   openDroneReplay() {
-    if (!this.replay || !this.paused) return;
+    if (!this.replay || (this.uiState !== 'menu' && this.uiState !== 'pause')) return;
     const started = this.replay.startReplay(this.cockpit);
     if (!started) {
       this.showMakasNotification('⚠️ HENÜZ KAYDEDİLMİŞ BİR MAKAS YOK', 0, 'normal');
       return;
     }
 
-    // Hide menu & HUD overlays so the 3D Drone camera has a clean fullscreen view
+    // Hide menu & HUD overlays so the 3D Drone camera has a clean fullscreen view; closing it
+    // goes back to where it was opened from
+    this.replayReturn = this.uiState;
     document.getElementById('menu-overlay')?.classList.add('hidden');
+    document.getElementById('pause-overlay')?.classList.add('hidden');
     document.getElementById('hud-top')?.classList.add('hidden');
     document.getElementById('hud-mini-cluster')?.classList.add('hidden');
     document.getElementById('desktop-hints')?.classList.add('hidden');
@@ -1420,8 +1742,12 @@ class OtobanMakasGame {
     document.getElementById('touch-controls')?.classList.remove('hidden');
 
     if (reopenMenu && this.paused) {
-      document.getElementById('menu-overlay')?.classList.remove('hidden');
-      this.showroom?.setActive(!this.portraitPhone?.matches);
+      if (this.replayReturn === 'pause') {
+        document.getElementById('pause-overlay')?.classList.remove('hidden');
+      } else {
+        document.getElementById('menu-overlay')?.classList.remove('hidden');
+        this.showroom?.setActive(!this.portraitPhone?.matches);
+      }
       this.syncDroneReplayButton();
     }
   }
@@ -1468,24 +1794,7 @@ class OtobanMakasGame {
     }
   }
 
-  // Once driving, the menu's main button resumes the drive
-  showResumeButtons() {
-    this.hasStartedDriving = true;
-    document.getElementById('btn-quick-resume')?.classList.toggle('hidden', this.menuStep === 3);
-    this.setHudText('start-label', 'SÜRÜŞE DEVAM ET');
-  }
-
-  showMenuTab(name) {
-    document.querySelectorAll('.panel-tab').forEach((tab) => {
-      const on = tab.dataset.tab === name;
-      tab.classList.toggle('active', on);
-      tab.setAttribute('aria-selected', String(on));
-    });
-    document.querySelectorAll('.tab-page').forEach((page) => {
-      page.hidden = page.id !== `page-${name}`;
-    });
-  }
-
+  // A new drive: score, damage, trip and coins from zero, the car at a standstill on its start line
   resetRun() {
     this.score = 0;
     this.combo = 1.0;
@@ -1493,6 +1802,11 @@ class OtobanMakasGame {
     this.health = 100;
     this.tripDistanceKm = 0;
     this.playTimeSec = 0;
+    this.runCoins = 0;
+    this.coinScoreMark = 0;
+    this.coinCarry = 0;
+    this.overtakeRun = null;
+    this.shakeIntensity = 0;
     this.startTimeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     this.speedKmh = 0;
     this.playerX = this.startX();
@@ -1504,7 +1818,8 @@ class OtobanMakasGame {
     this.bodyPitch = 0;
     this.pitchVel = 0;
     this.accelFeel = 0;
-    this.traffic.resetTraffic();
+    // Online the room shares one traffic (the host's): it is not reset for one player
+    if (!this.multiplayer.connected) this.traffic.resetTraffic();
     if (this.traffic.roadMode === 'track') {
       this.currentLap = 1;
       this.lapStartTime = performance.now();
@@ -1601,11 +1916,10 @@ class OtobanMakasGame {
         localStorage.setItem('otoban_makas_road', mode);
       } catch (_) {}
     }
-    document.querySelectorAll('#road-mode-group .seg-btn').forEach((b) => {
-      b.classList.toggle('active', b.dataset.road === mode);
-    });
-    this.updateWizardSummaries?.();
-    if (mode === this.traffic.roadMode && mode === this.world.roadMode) return;
+    if (mode === this.traffic.roadMode && mode === this.world.roadMode) {
+      this.updateHomeSummary();
+      return;
+    }
 
     this.world.setRoadLayout(mode);
     this.traffic.setRoadMode(mode);
@@ -1626,6 +1940,7 @@ class OtobanMakasGame {
     } else {
       document.getElementById('hud-track-card')?.classList.add('hidden');
     }
+    this.updateHomeSummary();
   }
 
   // Two-way road: one trip into the oncoming lane. Every car overtaken on it is a "sollama"; getting
@@ -1721,6 +2036,8 @@ class OtobanMakasGame {
           this.score += pts;
           this.combo = Math.min(10.0, this.combo + 0.5);
           this.comboTimer = 1.0;
+          this.noteScore();
+          this.coach.notifyScore();
           this.showMakasNotification(`🏎️ MÜKEMMEL APEX (+${pts})`, pts, 'combo');
           this.sound.playTireChirp(this.speedKmh);
         }
@@ -1769,10 +2086,8 @@ class OtobanMakasGame {
     this.comboTimer = 1.0;
     const totalPts = basePts * this.combo;
     this.score += totalPts;
-    if (this.score > this.bestScore) {
-      this.bestScore = Math.floor(this.score);
-      localStorage.setItem('otoban_makas_best', String(this.bestScore));
-    }
+    this.noteScore({ save: true });
+    this.coach.notifyScore();
     this.shakeIntensity = Math.min(0.45, this.shakeIntensity + 0.18);
     this.cockpit.triggerMakasCockpitPulse();
     this.sound.playMakasWhoosh(this.combo, style === 'gold', speedKmh, true);
@@ -1817,10 +2132,8 @@ class OtobanMakasGame {
 
     const totalPts = basePts * this.combo;
     this.score += totalPts;
-    if (this.score > this.bestScore) {
-      this.bestScore = Math.floor(this.score);
-      localStorage.setItem('otoban_makas_best', String(this.bestScore));
-    }
+    this.noteScore({ save: true });
+    this.coach.notifyScore();
 
     this.shakeIntensity = Math.min(0.45, this.shakeIntensity + (isDoubleMakas ? 0.32 : 0.16));
     this.cockpit.triggerMakasCockpitPulse();
@@ -2081,11 +2394,10 @@ class OtobanMakasGame {
 
     if (this.speedKmh > 120) {
       this.score += (this.speedKmh - 100) * 0.35 * this.combo * dt;
-      if (this.score > this.bestScore) {
-        this.bestScore = Math.floor(this.score);
-      }
+      this.noteScore();
     }
     this.earnCoins(frameDistanceKm);
+    this.coach.update(dt, { speedKmh: this.speedKmh, playerX: this.playerX });
 
     if (this.combo > 1.0) {
       this.comboTimer -= dt * 0.22; // ~4.5 seconds to chain the next Makas!
@@ -2502,6 +2814,24 @@ class OtobanMakasGame {
       );
       this.replay.updateAndRender(dt);
       return;
+    } else if (this.uiState !== 'menu') {
+      // Pause card or countdown: the road stands still under it while the room stays connected
+      this.multiplayer.update(
+        dt,
+        {
+          playerX: this.playerX,
+          speedKmh: 0,
+          headingAngle: 0,
+          bodyRoll: 0,
+          highBeam: false,
+          braking: false,
+          horn: false,
+          score: this.score,
+          combo: this.combo,
+        },
+        this.world
+      );
+      this.sound.updateEngine(900, 0, 0, true);
     } else {
       // Even when paused on the start menu, keep multiplayer synced and render an idle preview!
       this.multiplayer.update(
@@ -2547,8 +2877,9 @@ class OtobanMakasGame {
       this.updateHUD();
     }
 
-    // While the garage covers the road, redraw it once a second: enough to keep its shaders,
-    // textures and mirrors warm for the start without drawing two 3D scenes every frame
+    // While the garage or the pause card covers the road, redraw it once a second: enough to keep
+    // its shaders, textures and mirrors warm (and right after a resize) without drawing two 3D
+    // scenes every frame
     if (this.paused && now - this.lastCoveredRender < 1000) return;
     this.lastCoveredRender = now;
 
