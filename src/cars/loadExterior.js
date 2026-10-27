@@ -146,7 +146,8 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     model,
     { halfLength: cfg.length / 2, halfWidth: (size.x * s) / 2, height: size.y * s },
     cfg.spoiler,
-    bodyMat
+    bodyMat,
+    cfg.url
   );
 
   const { head: HEAD, tail: TAIL } = cfg;
