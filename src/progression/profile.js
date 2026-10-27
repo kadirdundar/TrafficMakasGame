@@ -1,4 +1,4 @@
-import { DEFAULT_CAR_PRICE, MAX_UPGRADE_LEVEL, SPOILERS, STARTING_COINS, UPGRADES } from './config.js';
+import { DEFAULT_CAR_PRICE, MAX_UPGRADE_LEVEL, SPOILERS, STARTING_COINS, TEST_MIN_COINS, UPGRADES } from './config.js';
 import { spoilerCost, upgradeCost } from './performance.js';
 
 // The player's save in the new version: coins, cars bought, and per car the upgrade levels and
@@ -37,6 +37,7 @@ function readStored() {
 export class PlayerProfile {
   constructor() {
     this.data = readStored();
+    this.data.coins = Math.max(this.data.coins, TEST_MIN_COINS);
     this.saveTimer = null;
     this.listeners = new Set();
   }

@@ -10,6 +10,10 @@ export const COINS_PER_KM = 4;
 // Coins a fresh profile starts with (enough for a first upgrade)
 export const STARTING_COINS = 2500;
 
+// TEMPORARY, for testers: every profile is topped up to at least this many coins when the game
+// loads, so all cars, upgrades and spoilers can be tried. Set to 0 before the App Store release.
+export const TEST_MIN_COINS = 1000000;
+
 // Price of a car whose car.js has no `price` (a newly added car is never free by accident).
 // `price: 0` marks a starter car that every profile owns.
 export const DEFAULT_CAR_PRICE = 25000;
