@@ -563,10 +563,10 @@
     align-items: flex-start;
   }
 
-  /* Selektör on upper-left: transparent glassmorphic button towards the top */
+  /* Selektör on upper-left: transparent glassmorphic button moved slightly down & enlarged */
   .touch-left-aux {
     position: fixed;
-    inset-block-start: max(72px, env(safe-area-inset-top) + 60px);
+    inset-block-start: max(98px, env(safe-area-inset-top) + 82px);
     inset-inline-start: max(16px, env(safe-area-inset-left));
     z-index: 15;
     pointer-events: auto;
@@ -640,33 +640,40 @@
   }
 
   .aux-action-btn.selektor-btn {
-    background: rgba(14, 21, 38, 0.28);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(0, 240, 255, 0.35);
-    color: rgba(255, 255, 255, 0.85);
+    background: rgba(10, 16, 28, 0.12);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(0, 240, 255, 0.22);
+    color: rgba(255, 255, 255, 0.75);
     border-radius: 999px;
-    padding-block: 5px;
-    padding-inline: 11px;
-    font-size: 0.68rem;
+    padding-block: 8px;
+    padding-inline: 15px;
+    font-size: 0.78rem;
     font-weight: 700;
-    letter-spacing: 0.05em;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    letter-spacing: 0.06em;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
   }
 
+  .aux-action-btn.selektor-btn:hover {
+    background: rgba(10, 16, 28, 0.22);
+    border-color: rgba(0, 240, 255, 0.45);
+    color: #ffffff;
+  }
+
   .aux-action-btn.selektor-btn .aux-icon {
-    color: var(--accent-cyan);
-    text-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
-    font-size: 0.78rem;
+    color: rgba(0, 240, 255, 0.85);
+    text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    font-size: 0.96rem;
   }
 
   .aux-action-btn.selektor-btn:active,
   .aux-action-btn.selektor-btn.active {
-    background: rgba(0, 160, 255, 0.52);
+    background: rgba(0, 180, 255, 0.45);
     border-color: #00f0ff;
     color: #ffffff;
-    box-shadow: 0 0 24px rgba(0, 200, 255, 0.85), inset 0 0 10px rgba(0, 240, 255, 0.35);
+    box-shadow: 0 0 20px rgba(0, 200, 255, 0.75), inset 0 0 10px rgba(0, 240, 255, 0.35);
     transform: scale(0.96);
   }
 
@@ -2843,14 +2850,18 @@
   }
 
   .touch-left-aux {
-    inset-block-start: max(44px, env(safe-area-inset-top) + 36px) !important;
+    inset-block-start: max(68px, env(safe-area-inset-top) + 54px) !important;
     inset-inline-start: max(10px, env(safe-area-inset-left)) !important;
   }
 
   .aux-action-btn.selektor-btn {
-    padding-block: 4px !important;
-    padding-inline: 9px !important;
-    font-size: 0.6rem !important;
+    padding-block: 7px !important;
+    padding-inline: 13px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .aux-action-btn.selektor-btn .aux-icon {
+    font-size: 0.88rem !important;
   }
 
   .aux-action-btn {
