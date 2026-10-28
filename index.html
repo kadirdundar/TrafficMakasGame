@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-B07GNdIf.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-EWAsKajB.css">
+  <script type="module" crossorigin src="./assets/index-Bdyckfqv.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-USIMuPlF.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -107,8 +107,8 @@
       <button id="btn-sound" class="QuickBtn" title="Ses Aç/Kapat (M)">
         <span id="sound-icon">🔊</span>
       </button>
-      <button id="btn-pause" class="QuickBtn primary-icon-btn" title="Ayarlar / Duraklat (ESC)">
-        <span>⚙️</span>
+      <button id="btn-pause" class="QuickBtn primary-icon-btn" title="Duraklat (ESC)" aria-label="Duraklat">
+        <svg class="pause-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
       </button>
     </div>
   </header>
@@ -185,8 +185,9 @@
     </div>
   </div>
 
-  <!-- Start / Pause menu: Step-by-step garage wizard (1: Araç, 2: Pist & Atmosfer, 3: Kokpit & Başlat) -->
-  <div id="menu-overlay" class="menu-overlay" data-weather="night" data-step="1">
+  <!-- Menu around the turntable car: home (drive modes), garage and online screens. The game is
+       paused while it is open (main.js → openMenu / setScreen). -->
+  <div id="menu-overlay" class="menu-overlay" data-weather="night" data-screen="home">
     <canvas id="garage-canvas" class="garage-canvas" aria-label="3D araç modeli: sürükleyerek döndür, kaydırarak yakınlaş"></canvas>
 
     <div class="garage-layout">
@@ -208,6 +209,9 @@
           <span class="loader-ring" aria-hidden="true"></span>
           <span>A8 garaja çekiliyor…</span>
         </div>
+        <!-- Garage screen: previous / next car -->
+        <button id="btn-car-prev" type="button" class="car-nav-btn prev" aria-label="Önceki araç">‹</button>
+        <button id="btn-car-next" type="button" class="car-nav-btn next" aria-label="Sonraki araç">›</button>
       </div>
 
       <section class="garage-car" aria-label="Aracın">
@@ -219,58 +223,130 @@
         <p class="garage-hint">Sürükle: döndür · Kaydır / iki parmak: yakınlaş</p>
         <!-- Credit of the selected car's model (from src/cars/<id>/car.js, filled in by main.js) -->
         <p class="asset-credits" id="garage-credit"></p>
+        <!-- Home: the last highlight, ready to watch -->
+        <button type="button" class="drone-chip js-drone-replay hidden">
+          <span aria-hidden="true">🚁</span> Son makasın drone tekrarı
+        </button>
       </section>
 
-      <aside class="garage-panel menu-modal">
-        <!-- Step-by-Step Progress Header -->
-        <nav class="wizard-stepper" aria-label="Kurulum Adımları">
-          <button type="button" class="step-pill active" data-step-target="1" aria-current="step">
-            <span class="step-badge">1</span>
-            <span class="step-title">Araç Seç</span>
-          </button>
-          <span class="step-arrow" aria-hidden="true">›</span>
-          <button type="button" class="step-pill" data-step-target="2">
-            <span class="step-badge">2</span>
-            <span class="step-title">Yol &amp; Hava</span>
-          </button>
-          <span class="step-arrow" aria-hidden="true">›</span>
-          <button type="button" class="step-pill" data-step-target="3">
-            <span class="step-badge">3</span>
-            <span class="step-title">Başlat</span>
-          </button>
-        </nav>
+      <!-- Garage screen: every car in one row (filled in by main.js → buildCarSelect) -->
+      <div class="car-strip" id="garage-car-select" role="group" aria-label="Araç seçimi"></div>
 
-        <div class="panel-body">
-          <!-- ==================== ADIM 1: ARAÇ & BOYA SEÇİMİ ==================== -->
-          <div id="wizard-step-1" class="wizard-step-page" data-step-page="1">
-            <div class="step-intro">
-              <h2>1. Aracını Seç</h2>
-              <p>Garajdan sürüş yapmak istediğin aracı ve gövde rengini seç.</p>
-            </div>
+      <!-- ==================== HOME: a mode card starts the drive ==================== -->
+      <aside class="garage-panel menu-modal" data-screen-panel="home" aria-label="Sürüş">
+        <div class="panel-body home-body">
+          <!-- Back from the pause card's "Garaja Dön": the drive is still there to resume -->
+          <button id="btn-resume-drive" type="button" class="resume-banner hidden">
+            <span class="resume-play" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+            </span>
+            <span class="resume-copy">
+              <strong>SÜRÜŞE DEVAM ET</strong>
+              <small id="resume-sub">Otoban</small>
+            </span>
+          </button>
 
-            <!-- Temporary switch for the new version (src/progression/flag.js) -->
-            <label class="newver-toggle" for="newver-switch">
-              <span class="newver-copy">
-                <strong>Yeni Sürüm <em>BETA</em></strong>
-                <small>Her aracın hızı ve manevrası farklı. Sürüşlerden para kazan, araç al, aracını yükselt.</small>
+          <h2 class="panel-kicker" id="mode-kicker">Sürüş modu</h2>
+          <div class="mode-list" id="road-mode-group">
+            <button type="button" class="mode-card" data-road="highway">
+              <span class="mode-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M7.5 21 10.5 3M16.5 21 13.5 3" /><path d="M12 6.5v2M12 11.5v2.5M12 17.5v3" /></svg>
               </span>
-              <input type="checkbox" id="newver-switch" class="switch-input" role="switch" />
-              <span class="switch-track" aria-hidden="true"></span>
-            </label>
+              <span class="mode-copy">
+                <strong>Otoban</strong>
+                <small>4 şerit · makas at</small>
+              </span>
+              <span class="mode-record"><small>REKOR</small><b id="record-highway">—</b></span>
+              <span class="mode-go" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg><em>SÜR</em>
+              </span>
+            </button>
+            <button type="button" class="mode-card" data-road="twoway">
+              <span class="mode-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M8 20V4M5 7l3-3 3 3" /><path d="M16 4v16M13 17l3 3 3-3" /></svg>
+              </span>
+              <span class="mode-copy">
+                <strong>Gidiş-Geliş</strong>
+                <small>Karşı şeritte sollama</small>
+              </span>
+              <span class="mode-record"><small>REKOR</small><b id="record-twoway">—</b></span>
+              <span class="mode-go" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg><em>SÜR</em>
+              </span>
+            </button>
+            <button type="button" class="mode-card" data-road="track">
+              <span class="mode-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M6 21V4" /><path d="M6 4.5h11l-2.2 4 2.2 4H6" /></svg>
+              </span>
+              <span class="mode-copy">
+                <strong>İstanbul Park</strong>
+                <small>Pist · tur zamanı</small>
+              </span>
+              <span class="mode-record"><small>EN İYİ TUR</small><b id="record-track">—</b></span>
+              <span class="mode-go" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg><em>SÜR</em>
+              </span>
+            </button>
+          </div>
 
-            <div class="panel-section">
-              <h3>Araç Modeli</h3>
-              <div class="car-card-list" id="garage-car-select" role="group" aria-label="Araç modeli seçimi">
-                <!-- Filled in by main.js -> buildCarSelect() -->
+          <div class="conditions">
+            <div class="cond">
+              <span class="cond-label" id="weather-label-text">Hava · <b id="weather-current">Gece</b></span>
+              <div class="cond-group" id="weather-select-group" role="group" aria-labelledby="weather-label-text">
+                <button type="button" class="cond-btn icon" data-weather="night" title="Gece Otobanı" aria-label="Gece">🌙</button>
+                <button type="button" class="cond-btn icon" data-weather="rain" title="Yağmurlu Gece" aria-label="Yağmurlu gece">🌧️</button>
+                <button type="button" class="cond-btn icon" data-weather="sunset" title="Gün Batımı" aria-label="Gün batımı">🌇</button>
+                <button type="button" class="cond-btn icon" data-weather="day" title="Gündüz" aria-label="Gündüz">☀️</button>
               </div>
             </div>
+            <div class="cond">
+              <span class="cond-label" id="traffic-label-text">Trafik</span>
+              <div class="cond-group" id="traffic-density-group" role="group" aria-labelledby="traffic-label-text">
+                <button type="button" class="cond-btn" data-density="normal">Akıcı</button>
+                <button type="button" class="cond-btn active" data-density="heavy">Yoğun</button>
+                <button type="button" class="cond-btn" data-density="extreme">Köprü</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <!-- New version: stats, buying and upgrades of the selected car (src/progression/garageUI.js) -->
-            <div class="panel-section garage-progress" id="garage-progress" hidden></div>
+        <nav class="home-nav" aria-label="Menü">
+          <button id="btn-open-garage" type="button" class="nav-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5h16M5.5 16.5 7.2 11h9.6l1.7 5.5" /><path d="M7.2 11 8.6 7.5h6.8l1.4 3.5" /><circle cx="8" cy="18" r="1.6" /><circle cx="16" cy="18" r="1.6" /></svg>
+            Garaj
+          </button>
+          <button id="btn-open-online" type="button" class="nav-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3" /><path d="M3.5 20c0-3.2 2.5-5.6 5.5-5.6s5.5 2.4 5.5 5.6" /><path d="M15.5 5a3 3 0 0 1 0 6M17.5 14.6c1.8.8 3 2.8 3 5.4" /></svg>
+            Online <i id="tab-online-dot" class="tab-dot" aria-hidden="true"></i>
+          </button>
+          <button id="btn-open-settings" type="button" class="nav-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" /><circle cx="15" cy="6" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="17" cy="18" r="2" /></svg>
+            Ayarlar
+          </button>
+        </nav>
+      </aside>
 
+      <!-- ==================== GARAGE: stats, upgrades and looks of the selected car ==================== -->
+      <aside class="garage-panel menu-modal" data-screen-panel="garage" aria-label="Garaj" hidden>
+        <header class="panel-head">
+          <button type="button" class="back-btn" data-menu-back aria-label="Ana ekrana dön">‹</button>
+          <h2>Garaj</h2>
+        </header>
+
+        <!-- New version only (src/progression/garageUI.js) -->
+        <nav class="panel-tabs" id="garage-tabs" role="tablist" aria-label="Garaj bölümleri" hidden>
+          <button type="button" role="tab" class="panel-tab" data-garage-tab="perf">Performans</button>
+          <button type="button" role="tab" class="panel-tab" data-garage-tab="upgrade">Yükseltme</button>
+          <button type="button" role="tab" class="panel-tab active" data-garage-tab="look">Görünüm</button>
+        </nav>
+
+        <div class="panel-body" id="garage-body">
+          <section class="tab-page" data-garage-page="perf" id="garage-perf" hidden></section>
+          <section class="tab-page" data-garage-page="upgrade" id="garage-upgrades" hidden></section>
+          <section class="tab-page" data-garage-page="look">
             <div class="panel-section">
-              <h3>Araç Rengi (Online Boya)</h3>
-              <div class="paint-row paint-box" id="garage-paint-group" title="Online'da arkadaşların seni seçtiğin bu renkte görür">
+              <h3>Boya</h3>
+              <div class="paint-row paint-box" id="garage-paint-group">
                 <div class="paint-swatches-wrap">
                   <button type="button" class="paint-swatch active" data-paint="0" style="--sw-color: #d6182c" aria-label="Tango Kırmızısı"></button>
                   <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #0e6f9c" aria-label="Navarra Mavisi"></button>
@@ -279,215 +355,75 @@
                 </div>
                 <span id="garage-paint-name" class="paint-name">Tango Kırmızısı</span>
               </div>
+              <p class="panel-note">Online'da arkadaşların seni bu renkte görür.</p>
             </div>
+            <!-- New version: spoilers and rim colours -->
+            <div id="garage-parts" class="garage-parts"></div>
+          </section>
+        </div>
+
+        <!-- A purchase waiting for a yes: the car, an upgrade level or a part (garageUI.js) -->
+        <div class="purchase-bar" id="garage-confirm" hidden>
+          <div class="purchase-copy">
+            <strong id="confirm-title"></strong>
+            <small id="confirm-detail"></small>
           </div>
-
-          <!-- ==================== ADIM 2: YOL TİPİ, ATMOSFER & TRAFİK ==================== -->
-          <div id="wizard-step-2" class="wizard-step-page" data-step-page="2" hidden>
-            <div class="step-intro">
-              <h2>2. Yol &amp; Atmosfer</h2>
-              <p>Sürüş yapacağın pisti, hava durumunu ve trafik yoğunluğunu belirle.</p>
-            </div>
-
-            <div class="panel-section">
-              <h3>Yol Tipi / Pist</h3>
-              <div class="segmented-control" id="road-mode-group">
-                <button type="button" class="seg-btn active" data-road="highway">Otoban (4 Şerit)</button>
-                <button type="button" class="seg-btn" data-road="twoway">Gidiş-Geliş (Sollama)</button>
-                <button type="button" class="seg-btn" data-road="track">🏁 Pist (İstanbul Park)</button>
-              </div>
-            </div>
-
-            <div class="panel-section">
-              <h3>Atmosfer</h3>
-              <div class="option-cards" id="weather-select-group">
-                <button type="button" class="opt-card active" data-weather="night">
-                  <span class="opt-icon">🌙</span>
-                  <span class="opt-title">Gece Otobanı</span>
-                  <span class="opt-desc">Neon stoplar &amp; sokak lambaları</span>
-                </button>
-                <button type="button" class="opt-card" data-weather="rain">
-                  <span class="opt-icon">🌧️</span>
-                  <span class="opt-title">Yağmurlu Gece</span>
-                  <span class="opt-desc">Islak asfalt &amp; aktif silecekler</span>
-                </button>
-                <button type="button" class="opt-card" data-weather="sunset">
-                  <span class="opt-icon">🌇</span>
-                  <span class="opt-title">Gün Batımı</span>
-                  <span class="opt-desc">Altın saatler &amp; kızıl ufuk</span>
-                </button>
-                <button type="button" class="opt-card" data-weather="day">
-                  <span class="opt-icon">☀️</span>
-                  <span class="opt-title">Gündüz</span>
-                  <span class="opt-desc">Açık hava &amp; net görüş</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="panel-section">
-              <h3>Trafik Yoğunluğu</h3>
-              <div class="segmented-control" id="traffic-density-group">
-                <button type="button" class="seg-btn" data-density="normal">Akıcı</button>
-                <button type="button" class="seg-btn active" data-density="heavy">Yoğun (No Hesi)</button>
-                <button type="button" class="seg-btn" data-density="extreme">Köprü Trafiği</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- ==================== ADIM 3: KOKPİT, ONLINE & BAŞLAT ==================== -->
-          <div id="wizard-step-3" class="wizard-step-page" data-step-page="3" hidden>
-            <div class="step-intro">
-              <h2>3. Kokpit &amp; Sürüş Modu</h2>
-              <p>Kabin ayarlarını yap, istersen arkadaşlarınla 4 kişilik odaya bağlan ve sürüşe başla!</p>
-            </div>
-
-            <nav class="panel-tabs" role="tablist" aria-label="Son Hazırlık Sekmeleri">
-              <button type="button" role="tab" class="panel-tab active" id="tab-cockpit" data-tab="cockpit" aria-selected="true" aria-controls="page-cockpit">Kokpit &amp; Kontrol</button>
-              <button type="button" role="tab" class="panel-tab" id="tab-online" data-tab="online" aria-selected="false" aria-controls="page-online">
-                Online (4 Kişi) <i id="tab-online-dot" class="tab-dot" aria-hidden="true"></i>
-              </button>
-              <button type="button" role="tab" class="panel-tab" id="tab-guide" data-tab="guide" aria-selected="false" aria-controls="page-guide">Rehber</button>
-            </nav>
-
-            <!-- Cockpit & controls -->
-            <section id="page-cockpit" class="tab-page" role="tabpanel" aria-labelledby="tab-cockpit">
-              <div class="panel-section">
-                <h3>Ambiyans Aydınlatması</h3>
-                <div class="color-swatches" id="ambient-select-group">
-                  <button type="button" class="swatch active" data-color="cyan" style="--sw-color: #00f0ff" title="Buz Mavisi"></button>
-                  <button type="button" class="swatch" data-color="purple" style="--sw-color: #b829ff" title="Neon Mor"></button>
-                  <button type="button" class="swatch" data-color="red" style="--sw-color: #ff1e42" title="Sport Kırmızı"></button>
-                  <button type="button" class="swatch" data-color="emerald" style="--sw-color: #00ff88" title="Zümrüt Yeşili"></button>
-                  <button type="button" class="swatch" data-color="amber" style="--sw-color: #ffaa00" title="Altın Kehribar"></button>
-                </div>
-              </div>
-
-              <div class="panel-section">
-                <h3>Mobil / Dokunmatik Kontrol Tipi</h3>
-                <div class="segmented-control" id="steer-mode-group">
-                  <button type="button" class="seg-btn active" data-steermode="wheel">Direksiyon</button>
-                  <button type="button" class="seg-btn" data-steermode="buttons">Ok Tuşları</button>
-                  <button type="button" class="seg-btn" data-steermode="tilt">Sensör (Eğim)</button>
-                </div>
-              </div>
-            </section>
-
-            <!-- Online: WebRTC P2P room, host-centred, up to 4 players -->
-            <section id="page-online" class="tab-page" role="tabpanel" aria-labelledby="tab-online" hidden>
-              <div class="mp-lobby-box">
-                <div class="mp-lobby-header">
-                  <div>
-                    <h3>4 Kişiye Kadar Beraber Sürüş</h3>
-                    <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşlarına gönder, 4 kişiye kadar aynı trafikte beraber makas atın!</p>
-                  </div>
-                  <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
-                    <span>ODA KODU</span>
-                    <strong id="mp-room-code-val">----</strong>
-                  </div>
-                </div>
-
-                <div class="mp-input-group">
-                  <label for="mp-player-name">Oyuncu Adın</label>
-                  <input id="mp-player-name" type="text" maxlength="14" placeholder="Örn: KADİR" value="OYUNCU 1" />
-                </div>
-
-                <button id="btn-mp-host" type="button" class="mp-btn host-btn">
-                  🏁 ODA KUR (KOD AL)
-                </button>
-
-                <div class="mp-divider"><span>veya koda katıl</span></div>
-
-                <div class="mp-join-group">
-                  <input id="mp-join-code" type="text" inputmode="numeric" maxlength="4" placeholder="4 Haneli Kod" aria-label="4 haneli oda kodu" />
-                  <button id="btn-mp-join" type="button" class="mp-btn join-btn">
-                    🔗 ODAYA KATIL
-                  </button>
-                </div>
-
-                <button id="btn-mp-leave" type="button" class="mp-btn leave-btn hidden">
-                  ✖ Odadan Ayrıl
-                </button>
-              </div>
-              <p class="panel-note">Ücretsiz P2P bağlantı: sunucu yok, kodu paylaşman yeterli. Arkadaşlarının araçlarını dikiz aynasında da görürsün.</p>
-            </section>
-
-            <!-- How to play -->
-            <section id="page-guide" class="tab-page" role="tabpanel" aria-labelledby="tab-guide" hidden>
-              <ul class="guide-list">
-                <li><span class="guide-icon">⚡</span><div><strong>Yakın Makas</strong>100+ km/s hızla araçların yanından sıyırarak geç, komboyu 10x'e katla!</div></li>
-                <li><span class="guide-icon">🔦</span><div><strong>Selektör Tepkisi</strong>Sol şeritteki araçlara selektör (<kbd>F</kbd>) at, sinyal verip sağa çekilsinler!</div></li>
-                <li><span class="guide-icon">↔️</span><div><strong>Gidiş-Geliş Yolu</strong>Karşı şeride çıkıp sollama yap; karşıdan gelen yaklaştıkça puan artar, son anda dönersen bonus! Kafa kafaya çarpışma ağır hasar verir.</div></li>
-                <li><span class="guide-icon">🏁</span><div><strong>İstanbul Park Yarış Pisti</strong>Virajlı yarış pistinde apexleri yakala, efsanevi 8. Viraj'ı tam gaz dön ve arkadaşlarınla pistte yarışarak en iyi tur süresini yap!</div></li>
-                <li><span class="guide-icon">🌉</span><div><strong>Köprü &amp; Tünel Geçişleri</strong>Avrasya Tüneli'nde yankılanan V8 egzozuyla, 15 Temmuz Şehitler Köprüsü'nde Boğaz üzerinde makas at!</div></li>
-                <li><span class="guide-icon">👥</span><div><strong>4 Kişilik P2P Mod</strong>Arkadaşlarınla aynı trafikte makas at, dikiz aynasından selektörlerini gör!</div></li>
-              </ul>
-              <div class="key-grid">
-                <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Gaz · Direksiyon · Fren</span>
-                <span><kbd>F</kbd><kbd>Boşluk</kbd></span><span>Selektör</span>
-                <span><kbd>H</kbd></span><span>Korna</span>
-                <span><kbd>R</kbd></span><span>Arkadaşına yetiş</span>
-                <span><kbd>V</kbd> <kbd>L</kbd></span><span>Silecek · Ambiyans</span>
-                <span><kbd>K</kbd> <kbd>N</kbd></span><span>Hüzün Radyosu (Aç/Sonraki)</span>
-                <span><kbd>T</kbd> <kbd>C</kbd></span><span>Hava · Kamera açısı</span>
-                <span><kbd>Esc</kbd></span><span>Menü / Duraklat</span>
-              </div>
-              <p class="panel-note">Dokunmatikte: direksiyonu parmağınla çevir; sağdaki pedalda yukarı ittikçe gaz, geriye/aşağı çektikçe fren yapar (elini kaldırmadan tek parmakla tam kontrol).</p>
-            </section>
+          <div class="purchase-actions">
+            <button id="btn-confirm-cancel" type="button" class="secondary-btn">Vazgeç</button>
+            <button id="btn-confirm-buy" type="button" class="cta-btn buy-car-btn">Satın al</button>
           </div>
         </div>
 
-        <footer class="panel-actions">
-          <!-- Step 1 Footer Actions -->
-          <div id="footer-step-1" class="step-footer-row">
-            <button id="btn-step-1-next" type="button" class="cta-btn start-btn next-step-btn">
-              <span class="start-text">
-                <span>ARACI SEÇ &amp; DEVAM ET</span>
-              </span>
-              <span class="step-btn-arrow" aria-hidden="true">→</span>
-            </button>
-          </div>
-
-          <!-- Step 2 Footer Actions -->
-          <div id="footer-step-2" class="step-footer-row" hidden>
-            <button id="btn-step-2-prev" type="button" class="secondary-btn back-step-btn" title="Araç Seçimine Dön">
-              ← Araç
-            </button>
-            <button id="btn-step-2-next" type="button" class="cta-btn start-btn next-step-btn">
-              <span class="start-text">
-                <span>DEVAM ET</span>
-              </span>
-              <span class="step-btn-arrow" aria-hidden="true">→</span>
-            </button>
-          </div>
-
-          <!-- Step 3 Footer Actions -->
-          <div id="footer-step-3" class="step-footer-row" hidden>
-            <button id="btn-step-3-prev" type="button" class="secondary-btn back-step-btn" title="Yol & Atmosfer Ayarlarına Dön">
-              ← Yol
-            </button>
-            <button id="btn-start-game" type="button" class="cta-btn start-btn">
-              <span class="start-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3v8" /><path d="M6.4 6.6a8 8 0 1 0 11.2 0" /></svg>
-              </span>
-              <span class="start-text">
-                <span id="start-label">SÜRÜŞE BAŞLA</span>
-              </span>
-            </button>
-          </div>
-
-          <div class="secondary-actions">
-            <button id="btn-drone-replay" type="button" class="secondary-btn drone-replay-btn hidden">
-              <span class="drone-btn-icon">🚁</span>
-              <span class="drone-btn-copy">
-                <strong id="drone-btn-title">DRONE VİDEOSUNU İZLE (10 SN)</strong>
-                <small id="drone-btn-sub">SON MAKAS KESİTİ HAZIR</small>
-              </span>
-            </button>
-            <button id="btn-quick-resume" type="button" class="secondary-btn resume-quick-btn hidden">
-              ▶ Sürüşe Hemen Dön
-            </button>
-          </div>
+        <footer class="panel-actions" id="garage-footer">
+          <button id="btn-garage-drive" type="button" class="cta-btn start-btn">
+            <span class="start-text"><span id="garage-drive-label">BU ARAÇLA SÜR</span></span>
+          </button>
         </footer>
+      </aside>
+
+      <!-- ==================== ONLINE: WebRTC P2P room, host-centred, up to 4 players ==================== -->
+      <aside class="garage-panel menu-modal" data-screen-panel="online" aria-label="Online" hidden>
+        <header class="panel-head">
+          <button type="button" class="back-btn" data-menu-back aria-label="Ana ekrana dön">‹</button>
+          <h2>Online · 4 Kişi</h2>
+        </header>
+        <div class="panel-body">
+          <div class="mp-lobby-box">
+            <div class="mp-lobby-header">
+              <div>
+                <h3>Beraber Sürüş</h3>
+                <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşlarına gönder, 4 kişiye kadar aynı trafikte beraber makas atın!</p>
+              </div>
+              <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
+                <span>ODA KODU</span>
+                <strong id="mp-room-code-val">----</strong>
+              </div>
+            </div>
+
+            <div class="mp-input-group">
+              <label for="mp-player-name">Oyuncu Adın</label>
+              <input id="mp-player-name" type="text" maxlength="14" placeholder="Örn: KADİR" value="OYUNCU 1" />
+            </div>
+
+            <button id="btn-mp-host" type="button" class="mp-btn host-btn">
+              🏁 ODA KUR (KOD AL)
+            </button>
+
+            <div class="mp-divider"><span>veya koda katıl</span></div>
+
+            <div class="mp-join-group">
+              <input id="mp-join-code" type="text" inputmode="numeric" maxlength="4" placeholder="4 Haneli Kod" aria-label="4 haneli oda kodu" />
+              <button id="btn-mp-join" type="button" class="mp-btn join-btn">
+                🔗 ODAYA KATIL
+              </button>
+            </div>
+
+            <button id="btn-mp-leave" type="button" class="mp-btn leave-btn hidden">
+              ✖ Odadan Ayrıl
+            </button>
+          </div>
+          <p class="panel-note">Ücretsiz P2P bağlantı: sunucu yok, kodu paylaşman yeterli. Arkadaşlarının araçlarını dikiz aynasında da görürsün.</p>
+        </div>
       </aside>
     </div>
   </div>
@@ -549,12 +485,161 @@
             <span id="drone-download-icon">⬇️</span>
             <span id="drone-download-label">Videoyu İndir (10 sn)</span>
           </button>
-          <button id="btn-drone-close" type="button" class="drone-ctrl-btn close-btn" title="Menüye Dön (ESC)">
-            <span>✖ Menüye Dön</span>
+          <button id="btn-drone-close" type="button" class="drone-ctrl-btn close-btn" title="Kapat (ESC)">
+            <span>✖ Kapat</span>
           </button>
         </div>
       </div>
     </footer>
+  </div>
+
+  <!-- Pause card over the frozen road (main.js → openPause) -->
+  <div id="pause-overlay" class="pause-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+    <div class="pause-card">
+      <header class="pause-head">
+        <h2 id="pause-title">DURAKLATILDI</h2>
+        <p class="pause-stats">
+          <span>Skor <b id="pause-score">0</b></span>
+          <span>Süre <b id="pause-time">00:00</b></span>
+          <span><b id="pause-km">0.00</b> km</span>
+        </p>
+      </header>
+      <button id="btn-pause-resume" type="button" class="cta-btn start-btn pause-resume">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+        <span class="start-text"><span>DEVAM ET</span></span>
+      </button>
+      <div class="pause-grid">
+        <button id="btn-pause-restart" type="button" class="pause-btn">
+          <span aria-hidden="true">↻</span> Yeniden Başla
+        </button>
+        <button id="btn-pause-settings" type="button" class="pause-btn">
+          <span aria-hidden="true">⚙</span> Ayarlar
+        </button>
+        <button id="btn-pause-garage" type="button" class="pause-btn">
+          <span aria-hidden="true">⌂</span> Garaja Dön
+        </button>
+        <button id="btn-pause-end" type="button" class="pause-btn danger">
+          <span aria-hidden="true">■</span> Sürüşü Bitir
+        </button>
+      </div>
+      <button type="button" class="secondary-btn drone-replay-btn js-drone-replay hidden">
+        <span class="drone-btn-icon">🚁</span>
+        <span class="drone-btn-copy">
+          <strong>DRONE TEKRARINI İZLE (10 SN)</strong>
+          <small class="js-drone-sub">SON MAKAS KESİTİ HAZIR</small>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 3-2-1 before the drive goes on after a pause -->
+  <div id="countdown" class="countdown hidden" aria-live="assertive">
+    <span id="countdown-num">3</span>
+  </div>
+
+  <!-- First-drive hints (src/tutorial.js) -->
+  <div id="coach" class="coach hidden" role="status" aria-live="polite">
+    <span id="coach-step" class="coach-step">1/3</span>
+    <span id="coach-text" class="coach-text"></span>
+    <button id="coach-skip" type="button" class="coach-skip">Geç</button>
+  </div>
+  <div id="coach-swipe" class="coach-swipe hidden" aria-hidden="true"><i></i></div>
+
+  <!-- Settings: from the home screen and from the pause card -->
+  <div id="settings-sheet" class="sheet-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="garage-panel sheet-panel menu-modal">
+      <header class="panel-head">
+        <button id="btn-settings-close" type="button" class="back-btn" aria-label="Ayarları kapat">‹</button>
+        <h2 id="settings-title">Ayarlar</h2>
+      </header>
+      <nav class="panel-tabs" role="tablist" aria-label="Ayarlar bölümleri">
+        <button type="button" role="tab" class="panel-tab active" data-settings-tab="prefs" aria-selected="true">Ayarlar</button>
+        <button type="button" role="tab" class="panel-tab" data-settings-tab="guide" aria-selected="false">Nasıl Oynanır</button>
+      </nav>
+      <div class="panel-body">
+        <section class="tab-page" data-settings-page="prefs">
+          <div class="panel-section touch-only">
+            <h3>Direksiyon</h3>
+            <!-- Filled in by main.js → buildSteerOptions -->
+            <div class="steer-options" id="steer-mode-group" role="group" aria-label="Direksiyon kontrolü"></div>
+          </div>
+
+          <div class="panel-section">
+            <h3>Kamera</h3>
+            <div class="segmented-control" id="camera-select-group">
+              <button type="button" class="seg-btn active" data-camera="0">Standart</button>
+              <button type="button" class="seg-btn" data-camera="1">Tam Kabin</button>
+              <button type="button" class="seg-btn" data-camera="2">Yakın Sürüş</button>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <h3>Ambiyans Aydınlatması</h3>
+            <div class="color-swatches" id="ambient-select-group">
+              <button type="button" class="swatch active" data-color="cyan" style="--sw-color: #00f0ff" title="Buz Mavisi" aria-label="Buz Mavisi"></button>
+              <button type="button" class="swatch" data-color="purple" style="--sw-color: #b829ff" title="Neon Mor" aria-label="Neon Mor"></button>
+              <button type="button" class="swatch" data-color="red" style="--sw-color: #ff1e42" title="Sport Kırmızı" aria-label="Sport Kırmızı"></button>
+              <button type="button" class="swatch" data-color="emerald" style="--sw-color: #00ff88" title="Zümrüt Yeşili" aria-label="Zümrüt Yeşili"></button>
+              <button type="button" class="swatch" data-color="amber" style="--sw-color: #ffaa00" title="Altın Kehribar" aria-label="Altın Kehribar"></button>
+            </div>
+          </div>
+
+          <label class="setting-row" for="sound-switch">
+            <span class="setting-copy">
+              <strong>Ses</strong>
+              <small>Motor, makas ve radyo sesleri</small>
+            </span>
+            <input type="checkbox" id="sound-switch" class="switch-input" role="switch" checked />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+
+          <!-- Temporary switch for the new version (src/progression/flag.js) -->
+          <label class="newver-toggle" for="newver-switch">
+            <span class="newver-copy">
+              <strong>Yeni Sürüm <em>BETA</em></strong>
+              <small>Her aracın hızı ve manevrası farklı. Sürüşlerden para kazan, araç al, aracını yükselt.</small>
+            </span>
+            <input type="checkbox" id="newver-switch" class="switch-input" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+
+          <button id="btn-replay-coach" type="button" class="secondary-btn">İlk sürüş ipuçlarını tekrar göster</button>
+        </section>
+
+        <!-- How to play: touch screens see the touch controls, keyboards the keys -->
+        <section class="tab-page" data-settings-page="guide" hidden>
+          <ul class="guide-list">
+            <li><span class="guide-icon">⚡</span><div><strong>Yakın Makas</strong>100+ km/sa hızla araçların yanından sıyırarak geç, komboyu 10x'e katla! Bir sonraki makas için ~4 saniyen var.</div></li>
+            <li class="touch-only"><span class="guide-icon">🕹️</span><div><strong>Sürüş</strong>Sağdaki pedalı yukarı ittikçe gaz, aşağı çektikçe fren. Direksiyon için sol başparmağını ekranda sağa sola kaydır (Ayarlar'dan ok tuşları veya eğim seçebilirsin).</div></li>
+            <li><span class="guide-icon">🔦</span><div><strong>Selektör</strong><span class="touch-only">Sol üstteki SELEKTÖR düğmesiyle </span><span class="keys-only">F tuşuyla </span>sol şeritteki araçlara selektör yap, sinyal verip sağa çekilsinler!</div></li>
+            <li><span class="guide-icon">↔️</span><div><strong>Gidiş-Geliş Yolu</strong>Karşı şeride çıkıp sollama yap; karşıdan gelen yaklaştıkça puan artar, son anda dönersen bonus! Kafa kafaya çarpışma ağır hasar verir.</div></li>
+            <li><span class="guide-icon">🏁</span><div><strong>İstanbul Park</strong>Virajlarda apex'i yüksek hızda yakala, en iyi tur süreni yap.</div></li>
+            <li><span class="guide-icon">🌉</span><div><strong>Köprü &amp; Tünel</strong>Avrasya Tüneli'nde yankılanan egzozla, 15 Temmuz Şehitler Köprüsü'nde Boğaz üzerinde makas at!</div></li>
+            <li><span class="guide-icon">👥</span><div><strong>Online</strong>4 kişiye kadar aynı trafikte makas atın, dikiz aynasından birbirinizin selektörünü görün.</div></li>
+          </ul>
+          <div class="key-grid keys-only">
+            <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Gaz · Direksiyon · Fren</span>
+            <span><kbd>F</kbd><kbd>Boşluk</kbd></span><span>Selektör</span>
+            <span><kbd>H</kbd></span><span>Korna</span>
+            <span><kbd>R</kbd></span><span>Arkadaşına yetiş</span>
+            <span><kbd>V</kbd> <kbd>L</kbd></span><span>Silecek · Ambiyans</span>
+            <span><kbd>K</kbd> <kbd>N</kbd></span><span>Hüzün Radyosu (Aç/Sonraki)</span>
+            <span><kbd>T</kbd> <kbd>C</kbd></span><span>Hava · Kamera açısı</span>
+            <span><kbd>Esc</kbd></span><span>Duraklat</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- First drive on a touch screen: how to steer (asked once; Ayarlar changes it later) -->
+  <div id="control-picker" class="sheet-overlay centered hidden" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="picker-card menu-modal">
+      <h2 id="picker-title">Nasıl direksiyon çevirmek istersin?</h2>
+      <p>İstediğin zaman Ayarlar'dan değiştirebilirsin.</p>
+      <div class="steer-options picker-options" id="picker-steer-options" role="group" aria-label="Direksiyon kontrolü"></div>
+      <button id="btn-picker-cancel" type="button" class="link-btn">Vazgeç</button>
+    </div>
   </div>
 
   <!-- Shown on phones held upright: the game is played in landscape -->
