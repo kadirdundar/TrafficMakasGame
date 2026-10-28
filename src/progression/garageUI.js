@@ -76,10 +76,10 @@ export class GarageProgressUI {
   }
 
   // Takes effect with the next render()
-  setEnabled(on) {
-    this.enabled = on;
+  setEnabled(on = true) {
+    this.enabled = true;
     this.cancelPending();
-    if (this.switchEl) this.switchEl.checked = on;
+    if (this.switchEl) this.switchEl.checked = true;
   }
 
   // Coins earned in the drive that just ended, shown beside the wallet while the menu is open

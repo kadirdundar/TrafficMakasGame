@@ -1232,10 +1232,10 @@ class OtobanMakasGame {
     this.garageUI.render(car);
   }
 
-  setNewVersion(on) {
-    this.newVersion = on;
-    setNewVersionEnabled(on);
-    this.garageUI.setEnabled(on);
+  setNewVersion(on = true) {
+    this.newVersion = true;
+    setNewVersionEnabled(true);
+    this.garageUI.setEnabled(true);
     this.coinScoreMark = this.score;
     this.coinCarry = 0;
     this.applyCarPerformance();
