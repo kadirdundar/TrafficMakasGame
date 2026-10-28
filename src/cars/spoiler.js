@@ -8,6 +8,7 @@ import * as THREE from 'three';
 const STEP = 0.03; // m between the height samples that look for the boot lid's trailing edge
 const SCAN_DEPTH = 1.1; // m forward from the rear bumper that is searched at the centre
 const SIDE_STEP = 0.08; // m between the measured points of the edge across the car
+const LID_STEPS = 32; // slices across the lip and ducktail, so they follow the curved edge
 // Blade centre ahead of the lid's edge: the wing stands on the lid. A steep lid (911) is short
 // before it meets the roof, so the wing moves back towards the edge there.
 const wingOffset = (pitch) => -0.3 + 0.4 * Math.abs(pitch);
@@ -21,10 +22,11 @@ function carbon() {
   return carbonMat;
 }
 
-// Profile in the car's side view (u = backwards, v = up) extruded across the car
-function extrudeProfile(points, width) {
+// Profile in the car's side view (u = backwards, v = up) extruded across the car, in `steps`
+// slices so fitToLid can bend it along the lid's curved edge (one slice only bends the ends)
+function extrudeProfile(points, width, steps = 1) {
   const shape = new THREE.Shape(points.map(([u, v]) => new THREE.Vector2(u, v)));
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: width, steps, bevelEnabled: false });
   geo.rotateY(-Math.PI / 2); // profile u → +Z (backwards), extrusion → -X
   geo.translate(width / 2, 0, 0);
   return geo;
@@ -54,14 +56,15 @@ function fitToLid(geo, m) {
 const BUILDERS = {
   // Thin lip on the lid's trailing edge
   lip(m, paint) {
-    const geo = extrudeProfile([[-0.1, -0.012], [0.02, -0.012], [0.03, 0.035], [-0.1, 0.004]], m.width);
+    const geo = extrudeProfile([[-0.1, -0.012], [0.02, -0.012], [0.03, 0.035], [-0.1, 0.004]], m.width, LID_STEPS);
     return [new THREE.Mesh(fitToLid(geo, m), paint)];
   },
   // Kicked-up ducktail, 911 style
   ducktail(m, paint) {
     const geo = extrudeProfile(
       [[-0.22, -0.012], [0.025, -0.012], [0.06, 0.085], [0.03, 0.09], [-0.22, 0.004]],
-      m.width
+      m.width,
+      LID_STEPS
     );
     return [new THREE.Mesh(fitToLid(geo, m), paint)];
   },

@@ -16,7 +16,7 @@ sıkıştır → kodda tek bir config ile bağla → önizleme araçlarıyla ekr
 | Araç kaydı (her şeyin ayarı) | `src/cars/<id>/car.js` — alanlar: [`src/cars/README.md`](../src/cars/README.md) |
 | Dış model (garaj + online arkadaşlar) | `public/models/<arac>.glb`, ayarlar `car.js` → `exterior`, genel yükleyici `src/cars/loadExterior.js` |
 | Kokpit modeli (sürüş görünümü) | `public/models/<arac>-cockpit.glb`, ayarlar `car.js` → `cockpit`, yükleyici `src/cockpit3d.js` |
-| Gösterge paneli çizimi | `src/cockpit.js` → `paint3DScreen()`, `car.js` → `cockpit.cluster` (`'audi'` / `'bmw'`) |
+| Gösterge paneli çizimi | `src/cockpit.js` → `paint3DScreen()`, `car.js` → `cockpit.cluster` (`'audi'`, `'vw'`, `'toyota'`, `'ford'`, … / `'bmw'`) |
 | Garaj düğmesi, başlık, künye | `car.js` → `label`, `make`, `model`, `variant`, `credit` (garaj bunlardan üretilir) |
 | Dönüştürme ayarı | `src/cars/<id>/convert.mjs`, araç: `npm run car:convert -- <id>` |
 | Yeni araç iskeleti / inceleme | `npm run car:new -- <id> <kaynak.glb>`, `npm run car:inspect -- <glb>` |
@@ -270,3 +270,5 @@ Kontrol listesi (A8 ile yan yana karşılaştır):
 | Logo camgöbeği yanıyor | Mavi çeyrekler LED şeridi sanıldı | Direksiyon parçalarını LED taramasından önce ayır |
 | Klima düğmeleri / kapı kolu seçilemiyor | Atlasta birkaç piksel | §5.6b |
 | Ayak boşluğu yolla aynı parlaklıkta | Gölge yok; zemin güneşi tam alıyor | Config `occlusion` (yüksekliğe göre karartma) |
+| Parçaların bir kısmı dönmemiş / yerinden kaymış (ön far arkada) | Adında `.` veya boşluk olan düğümler (`wheel.001`) three.js'te başka adla okunuyordu | `convert-car.mjs` düğümleri sıra numarasıyla eşler (Corolla'da düzeltildi) |
+| Kokpit dosyası 3-4 MB | Kumaş/plastik tekrar dokuları ve normal haritaları 1024 px | `cockpit.textureSizes` ile bunları 256 px'e indir |

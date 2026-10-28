@@ -3,15 +3,22 @@ import * as THREE from 'three';
 import sharp from 'sharp';
 
 // Re-encodes every texture as WebP, optionally downscaling to `maxSize` (longest side).
-export async function compressTextures(doc, { quality = 90, maxSize = null } = {}) {
+// `sizes` ([pattern, px]) gives the textures of matching materials their own limit, e.g. small
+// tiling grain maps; a texture shared with an unmatched material keeps the larger limit.
+export async function compressTextures(doc, { quality = 90, maxSize = null, sizes = [] } = {}) {
   const textures = doc.getRoot().listTextures();
   console.log(`  ${textures.length} doku WebP'ye çevriliyor (kalite ${quality}${maxSize ? `, en fazla ${maxSize}px` : ''})`);
   for (const tex of textures) {
     const img = tex.getImage();
     if (!img) continue;
+    const limits = tex
+      .listParents()
+      .filter((p) => p.propertyType === 'Material')
+      .map((m) => sizes.find(([pattern]) => pattern.test(m.getName() || ''))?.[1] ?? maxSize);
+    const size = limits.length && !limits.includes(null) ? Math.max(...limits) : maxSize;
     try {
       let pipeline = sharp(img);
-      if (maxSize) pipeline = pipeline.resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true });
+      if (size) pipeline = pipeline.resize(size, size, { fit: 'inside', withoutEnlargement: true });
       tex.setImage(await pipeline.webp({ quality, effort: 4 }).toBuffer());
       tex.setMimeType('image/webp');
     } catch (err) {

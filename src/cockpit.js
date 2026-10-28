@@ -9,6 +9,15 @@ export const AMBIENT_COLORS = {
   amber: { hex: 0xffaa00, css: '#ffaa00', name: 'Altın Kehribar' },
 };
 
+// Lettering between the dials per car.js → cockpit.cluster ('audi' draws rings, 'vw' a roundel)
+const CLUSTER_LETTERING = {
+  mercedes: { text: 'AMG', size: 0.1, italic: true },
+  brabus: { text: 'BRABUS', size: 0.09, italic: true },
+  porsche: { text: 'PORSCHE', size: 0.08, italic: true },
+  toyota: { text: 'TOYOTA', size: 0.08 },
+  ford: { text: 'Ford', size: 0.11, italic: true },
+};
+
 // Source reference image dimensions: 600 x 338
 const SRC_W = 600;
 const SRC_H = 338;
@@ -1300,13 +1309,36 @@ export class CarCockpit {
     this.drawDialFace(c, w * 0.2, h * 0.52, r, { max: 8, major: 1, minor: 0.5, label: 1, redFrom: 6.5, unit: 'x1000/min' });
     this.drawDialFace(c, w * 0.8, h * 0.52, r, { max: this.speedoMaxKmh, major: 20, minor: 10, label: 40, unit: 'km/h' });
 
-    if (brand === 'mercedes' || brand === 'brabus' || brand === 'porsche') {
-      // AMG / BRABUS / PORSCHE lettering above the digital speed
+    const lettering = CLUSTER_LETTERING[brand];
+    if (lettering) {
+      // Brand lettering above the digital speed
       c.fillStyle = '#e2e8f0';
-      c.font = `italic 800 ${fh * (brand === 'porsche' ? 0.08 : brand === 'brabus' ? 0.09 : 0.1)}px system-ui, sans-serif`;
+      c.font = `${lettering.italic ? 'italic ' : ''}800 ${fh * lettering.size}px system-ui, sans-serif`;
       c.textAlign = 'center';
       c.textBaseline = 'middle';
-      c.fillText(brand === 'porsche' ? 'PORSCHE' : brand === 'brabus' ? 'BRABUS' : 'AMG', w / 2, h * 0.27);
+      c.fillText(lettering.text, w / 2, h * 0.27);
+    } else if (brand === 'vw') {
+      // VW roundel above the digital speed
+      const ringR = fh * 0.075;
+      const cy = h * 0.27;
+      c.strokeStyle = '#cbd5e1';
+      c.lineWidth = fh * 0.012;
+      c.beginPath();
+      c.arc(w / 2, cy, ringR, 0, Math.PI * 2);
+      c.stroke();
+      c.lineJoin = 'round';
+      c.beginPath();
+      c.moveTo(w / 2 - ringR * 0.55, cy - ringR * 0.6);
+      c.lineTo(w / 2 - ringR * 0.25, cy + ringR * 0.05);
+      c.lineTo(w / 2, cy - ringR * 0.35);
+      c.lineTo(w / 2 + ringR * 0.25, cy + ringR * 0.05);
+      c.lineTo(w / 2 + ringR * 0.55, cy - ringR * 0.6);
+      c.moveTo(w / 2 - ringR * 0.45, cy + ringR * 0.05);
+      c.lineTo(w / 2 - ringR * 0.25, cy + ringR * 0.75);
+      c.lineTo(w / 2, cy + ringR * 0.2);
+      c.lineTo(w / 2 + ringR * 0.25, cy + ringR * 0.75);
+      c.lineTo(w / 2 + ringR * 0.45, cy + ringR * 0.05);
+      c.stroke();
     } else {
       // Audi rings above the digital speed
       const ringR = fh * 0.045;

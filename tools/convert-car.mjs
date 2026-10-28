@@ -54,11 +54,20 @@ async function sourceMatrices() {
   scene.updateMatrixWorld(true);
   const turn = new THREE.Matrix4().makeRotationY(THREE.MathUtils.degToRad(cfg.transform?.rotateY ?? 0));
 
-  const box = new THREE.Box3();
+  // three.js strips '.', ' ' etc. from node names ('wheel.001' → 'wheel001'), so mesh nodes are
+  // matched to the source by index and keyed by their original name, as gltf-transform reads them
+  const meshNodes = [];
   scene.traverse((o) => {
-    if (!o.isMesh || matches(cfg.dropNodes || [], o.name)) return;
-    box.union(new THREE.Box3().setFromObject(o).applyMatrix4(turn));
+    const index = gltf.parser.associations.get(o)?.nodes;
+    const node = index !== undefined && gltf.parser.json.nodes[index];
+    if (node && node.mesh !== undefined) meshNodes.push({ name: node.name ?? '', object: o });
   });
+
+  const box = new THREE.Box3();
+  for (const { name, object } of meshNodes) {
+    if (matches(cfg.dropNodes || [], name)) continue;
+    box.union(new THREE.Box3().setFromObject(object).applyMatrix4(turn));
+  }
 
   let scale = cfg.transform?.scale;
   if (!scale) {
@@ -76,9 +85,7 @@ async function sourceMatrices() {
   }
 
   const matrices = new Map();
-  scene.traverse((o) => {
-    if (o.isMesh) matrices.set(o.name, post.clone().multiply(o.matrixWorld));
-  });
+  for (const { name, object } of meshNodes) matrices.set(name, post.clone().multiply(object.matrixWorld));
   return matrices;
 }
 
@@ -236,6 +243,7 @@ function applyMaterialFixes(root, rules) {
     if (rule[1].roughness !== undefined) m.setRoughnessFactor(rule[1].roughness);
     const [r, g, b, a] = m.getBaseColorFactor();
     m.setBaseColorFactor([...(rule[1].color || [r, g, b]), rule[1].alpha ?? a]); // linear RGB
+    if (rule[1].alpha < 1) m.setAlphaMode('BLEND'); // an opaque source lens would ignore it
   });
 }
 
@@ -318,7 +326,7 @@ async function buildExterior(matrices) {
   if (ex.cleanAttributes) cleanAttributes(root);
   await simplifyDoc(doc, ex.simplify);
   if (ex.join !== false) await doc.transform(join());
-  await compressTextures(doc, { quality: ex.webpQuality ?? 85, maxSize: ex.maxTextureSize });
+  await compressTextures(doc, { quality: ex.webpQuality ?? 85, maxSize: ex.maxTextureSize, sizes: ex.textureSizes });
   await finish(doc, ex);
   await save(io, doc, outPath(ex.out));
 }
@@ -690,7 +698,7 @@ async function buildCockpit(matrices) {
     const separate = new Set(['steering_wheel', 'steering_column', 'mirror_left', 'mirror_right', 'mirror_center', 'ambient_led', 'cabin_floor', ...(ck.keepSeparate || [])]);
     await doc.transform(join({ filter: (node) => !separate.has(node.getName()) }));
   }
-  await compressTextures(doc, { quality: ck.webpQuality ?? 90, maxSize: ck.maxTextureSize });
+  await compressTextures(doc, { quality: ck.webpQuality ?? 90, maxSize: ck.maxTextureSize, sizes: ck.textureSizes });
   await finish(doc, ck);
   await save(io, doc, outPath(ck.out));
 }
