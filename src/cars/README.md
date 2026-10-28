@@ -66,7 +66,8 @@ fiziği kullanır. Açıkken aracın fiziği bu değerlerden ve alınan yükselt
 | `upgradeCost` | Yükseltme fiyat çarpanı (pahalı araçta yükseltme de pahalı). |
 
 Mevcut araçlar: A8 (başlangıç, 250 km/s, 0-100 3,9 sn), M4 CS (15.000), G 700 (18.000, hızlı
-kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Yükseltmeler, spoylerler, jant renkleri,
+kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Giriş seviyesi: Passat B5 (3.000,
+200 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s). Yükseltmeler, spoylerler, jant renkleri,
 kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 
 ### `exterior`
@@ -88,7 +89,7 @@ kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 | Alan | Anlamı |
 | --- | --- |
 | `modelUrl`, `scale` | Kokpit GLB'si ve ölçeği. |
-| `cluster` | Gösterge çizimi: `'audi'`, `'mercedes'` (iki kadran) veya `'bmw'` (`src/cockpit.js` → `paint3DScreen`). |
+| `cluster` | Gösterge çizimi: `'bmw'` ya da iki kadranlı çizim; kadranlar arasındaki marka `'audi'` (halkalar), `'vw'` (amblem), `'mercedes'` (AMG), `'brabus'`, `'porsche'`, `'toyota'`, `'ford'` (`src/cockpit.js` → `CLUSTER_LETTERING`, `paint3DScreen`). |
 | `defaultEye` | Sürücü gözünün model içindeki konumu (GLB'de `eye` extras'ı varsa o kullanılır). |
 | `wheelRadius`, `steerSign` | Direksiyon çemberi (dokunmatik direksiyon için) ve dönüş yönü. |
 | `softMaterials`, `tints` | Deri/döşeme malzemeleri (mat yapılır) ve isteğe bağlı koyulaştırma (`{ ad: 0.4 }`). |
@@ -121,6 +122,7 @@ Düğüm adları `npm run car:inspect` çıktısındaki adlardır; desenler RegE
 | `*.materials` | `[desen, { color, alpha, metallic, roughness }]`: PBR düzeltmeleri, ilk eşleşen (renk doğrusal RGB). |
 | `*.cleanAttributes` | Dokusuz malzemelerden UV/tangent/renk verisini siler (dosya küçülür, birleştirme artar). |
 | `*.maxTextureSize`, `*.webpQuality` | Doku boyu sınırı ve WebP kalitesi. |
+| `*.textureSizes` | `[desen, px]`: eşleşen malzemelerin dokularına ayrı sınır (ör. panel boyunca tekrar eden kumaş/plastik doku ve normal haritaları için 256). Kokpit dosyasını en çok bunlar büyütür. |
 | `*.compress` | meshopt geometri sıkıştırması (oyun çözer; dosya ~2-3 kat küçülür). |
 | `cockpit.out`, `cockpit.keepNodes` | Kokpit çıktısı ve sürücüden görünen düğümler (boşsa kokpit atlanır). |
 | `cockpit.eye` | Göz noktası (sahne extras'ına yazılır). |
