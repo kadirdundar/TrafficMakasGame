@@ -40,6 +40,7 @@ export class SoundEngine {
       engine: 1.0,
       tire: 1.0,
       wind: 1.0,
+      music: 0.7,
     };
     this.loadSavedVolumes();
 
@@ -672,6 +673,7 @@ export class SoundEngine {
         if (typeof d.engine === 'number') this.volumes.engine = Math.max(0, Math.min(1.5, d.engine));
         if (typeof d.tire === 'number') this.volumes.tire = Math.max(0, Math.min(1.5, d.tire));
         if (typeof d.wind === 'number') this.volumes.wind = Math.max(0, Math.min(1.5, d.wind));
+        if (typeof d.music === 'number') this.volumes.music = Math.max(0, Math.min(1.5, d.music));
       }
     } catch (_) {}
   }

@@ -14,6 +14,7 @@ import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js
 import { COINS_PER_KM, COINS_PER_POINT } from './progression/config.js';
 import { GarageProgressUI } from './progression/garageUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
+import { MenuMusicPlayer } from './menuMusic.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -65,6 +66,11 @@ class OtobanMakasGame {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.sound = new SoundEngine();
+    this.menuMusic = new MenuMusicPlayer({
+      volume: this.sound.volumes.music,
+      masterVolume: this.sound.volumes.master,
+      muted: this.sound.muted,
+    });
     this.hudEls = {};
     this.hudCache = {};
 
@@ -323,6 +329,7 @@ class OtobanMakasGame {
     this.setupAppMode();
     this.updateHUD();
     this.openMenu('home');
+    this.menuMusic.play();
     this.animate();
   }
 
@@ -869,12 +876,17 @@ class OtobanMakasGame {
     // Going to the background (a call, a notification, the app switcher) pauses the drive, and
     // saves the coins (otherwise written a few seconds after they are earned) and records at once
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) return;
-      this.profile.flush();
-      this.saveRecords();
-      this.openPause();
+      if (document.hidden) {
+        this.profile.flush();
+        this.saveRecords();
+        this.openPause();
+        this.menuMusic?.pause();
+      } else if (this.uiState === 'menu') {
+        this.menuMusic?.play();
+      }
     });
     window.addEventListener('pagehide', () => {
+      this.menuMusic?.pause();
       this.profile.flush();
       this.saveRecords();
     });
@@ -1418,6 +1430,7 @@ class OtobanMakasGame {
     const soundSwitch = document.getElementById('sound-switch');
     if (soundSwitch) soundSwitch.checked = !muted;
     this.radio.setMuted(muted);
+    this.menuMusic?.setMuted(muted);
     document.getElementById('sound-sliders-group')?.classList.toggle('muted', muted);
   }
 
@@ -1477,6 +1490,7 @@ class OtobanMakasGame {
     this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
     this.setScreen(screen);
     this.syncDroneReplayButton();
+    this.menuMusic?.fadeIn(0.7);
   }
 
   // Home, garage or online panel of the menu
@@ -1508,6 +1522,7 @@ class OtobanMakasGame {
     document.getElementById('menu-overlay')?.classList.add('hidden');
     document.getElementById('pause-overlay')?.classList.add('hidden');
     this.showroom?.setActive(false);
+    this.menuMusic?.fadeOut(0.4);
     this.sound.init();
     this.sound.setRainAmbience(this.world.weatherKey === 'rain');
     this.runActive = true;
@@ -1583,6 +1598,7 @@ class OtobanMakasGame {
     document.getElementById('menu-overlay')?.classList.add('hidden');
     document.getElementById('pause-overlay')?.classList.add('hidden');
     this.showroom?.setActive(false);
+    this.menuMusic?.fadeOut(0.3);
     this.setUiState('countdown');
     this.sound.init();
 
@@ -1670,7 +1686,14 @@ class OtobanMakasGame {
       const update = () => {
         const pct = parseInt(slider.value, 10) || 0;
         if (valEl) valEl.textContent = `${pct}%`;
-        this.sound.setVolume(category, pct / 100);
+        const val = pct / 100;
+        this.sound.setVolume(category, val);
+        if (category === 'master') {
+          this.menuMusic?.setMasterVolume(val);
+        }
+        if (category === 'music') {
+          this.menuMusic?.setVolume(val);
+        }
       };
 
       slider.addEventListener('input', update);
@@ -1686,6 +1709,7 @@ class OtobanMakasGame {
     bindSlider('slider-tire-volume', 'val-tire-volume', 'tire', () => this.sound.playTireChirp(120));
     bindSlider('slider-wind-volume', 'val-wind-volume', 'wind', () => this.sound.playMakasWhoosh(1, false, 140, false));
     bindSlider('slider-engine-volume', 'val-engine-volume', 'engine');
+    bindSlider('slider-music-volume', 'val-music-volume', 'music');
     bindSlider('slider-master-volume', 'val-master-volume', 'master');
 
     document.getElementById('sound-sliders-group')?.classList.toggle('muted', this.sound.muted);
@@ -1703,6 +1727,7 @@ class OtobanMakasGame {
     sync('slider-tire-volume', 'val-tire-volume', 'tire');
     sync('slider-wind-volume', 'val-wind-volume', 'wind');
     sync('slider-engine-volume', 'val-engine-volume', 'engine');
+    sync('slider-music-volume', 'val-music-volume', 'music');
     sync('slider-master-volume', 'val-master-volume', 'master');
 
     document.getElementById('sound-sliders-group')?.classList.toggle('muted', this.sound.muted);
@@ -1790,6 +1815,7 @@ class OtobanMakasGame {
     // Hide menu & HUD overlays so the 3D Drone camera has a clean fullscreen view; closing it
     // goes back to where it was opened from
     this.replayReturn = this.uiState;
+    this.menuMusic?.fadeOut(0.3);
     document.getElementById('menu-overlay')?.classList.add('hidden');
     document.getElementById('pause-overlay')?.classList.add('hidden');
     document.getElementById('hud-top')?.classList.add('hidden');
@@ -1825,6 +1851,7 @@ class OtobanMakasGame {
       } else {
         document.getElementById('menu-overlay')?.classList.remove('hidden');
         this.showroom?.setActive(!this.portraitPhone?.matches);
+        this.menuMusic?.fadeIn(0.7);
       }
       this.syncDroneReplayButton();
     }
