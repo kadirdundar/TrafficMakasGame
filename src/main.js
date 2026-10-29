@@ -2404,12 +2404,21 @@ class OtobanMakasGame {
     let centrifugalDriftVel;
     let steerPower;
     if (this.traffic.roadMode === 'track') {
-      // In track mode: sharp corners push the car to the outside!
-      // The car DOES NOT turn by itself; player MUST steer into the apex to stay on track!
-      const driftMagnitude = -curveKappa * speedMs * 30.0;
-      centrifugalDriftVel = Math.max(-5.8, Math.min(5.8, driftMagnitude));
-      // Responsive racing steering authority to actively carve the turn and hit the apex
-      steerPower = 5.8 + speedRatio * 2.8;
+      // In track mode: realistic v^2 centrifugal physics!
+      // Blend current curvature with 18m lookahead so corner entry immediately pushes the car outward.
+      const lookaheadKappa = this.world.evalRoadDeriv2
+        ? this.world.evalRoadDeriv2((this.world.worldDistM || 0) + 18)
+        : curveKappa;
+      const effectiveKappa =
+        Math.abs(lookaheadKappa) > Math.abs(curveKappa)
+          ? curveKappa * 0.55 + lookaheadKappa * 0.45
+          : curveKappa;
+      // Non-linear v^2 centrifugal outward drift:
+      // Entering a tight hairpin (|kappa| ~ 0.013) at 240 km/h produces ~21 m/s outward push,
+      // exceeding max steering authority (~15.4 m/s) -> genuine high-speed understeer unless the player brakes!
+      const driftMagnitude = -effectiveKappa * speedMs * (11.5 + speedMs * 0.30);
+      centrifugalDriftVel = Math.max(-21.0, Math.min(21.0, driftMagnitude));
+      steerPower = 5.4 + speedRatio * 2.2;
     } else {
       // Highway mode: gentle highway drift
       const maxDrift = 1.35;
@@ -2420,10 +2429,13 @@ class OtobanMakasGame {
     // The car's handling (classic: 1) scales how far it moves sideways for a given steer, and
     // part of it how quickly the tyres take that up
     steerPower *= phys.handling;
-    const tireResponse = 0.6 + 0.4 * phys.handling;
+    const isOffTrack =
+      this.traffic.roadMode === 'track' && Math.abs(this.playerX) > this.world.roadHalfWidth - 0.85;
+    const offTrackGripPenalty = isOffTrack ? 0.65 : 1.0;
+    const tireResponse = (0.6 + 0.4 * phys.handling) * offTrackGripPenalty;
 
     const steerLatVel =
-      Math.sin(this.headingAngle) * speedMs * (this.traffic.roadMode === 'track' ? 0.95 : 0.62) +
+      Math.sin(this.headingAngle) * speedMs * (this.traffic.roadMode === 'track' ? 0.90 : 0.62) * offTrackGripPenalty +
       this.steerInput * steerPower * Math.min(1, this.speedKmh / 35); // no sideways creep when standing
     const desiredLatVel = steerLatVel + centrifugalDriftVel;
     const prevLatVel = this.lateralVel;
@@ -2449,19 +2461,57 @@ class OtobanMakasGame {
     }
 
     // Keep car inside highway/track boundaries
-    const maxLateralX = this.world.roadHalfWidth - 1.05;
-    if (this.traffic.roadMode === 'track' && Math.abs(this.playerX) > this.world.roadHalfWidth - 1.85 && this.speedKmh > 40) {
-      // Tactile FIA serrated kerb vibration when riding the red/white apex or exit kerbs
-      this.shakeIntensity = Math.max(this.shakeIntensity, 0.08 * Math.min(1, this.speedKmh / 160));
-    }
-    if (Math.abs(this.playerX) > maxLateralX) {
-      this.playerX = Math.sign(this.playerX) * maxLateralX;
-      this.lateralVel *= -0.3;
-      this.headingAngle *= 0.3;
-      this.rollVel += -Math.sign(this.playerX) * 0.2;
-      this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
-      // Slight speed scrub on barrier scrape
-      this.speedKmh = Math.max(0, this.speedKmh - 28 * dt);
+    if (this.traffic.roadMode === 'track') {
+      const absX = Math.abs(this.playerX);
+      const trackEdgeX = this.world.roadHalfWidth - 0.85; // 8.35m: white line / outer edge of kerb
+      const barrierWallX = this.world.roadHalfWidth + 3.0; // 12.2m: outer tire barrier / Armco wall
+
+      // 1. Kerb rumble zone (7.35m to 8.35m)
+      if (absX > this.world.roadHalfWidth - 1.85 && this.speedKmh > 35) {
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.09 * Math.min(1, this.speedKmh / 150));
+      }
+
+      // 2. Off-track run-off / gravel trap zone (8.35m to 12.2m) - NO invisible rail at white line!
+      if (absX > trackEdgeX) {
+        const offTrackDepth = absX - trackEdgeX;
+        // Heavy gravel trap drag scrubs speed rapidly so you cannot wall-ride around corners
+        const gravelDecel = 78 + offTrackDepth * 38;
+        this.speedKmh = Math.max(38, this.speedKmh - gravelDecel * dt);
+        this.shakeIntensity = Math.max(
+          this.shakeIntensity,
+          (0.18 + Math.min(0.24, offTrackDepth * 0.08)) * Math.min(1, this.speedKmh / 90)
+        );
+        if (this.combo > 1) {
+          this.combo = 1;
+          this.comboProgress = 0;
+        }
+        const nowMs = performance.now();
+        if (!this._lastOffTrackWarnMs || nowMs - this._lastOffTrackWarnMs > 2200) {
+          this._lastOffTrackWarnMs = nowMs;
+          this.showMinorNotification('⚠️ PİST DIŞI! ÇAKIL HAVUZU (HIZ KAYBI)');
+          this.sound.playTireSqueal(0.35);
+        }
+      }
+
+      // 3. Outer Tire Barrier / Armco Wall Impact (> 12.2m)
+      if (absX > barrierWallX) {
+        this.playerX = Math.sign(this.playerX) * (barrierWallX - 0.35);
+        this.lateralVel *= -0.35;
+        this.headingAngle *= 0.25;
+        this.rollVel += -Math.sign(this.playerX) * 0.3;
+        this.handleCollision('💥 BARİYERE ÇARPTIN! VİRAJA ÇOK HIZLI GİRDİN');
+      }
+    } else {
+      const maxLateralX = this.world.roadHalfWidth - 1.05;
+      if (Math.abs(this.playerX) > maxLateralX) {
+        this.playerX = Math.sign(this.playerX) * maxLateralX;
+        this.lateralVel *= -0.3;
+        this.headingAngle *= 0.3;
+        this.rollVel += -Math.sign(this.playerX) * 0.2;
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
+        // Slight speed scrub on barrier scrape
+        this.speedKmh = Math.max(0, this.speedKmh - 28 * dt);
+      }
     }
 
     // 5. Critically Damped Suspension Dynamics (Smooth Weight Transfer, Zero Straight-Line Bounce)
