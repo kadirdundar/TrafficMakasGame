@@ -567,9 +567,9 @@ export class SoundEngine {
     shearFilter.frequency.exponentialRampToValueAtTime(260, now + dur);
     shearFilter.Q.value = 1.6;
 
-    // Ana Rüzgar Kazanç Zarfı (Yakın geçiş rüzgar yarılması sesi yarıdan fazla düşürüldü)
+    // Ana Rüzgar Kazanç Zarfı (Yakın geçiş rüzgar yarılması sesi %50 oranında düşürüldü)
     const whooshGain = this.ctx.createGain();
-    const peakGain = (isDouble ? 0.17 : isRazor ? 0.15 : 0.12) * speedRatio;
+    const peakGain = (isDouble ? 0.085 : isRazor ? 0.075 : 0.06) * speedRatio;
     whooshGain.gain.setValueAtTime(0.001, now);
     whooshGain.gain.linearRampToValueAtTime(peakGain, now + dur * 0.25);
     whooshGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
