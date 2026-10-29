@@ -738,10 +738,11 @@ export class TrafficManager {
         if (this.isRemoteControlled) car.syncWorldDistM -= step;
       }
 
-      // Follow 3D highway curve offset & tangent angle
+      // Follow 3D highway curve offset, elevation & tangent angle
       const curveX = world ? world.getCurveOffsetAtZ(car.z) : 0;
+      const curveY = world?.getElevationOffsetAtZ ? world.getElevationOffsetAtZ(car.z) : 0;
       const curveYaw = world ? world.getCurveYawAtZ(car.z) : 0;
-      car.mesh.position.set(car.x + curveX, 0, car.z);
+      car.mesh.position.set(car.x + curveX, curveY, car.z);
       car.mesh.rotation.y = laneChangeYaw + curveYaw + (car.dir < 0 ? Math.PI : 0);
 
       // 4. COLLISION & MAKAS (NEAR-MISS) DETECTION around Z = 0

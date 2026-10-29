@@ -804,7 +804,8 @@ export class DroneReplayManager {
       const cyaw = jump ? f0.tYaw[i] : THREE.MathUtils.lerp(f0.tYaw[i], f1.tYaw[i], alpha);
 
       const curveX = this.world.getCurveOffsetAtZ(cz);
-      car.mesh.position.set(cx + curveX, 0, cz);
+      const curveY = this.world.getElevationOffsetAtZ ? this.world.getElevationOffsetAtZ(cz) : 0;
+      car.mesh.position.set(cx + curveX, curveY, cz);
       car.mesh.rotation.y = cyaw;
 
       const isBraking = (flags & 2) !== 0;
@@ -848,10 +849,12 @@ export class DroneReplayManager {
 
       this.ensureReplayPeerModel(i, p0.carModel, p0.slot, p0.parts);
       const cX = this.world.getCurveOffsetAtZ(peerZ);
+      const cY = this.world.getElevationOffsetAtZ ? this.world.getElevationOffsetAtZ(peerZ) : 0;
       const cYaw = this.world.getCurveYawAtZ(peerZ);
+      const cPitch = this.world.getElevationPitchAtZ ? this.world.getElevationPitchAtZ(peerZ) : 0;
       rp.group.visible = true;
-      rp.group.position.set(peerX + cX, 0, peerZ);
-      rp.group.rotation.set(0, -peerHeading + cYaw, peerRoll);
+      rp.group.position.set(peerX + cX, cY, peerZ);
+      rp.group.rotation.set(cPitch, -peerHeading + cYaw, peerRoll);
       rp.activeModel?.setLights?.({
         night,
         braking: p0.braking,

@@ -1185,11 +1185,14 @@ export class MultiplayerManager {
       p.relZ = relZ;
 
       const curveX = world ? world.getCurveOffsetAtZ(relZ) : 0;
+      const curveY = world?.getElevationOffsetAtZ ? world.getElevationOffsetAtZ(relZ) : 0;
       const curveYaw = world ? world.getCurveYawAtZ(relZ) : 0;
+      const curvePitch = world?.getElevationPitchAtZ ? world.getElevationPitchAtZ(relZ) : 0;
       const group = p.car.group;
       if (world !== null) {
         group.visible = relZ > -290 && relZ < 65;
-        group.position.set(p.x + curveX, 0, relZ);
+        group.position.set(p.x + curveX, curveY, relZ);
+        group.rotation.x = curvePitch;
         group.rotation.y = -p.headingAngle + curveYaw;
         group.rotation.z = p.bodyRoll;
       }

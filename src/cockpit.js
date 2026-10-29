@@ -1649,7 +1649,7 @@ export class CarCockpit {
       ctx.fillStyle = accent;
       ctx.font = `800 ${Math.max(7, h * 0.16)}px system-ui, sans-serif`;
       ctx.textAlign = 'left';
-      ctx.fillText('● AUDI MMI NAVIGATION', x + 5, y + h * 0.24);
+      ctx.fillText(nearbyCars.isTrack ? '🏁 İSTANBUL PARK GP' : '● AUDI MMI NAVIGATION', x + 5, y + h * 0.24);
 
       ctx.fillStyle = '#f8fafc';
       ctx.font = `900 ${Math.max(8, h * 0.22)}px ui-monospace, monospace`;
@@ -1657,10 +1657,14 @@ export class CarCockpit {
 
       ctx.fillStyle = combo > 1 ? '#ffae00' : '#94a3b8';
       ctx.font = `800 ${Math.max(7, h * 0.17)}px system-ui, sans-serif`;
-      ctx.fillText(`KOMBO: ${combo.toFixed(1)}x`, x + 5, y + h * 0.84);
+      ctx.fillText(
+        nearbyCars.isTrack ? `TUR ${nearbyCars.lap || 1} • ${nearbyCars.turnCode || 'MAIN'}` : `KOMBO: ${combo.toFixed(1)}x`,
+        x + 5,
+        y + h * 0.84
+      );
     }
 
-    // Right Half: Live 4-Lane Highway Radar
+    // Right Half: Live 4-Lane Highway Radar OR Intercity İstanbul Park Circuit Map
     const rx = x + leftW + 2;
     const ry = y + 3;
     const rw = w - leftW - 5;
@@ -1671,6 +1675,71 @@ export class CarCockpit {
     ctx.lineWidth = 1;
     ctx.fillRect(rx, ry, rw, rh);
     ctx.strokeRect(rx, ry, rw, rh);
+
+    if (nearbyCars.isTrack) {
+      // Normalized 2D GPS outline of Intercity İstanbul Park (14 turns counter-clockwise)
+      const mapPts = [
+        [0.48, 0.82], // Start/Finish
+        [0.18, 0.82], // T1 entry
+        [0.14, 0.66], // T1-T2 Corkscrew
+        [0.24, 0.56], // T2 exit
+        [0.22, 0.36], // T3 crest
+        [0.34, 0.30], // T4
+        [0.32, 0.44], // T5
+        [0.43, 0.48], // T6
+        [0.54, 0.26], // T7 right hairpin
+        [0.68, 0.16], // T8 Apex 1
+        [0.82, 0.20], // T8 Apex 2
+        [0.88, 0.34], // T8 Apex 3
+        [0.84, 0.50], // T8 Apex 4 ("Diabolica")
+        [0.72, 0.64], // T9-T10 valley chicane
+        [0.82, 0.72], // T10 exit onto Back Straight
+        [0.76, 0.84], // T11 flat-out kink
+        [0.68, 0.90], // T12 hairpin
+        [0.62, 0.78], // T13
+        [0.58, 0.82], // T14 exit onto Main Straight
+      ];
+
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (let i = 0; i < mapPts.length; i++) {
+        const px = rx + mapPts[i][0] * rw;
+        const py = ry + mapPts[i][1] * rh;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      // Start/Finish marker tick
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rx + 0.48 * rw, ry + 0.76 * rh);
+      ctx.lineTo(rx + 0.48 * rw, ry + 0.88 * rh);
+      ctx.stroke();
+
+      // Interpolate live player dot along circuit loop
+      const prog = ((nearbyCars.trackProgress || 0) % 1 + 1) % 1;
+      const fIdx = prog * mapPts.length;
+      const i0 = Math.floor(fIdx) % mapPts.length;
+      const i1 = (i0 + 1) % mapPts.length;
+      const frac = fIdx - Math.floor(fIdx);
+      const dotX = rx + (mapPts[i0][0] + (mapPts[i1][0] - mapPts[i0][0]) * frac) * rw;
+      const dotY = ry + (mapPts[i0][1] + (mapPts[i1][1] - mapPts[i0][1]) * frac) * rh;
+
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.restore();
+      return;
+    }
 
     // 4 lanes dashed dividers
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';

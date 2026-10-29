@@ -85,26 +85,77 @@ export const LANE_CENTERS = [-5.4, -1.8, 1.8, 5.4];
 export const ROAD_HALF_WIDTH = 8.4;
 
 // Road layouts. 'highway': the 4-lane motorway. 'twoway': a 1+1 two-way road (devlet yolu).
-// 'track': İstanbul Park racing circuit with technical corners, hairpins, Esses and the legendary Turn 8!
+// 'track': Intercity İstanbul Park racing circuit (14 turns, 3D elevation, Esses, Hairpins & 4-apex Turn 8!)
 export const ROAD_MODES = ['highway', 'twoway', 'track'];
-export const ROAD_HALF_WIDTHS = { highway: ROAD_HALF_WIDTH, twoway: 4.6, track: ROAD_HALF_WIDTH };
+export const ROAD_HALF_WIDTHS = { highway: ROAD_HALF_WIDTH, twoway: 4.6, track: 9.2 };
 
 export const ZONE_CYCLE_LENGTH = 15000;
 
-// İstanbul Park Grand Prix Circuit: 4000m Lap Definition with C2-continuous sharp turns
-export const TRACK_LAP_LENGTH = 4000.0;
+// Intercity İstanbul Park Grand Prix Circuit: 4800m Full 14-Turn Counter-Clockwise Layout
+// Curvature kappa (1/m): negative = Left turn (8 lefts), positive = Right turn (6 rights)
+export const TRACK_LAP_LENGTH = 4800.0;
 export const TRACK_SECTIONS = [
-  { name: 'Ana Düzlük (Start/Finish)', code: 'MAIN', start: 0, len: 500, cStart: 0, deltaC: 0 },
-  { name: '1. Viraj (Sert Sola İniş)', code: 'T1', start: 500, len: 300, deltaC: -80, cStart: 0 },
-  { name: '2. Viraj (Sert Sağa Çıkış)', code: 'T2', start: 800, len: 300, deltaC: 65, cStart: -80 },
-  { name: 'Ara Düzlük', code: 'STR1', start: 1100, len: 250, cStart: -15, deltaC: 0 },
-  { name: '3. Viraj (S-Viraj Solu)', code: 'T3', start: 1350, len: 200, deltaC: -60, cStart: -15 },
-  { name: '4. Viraj (S-Viraj Sağı)', code: 'T4', start: 1550, len: 200, deltaC: 60, cStart: -75 },
-  { name: '8. Viraj Yaklaşımı', code: 'STR2', start: 1750, len: 250, cStart: -15, deltaC: 0 },
-  { name: 'Efsanevi 8. Viraj (4 Apeks)', code: 'T8', start: 2000, len: 700, deltaC: -110, cStart: -15 },
-  { name: 'Arka Düzlük (DRS & 260 KM/S)', code: 'BACK', start: 2700, len: 600, cStart: -125, deltaC: 0 },
-  { name: '12. Viraj (Sert Saç Tokası)', code: 'T12', start: 3300, len: 300, deltaC: 80, cStart: -125 },
-  { name: '14. Son Viraj (Start-Finish Çıkışı)', code: 'T14', start: 3600, len: 400, deltaC: 45, cStart: -45 },
+  { name: 'Ana Düzlük (Start/Finish)', code: 'MAIN', start: 0, len: 480, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: '1. Viraj (Türk Tirbüşonu • Sert Sola İniş)', code: 'T1', start: 480, len: 220, kappa: -0.0095, deltaC: -85, turnDir: -1 },
+  { name: '2. Viraj (Sağa Yokuş Çıkışı)', code: 'T2', start: 700, len: 200, kappa: 0.0066, deltaC: 60, turnDir: 1 },
+  { name: '3. Viraj Yaklaşımı (Tırmanış)', code: 'STR1', start: 900, len: 140, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: '3. Viraj (Tepe Noktası Sert Sol)', code: 'T3', start: 1040, len: 200, kappa: -0.0086, deltaC: -75, turnDir: -1 },
+  { name: '4. Viraj (S-Viraj Sağa İniş)', code: 'T4', start: 1240, len: 190, kappa: 0.0080, deltaC: 70, turnDir: 1 },
+  { name: '5. Viraj (S-Viraj Teknik Sol)', code: 'T5', start: 1430, len: 190, kappa: -0.0078, deltaC: -68, turnDir: -1 },
+  { name: '6. Viraj (Çıkış Hızlı Sol)', code: 'T6', start: 1620, len: 160, kappa: -0.0052, deltaC: -45, turnDir: -1 },
+  { name: '7. Viraj Yaklaşımı', code: 'STR2', start: 1780, len: 160, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: '7. Viraj (Geniş Sağ U-Viraj)', code: 'T7', start: 1940, len: 240, kappa: 0.0086, deltaC: 82, turnDir: 1 },
+  { name: '8. Viraj Giriş Düzlüğü', code: 'STR3', start: 2180, len: 120, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: 'Efsanevi 8. Viraj (Diabolica • 4 Apeks)', code: 'T8', start: 2300, len: 680, kappa: -0.0062, kappaPulse: -0.0038, apexes: 4, deltaC: -120, turnDir: -1 },
+  { name: '9. Viraj Yaklaşımı (Vadi İnişi)', code: 'STR4', start: 2980, len: 200, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: '9. Viraj (Vadi Girişi Sert Sol Şikan)', code: 'T9', start: 3180, len: 170, kappa: -0.0092, deltaC: -78, turnDir: -1 },
+  { name: '10. Viraj (Arka Düzlüğe Sağ Çıkış)', code: 'T10', start: 3350, len: 170, kappa: 0.0072, deltaC: 62, turnDir: 1 },
+  { name: 'Arka Düzlük (DRS Bölgesi • Tırmanış)', code: 'BACK', start: 3520, len: 260, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: '11. Viraj (Tam Gaz Sağ Kink • 260 KM/S)', code: 'T11', start: 3780, len: 180, kappa: 0.0046, deltaC: 40, turnDir: 1 },
+  { name: '12. Viraj Ağır Frenleme Bölgesi', code: 'STR5', start: 3960, len: 200, kappa: 0, deltaC: 0, turnDir: 0 },
+  { name: '12. Viraj (Sert Sol Saç Tokası)', code: 'T12', start: 4160, len: 200, kappa: -0.0102, deltaC: -95, turnDir: -1 },
+  { name: '13. Viraj (Stadyum Teknik Sağ)', code: 'T13', start: 4360, len: 170, kappa: 0.0084, deltaC: 72, turnDir: 1 },
+  { name: '14. Son Viraj (Sert Sol • Ana Düzlük Çıkışı)', code: 'T14', start: 4530, len: 270, kappa: -0.0084, deltaC: -80, turnDir: -1 },
+];
+
+// Precompute exact C2-continuous analytical integral constants (thetaStart, cStart) across the lap
+let _runningTrackTheta = 0;
+let _runningTrackC = 0;
+for (let i = 0; i < TRACK_SECTIONS.length; i++) {
+  const sec = TRACK_SECTIONS[i];
+  sec.thetaStart = _runningTrackTheta;
+  sec.cStart = _runningTrackC;
+  const kTotal = (sec.kappa || 0) + (sec.kappaPulse || 0);
+  const L = sec.len;
+  _runningTrackC += _runningTrackTheta * L + 0.25 * kTotal * L * L;
+  _runningTrackTheta += 0.5 * kTotal * L;
+}
+const TRACK_LAP_TOTAL_THETA = _runningTrackTheta;
+const TRACK_LAP_TOTAL_C = _runningTrackC;
+
+// Authentic 3D Topography / Elevation Profile of Intercity İstanbul Park (meters)
+const TRACK_ELEV_POINTS = [
+  { s: 0, y: 0.0 },      // Main Straight Start/Finish
+  { s: 480, y: 2.8 },    // Turn 1 Braking Crest (blind entry)
+  { s: 780, y: -11.5 },  // Turn 1-2 "Turkish Corkscrew" Steep Downhill Dip
+  { s: 1120, y: 4.8 },   // Turn 3 Steep Uphill Crest
+  { s: 1680, y: -8.2 },  // Turns 4-5-6 Downhill Esses Valley
+  { s: 2140, y: -1.2 },  // Turn 7 Cambered Climb
+  { s: 2640, y: -5.8 },  // Turn 8 ("Diabolica") 4-Apex Bowl
+  { s: 3250, y: -13.5 }, // Turn 9-10 Valley Floor (Lowest Point)
+  { s: 4080, y: 3.8 },   // Back Straight & Turn 11 Uphill Crest before Turn 12
+  { s: 4530, y: -1.0 },  // Turn 12-13 Stadium Complex
+  { s: 4800, y: 0.0 },   // Turn 14 Exit onto Main Straight
+];
+
+// Braking zones before major corners: cornerStart, outside side (+1 right for left turns, -1 left for right turns)
+const TRACK_BRAKE_ZONES = [
+  { cornerStart: 480, side: 1 },   // T1 (Left) -> boards on Right
+  { cornerStart: 1040, side: 1 },  // T3 (Left) -> boards on Right
+  { cornerStart: 1940, side: -1 }, // T7 (Right) -> boards on Left
+  { cornerStart: 2300, side: 1 },  // T8 (Left) -> boards on Right
+  { cornerStart: 3180, side: 1 },  // T9 (Left) -> boards on Right
+  { cornerStart: 4160, side: 1 },  // T12 (Left) -> boards on Right
 ];
 
 export function getTrackSectionAt(s) {
@@ -297,52 +348,64 @@ function createTrackStartGantryTexture() {
   ctx.fillStyle = '#080c14';
   ctx.fillRect(0, 0, 1024, 256);
 
-  // Red racing border
+  // Turkish Red & White racing border
   ctx.strokeStyle = '#e11d48';
   ctx.lineWidth = 10;
   ctx.strokeRect(5, 5, 1014, 246);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(14, 14, 996, 228);
 
   // Checkered endcaps
-  for (let y = 10; y < 246; y += 30) {
-    for (let x = 10; x < 96; x += 28) {
-      ctx.fillStyle = (((y / 30) | 0) + ((x / 28) | 0)) % 2 === 0 ? '#ffffff' : '#1e293b';
-      ctx.fillRect(x, y, 28, 30);
+  for (let y = 18; y < 238; y += 28) {
+    for (let x = 18; x < 102; x += 28) {
+      ctx.fillStyle = (((y / 28) | 0) + ((x / 28) | 0)) % 2 === 0 ? '#ffffff' : '#0f172a';
+      ctx.fillRect(x, y, 28, 28);
     }
-    for (let x = 928; x < 1014; x += 28) {
-      ctx.fillStyle = (((y / 30) | 0) + ((x / 28) | 0)) % 2 === 0 ? '#ffffff' : '#1e293b';
-      ctx.fillRect(x, y, 28, 30);
+    for (let x = 922; x < 1006; x += 28) {
+      ctx.fillStyle = (((y / 28) | 0) + ((x / 28) | 0)) % 2 === 0 ? '#ffffff' : '#0f172a';
+      ctx.fillRect(x, y, 28, 28);
     }
   }
 
-  // Top header
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = 'bold 24px system-ui, sans-serif';
+  // Top Turkish GP header bar
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(116, 18, 792, 36);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 22px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('TOSFED  •  İSTANBUL PARK GRAND PRIX CIRCUIT', 512, 42);
+  ctx.fillText('🇹🇷  INTERCITY İSTANBUL PARK  •  FORMULA 1 TURKISH GRAND PRIX  🏁', 512, 43);
 
   // Main text: START / FINISH
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '900 68px system-ui, sans-serif';
-  ctx.fillText('🏁 START / FINISH 🏁', 512, 118);
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '900 58px system-ui, sans-serif';
+  ctx.fillText('İSTANBUL PARK CIRCUIT', 512, 112);
 
-  // 5 FIA Formula 1 Red Starting Lights
-  const startX = 332;
+  // 5 Twin-Pod FIA Formula 1 Red Starting Lights
+  const startX = 292;
   for (let i = 0; i < 5; i++) {
-    const lx = startX + i * 90;
-    // Outer black bezel
-    ctx.fillStyle = '#1e293b';
+    const lx = startX + i * 110;
+    // Pod housing
+    ctx.fillStyle = '#111827';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 3;
+    ctx.fillRect(lx - 34, 134, 68, 96);
+    ctx.strokeRect(lx - 34, 134, 68, 96);
+
+    // Upper dim red lamp
+    ctx.fillStyle = '#450a0a';
     ctx.beginPath();
-    ctx.arc(lx, 185, 26, 0, Math.PI * 2);
+    ctx.arc(lx, 158, 16, 0, Math.PI * 2);
     ctx.fill();
-    // Glowing red lamp
+
+    // Lower glowing red FIA start lamp
     ctx.fillStyle = '#ef4444';
     ctx.beginPath();
-    ctx.arc(lx, 185, 20, 0, Math.PI * 2);
+    ctx.arc(lx, 200, 19, 0, Math.PI * 2);
     ctx.fill();
-    // Core glow highlight
-    ctx.fillStyle = '#fca5a5';
+    ctx.fillStyle = '#fecaca';
     ctx.beginPath();
-    ctx.arc(lx - 5, 180, 7, 0, Math.PI * 2);
+    ctx.arc(lx - 5, 195, 6, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -357,20 +420,200 @@ function createTrackBrakeBoardTexture(meters) {
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, 256, 256);
 
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = 14;
-  ctx.strokeRect(7, 7, 242, 242);
-
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '900 110px system-ui, sans-serif';
+  // Red FIA top header band
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(0, 0, 256, 48);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 24px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(String(meters), 128, 128);
+  ctx.fillText('METRE', 128, 25);
+
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 12;
+  ctx.strokeRect(6, 6, 244, 244);
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '900 108px system-ui, sans-serif';
+  ctx.fillText(String(meters), 128, 150);
 
   const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createTrackChevronTexture(dir = -1) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d');
+
+  // High-contrast dark racing backing
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 512, 192);
+
+  // Draw 4 bold Red & White racing chevrons pointing in turn direction (dir < 0: left, dir > 0: right)
+  const chevW = 115;
+  for (let i = -1; i < 5; i++) {
+    const x0 = i * chevW;
+    ctx.fillStyle = i % 2 === 0 ? '#dc2626' : '#f8fafc';
+    ctx.beginPath();
+    if (dir < 0) {
+      ctx.moveTo(x0 + chevW, 0);
+      ctx.lineTo(x0 + chevW * 0.45, 96);
+      ctx.lineTo(x0 + chevW, 192);
+      ctx.lineTo(x0 + chevW * 0.45, 192);
+      ctx.lineTo(x0 - chevW * 0.1, 96);
+      ctx.lineTo(x0 + chevW * 0.45, 0);
+    } else {
+      ctx.moveTo(x0, 0);
+      ctx.lineTo(x0 + chevW * 0.55, 96);
+      ctx.lineTo(x0, 192);
+      ctx.lineTo(x0 + chevW * 0.55, 192);
+      ctx.lineTo(x0 + chevW * 1.1, 96);
+      ctx.lineTo(x0 + chevW * 0.55, 0);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(4, 4, 504, 184);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createTrackBridgeBannerTexture(variant = 0) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 192;
+  const ctx = canvas.getContext('2d');
+
+  const themes = [
+    {
+      bg1: '#991b1b',
+      bg2: '#dc2626',
+      border: '#fde047',
+      top: '🇹🇷  INTERCITY İSTANBUL PARK  •  FIA GRADE 1 CIRCUIT  🇹🇷',
+      main: 'TURKISH GRAND PRIX  •  TURN 1 CORKSCREW',
+    },
+    {
+      bg1: '#0f172a',
+      bg2: '#0e7490',
+      border: '#38bdf8',
+      top: '⚡  İSTANBUL PARK EFSANESİ  •  4 APEKSLİ HIZLI SOL VİRAJ  ⚡',
+      main: 'TURN 8  •  DIABOLICA  •  FULL THROTTLE',
+    },
+    {
+      bg1: '#090d16',
+      bg2: '#1e293b',
+      border: '#e11d48',
+      top: '🏁  TOSFED  •  ARKA DÜZLÜK YÜKSEK HIZ BÖLGESİ  🏁',
+      main: 'DRS ZONE  •  TURN 11 FLAT-OUT  •  260+ KM/S',
+    },
+  ];
+  const th = themes[variant % themes.length];
+
+  const grad = ctx.createLinearGradient(0, 0, 1024, 0);
+  grad.addColorStop(0, th.bg1);
+  grad.addColorStop(0.5, th.bg2);
+  grad.addColorStop(1, th.bg1);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1024, 192);
+
+  // Diagonal Turkish GP accent stripes on sides
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(20 + i * 32, 0);
+    ctx.lineTo(50 + i * 32, 0);
+    ctx.lineTo(20 + i * 32, 192);
+    ctx.lineTo(-10 + i * 32, 192);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(1004 - i * 32, 0);
+    ctx.lineTo(974 - i * 32, 0);
+    ctx.lineTo(1004 - i * 32, 192);
+    ctx.lineTo(1034 - i * 32, 192);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = th.border;
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, 1012, 180);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fde047';
+  ctx.font = '800 22px system-ui, sans-serif';
+  ctx.fillText(th.top, 512, 48);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 46px system-ui, sans-serif';
+  ctx.fillText(th.main, 512, 130);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createTrackRunoffTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  // Asphalt run-off base
+  ctx.fillStyle = '#1e2430';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Fine asphalt grain
+  for (let i = 0; i < 4000; i++) {
+    const v = 24 + ((Math.random() * 16) | 0);
+    ctx.fillStyle = `rgb(${v},${v + 3},${v + 7})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+  }
+
+  // Green FIA Astroturf strip on inner side (0..130)
+  ctx.fillStyle = '#14532d';
+  ctx.fillRect(0, 0, 130, 512);
+  ctx.fillStyle = '#166534';
+  for (let y = 0; y < 512; y += 32) {
+    ctx.fillRect(0, y, 130, 16);
+  }
+
+  // White boundary line separating astroturf from painted asphalt apron
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(130, 0, 10, 512);
+
+  // Iconic Turkish GP Red, White & Turquoise diagonal run-off stripes (140..512)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(140, 0, 372, 512);
+  ctx.clip();
+  const colors = ['#dc2626', '#1e2430', '#f8fafc', '#1e2430', '#0891b2', '#1e2430'];
+  for (let k = -8; k < 16; k++) {
+    ctx.fillStyle = colors[((k % colors.length) + colors.length) % colors.length];
+    ctx.beginPath();
+    const y0 = k * 48;
+    ctx.moveTo(140, y0);
+    ctx.lineTo(512, y0 + 96);
+    ctx.lineTo(512, y0 + 124);
+    ctx.lineTo(140, y0 + 28);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
@@ -395,6 +638,7 @@ export class HighwayWorld {
     this.worldDistM = 0;
     this.curvableGeometries = [];
     this._zOffsetCache = new Map();
+    this._zElevCache = new Map();
     this._prevMaxCurveOffset = 0;
 
     this.sceneryItems = [];
@@ -412,42 +656,115 @@ export class HighwayWorld {
     this.applyWeather('night');
   }
 
-  // Istanbul Park Racing Circuit Curve Evaluation
+  // Intercity İstanbul Park Racing Circuit C2-Continuous Analytical Curve Evaluation
+  // Uses true sustained corner curvature kappa(t) (and 4-apex harmonic in Turn 8)
   evalTrackProfile(s) {
-    const { sec, t } = getTrackSectionAt(s);
-    if (sec.deltaC === 0) {
-      _reusableProfile.c = sec.cStart;
-      _reusableProfile.d1 = 0.0;
-      _reusableProfile.d2 = 0.0;
-      return _reusableProfile;
+    const lapIdx = Math.floor(s / TRACK_LAP_LENGTH);
+    const u = s - lapIdx * TRACK_LAP_LENGTH;
+    const { sec, t } = getTrackSectionAt(u);
+
+    const k1 = sec.kappa || 0;
+    const k2 = sec.kappaPulse || 0;
+    let d2 = 0.0;
+    let dTheta = 0.0;
+    let dC = 0.0;
+
+    if (k1 !== 0 || k2 !== 0) {
+      const L = sec.len;
+      const w1 = (Math.PI * 2.0) / L;
+      const phi1 = w1 * t;
+      const cos1 = Math.cos(phi1);
+      const sin1 = Math.sin(phi1);
+      d2 = 0.5 * k1 * (1.0 - cos1);
+      dTheta = 0.5 * k1 * (t - sin1 / w1);
+      dC = 0.5 * k1 * (0.5 * t * t - (1.0 - cos1) / (w1 * w1));
+
+      if (k2 !== 0) {
+        const nApex = sec.apexes || 4;
+        const w2 = (Math.PI * 2.0 * nApex) / L;
+        const phi2 = w2 * t;
+        const cos2 = Math.cos(phi2);
+        const sin2 = Math.sin(phi2);
+        d2 += 0.5 * k2 * (1.0 - cos2);
+        dTheta += 0.5 * k2 * (t - sin2 / w2);
+        dC += 0.5 * k2 * (0.5 * t * t - (1.0 - cos2) / (w2 * w2));
+      }
     }
-    const omega = (Math.PI * 2.0) / sec.len;
-    const phi = omega * t;
-    _reusableProfile.c = sec.cStart + sec.deltaC * (t / sec.len - Math.sin(phi) / (Math.PI * 2.0));
-    _reusableProfile.d1 = (sec.deltaC / sec.len) * (1.0 - Math.cos(phi));
-    _reusableProfile.d2 = ((sec.deltaC * omega) / sec.len) * Math.sin(phi);
+
+    const d1Lap = sec.thetaStart + dTheta;
+    const cLap = sec.cStart + sec.thetaStart * t + dC;
+
+    _reusableProfile.d2 = d2;
+    _reusableProfile.d1 = lapIdx * TRACK_LAP_TOTAL_THETA + d1Lap;
+    _reusableProfile.c =
+      lapIdx * TRACK_LAP_TOTAL_C +
+      TRACK_LAP_TOTAL_THETA * TRACK_LAP_LENGTH * (lapIdx * (lapIdx - 1) * 0.5) +
+      lapIdx * TRACK_LAP_TOTAL_THETA * u +
+      cLap;
     return _reusableProfile;
   }
 
   evalTrackCenterX(s) {
-    const { sec, t } = getTrackSectionAt(s);
-    if (sec.deltaC === 0) return sec.cStart;
-    const omega = (Math.PI * 2.0) / sec.len;
-    return sec.cStart + sec.deltaC * (t / sec.len - Math.sin(omega * t) / (Math.PI * 2.0));
+    return this.evalTrackProfile(s).c;
   }
 
   evalTrackDeriv1(s) {
-    const { sec, t } = getTrackSectionAt(s);
-    if (sec.deltaC === 0) return 0.0;
-    const omega = (Math.PI * 2.0) / sec.len;
-    return (sec.deltaC / sec.len) * (1.0 - Math.cos(omega * t));
+    return this.evalTrackProfile(s).d1;
   }
 
   evalTrackDeriv2(s) {
-    const { sec, t } = getTrackSectionAt(s);
-    if (sec.deltaC === 0) return 0.0;
-    const omega = (Math.PI * 2.0) / sec.len;
-    return ((sec.deltaC * omega) / sec.len) * Math.sin(omega * t);
+    return this.evalTrackProfile(s).d2;
+  }
+
+  // Intercity İstanbul Park 3D Elevation Profile Y(s) and Slope Y'(s)
+  evalTrackElevation(s) {
+    const u = ((s % TRACK_LAP_LENGTH) + TRACK_LAP_LENGTH) % TRACK_LAP_LENGTH;
+    for (let i = 0; i < TRACK_ELEV_POINTS.length - 1; i++) {
+      const p0 = TRACK_ELEV_POINTS[i];
+      const p1 = TRACK_ELEV_POINTS[i + 1];
+      if (u >= p0.s && u <= p1.s) {
+        const L = p1.s - p0.s;
+        const t = u - p0.s;
+        const dy = p1.y - p0.y;
+        return p0.y + dy * (t / L - Math.sin((Math.PI * 2.0 * t) / L) / (Math.PI * 2.0));
+      }
+    }
+    return 0.0;
+  }
+
+  evalTrackElevDeriv1(s) {
+    const u = ((s % TRACK_LAP_LENGTH) + TRACK_LAP_LENGTH) % TRACK_LAP_LENGTH;
+    for (let i = 0; i < TRACK_ELEV_POINTS.length - 1; i++) {
+      const p0 = TRACK_ELEV_POINTS[i];
+      const p1 = TRACK_ELEV_POINTS[i + 1];
+      if (u >= p0.s && u <= p1.s) {
+        const L = p1.s - p0.s;
+        const t = u - p0.s;
+        const dy = p1.y - p0.y;
+        return (dy / L) * (1.0 - Math.cos((Math.PI * 2.0 * t) / L));
+      }
+    }
+    return 0.0;
+  }
+
+  getElevationOffsetAtZ(z) {
+    if (this.roadMode !== 'track') return 0.0;
+    const s0 = this.worldDistM;
+    const y0 = this.evalTrackElevation(s0);
+    const dy0 = this.evalTrackElevDeriv1(s0);
+    return this.evalTrackElevation(s0 - z) - y0 + z * dy0;
+  }
+
+  getElevationSlopeAtZ(z) {
+    if (this.roadMode !== 'track') return 0.0;
+    const s0 = this.worldDistM;
+    const dy0 = this.evalTrackElevDeriv1(s0);
+    return -this.evalTrackElevDeriv1(s0 - z) + dy0;
+  }
+
+  getElevationPitchAtZ(z) {
+    if (this.roadMode !== 'track') return 0.0;
+    return Math.atan(-this.getElevationSlopeAtZ(z));
   }
 
   getTrackSectionAt(s) {
@@ -579,12 +896,14 @@ export class HighwayWorld {
     const pos = geo.attributes.position;
     const count = pos.count;
     const baseX = new Float32Array(count);
+    const baseY = new Float32Array(count);
     const baseZ = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       baseX[i] = pos.getX(i);
+      baseY[i] = pos.getY(i);
       baseZ[i] = pos.getZ(i);
     }
-    const item = { geo, baseX, baseZ, originalX: baseX.slice() };
+    const item = { geo, baseX, baseY, baseZ, originalX: baseX.slice() };
     this.curvableGeometries.push(item);
     return item;
   }
@@ -647,67 +966,90 @@ export class HighwayWorld {
   }
 
   drawTrackMarkings(ctx) {
-    // 1. Dark competition racing circuit asphalt
-    ctx.fillStyle = '#181b24';
+    // 1. High-grip FIA Grade 1 Tilke racing asphalt base
+    ctx.fillStyle = '#1b1f2a';
     ctx.fillRect(0, 0, 1024, 1024);
 
-    // 2. Asphalt texture & fine rubber noise
-    for (let i = 0; i < 18000; i++) {
+    // Subtle longitudinal asphalt paver seams
+    ctx.fillStyle = 'rgba(12, 15, 22, 0.35)';
+    ctx.fillRect(340, 0, 3, 1024);
+    ctx.fillRect(512, 0, 3, 1024);
+    ctx.fillRect(684, 0, 3, 1024);
+
+    // 2. Mineral aggregate micro-texture & off-line tire rubber marbles
+    for (let i = 0; i < 22000; i++) {
       const x = Math.random() * 1024;
       const y = Math.random() * 1024;
-      const v = 20 + Math.floor(Math.random() * 18);
-      ctx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
+      const v = 20 + Math.floor(Math.random() * 20);
+      ctx.fillStyle = `rgb(${v},${v + 2},${v + 6})`;
       ctx.fillRect(x, y, 2, 3);
     }
+    // Dark tire marbles near outer edges of the track
+    ctx.fillStyle = '#0c0e14';
+    for (let i = 0; i < 1600; i++) {
+      const side = i % 2 === 0;
+      const x = side ? 95 + Math.random() * 110 : 819 + Math.random() * 110;
+      const y = Math.random() * 1024;
+      ctx.fillRect(x, y, 3, 4);
+    }
 
-    // 3. Dark rubber racing groove tracks
-    const gradL = ctx.createLinearGradient(280, 0, 430, 0);
-    gradL.addColorStop(0, 'rgba(10, 12, 16, 0)');
-    gradL.addColorStop(0.5, 'rgba(8, 10, 14, 0.45)');
-    gradL.addColorStop(1, 'rgba(10, 12, 16, 0)');
-    ctx.fillStyle = gradL;
-    ctx.fillRect(280, 0, 150, 1024);
+    // 3. Heavy rubbered-in racing groove (ideal racing line sheen)
+    const gradCenter = ctx.createLinearGradient(230, 0, 794, 0);
+    gradCenter.addColorStop(0.0, 'rgba(10, 12, 18, 0)');
+    gradCenter.addColorStop(0.22, 'rgba(9, 11, 16, 0.42)');
+    gradCenter.addColorStop(0.5, 'rgba(14, 17, 24, 0.25)');
+    gradCenter.addColorStop(0.78, 'rgba(9, 11, 16, 0.42)');
+    gradCenter.addColorStop(1.0, 'rgba(10, 12, 18, 0)');
+    ctx.fillStyle = gradCenter;
+    ctx.fillRect(230, 0, 564, 1024);
 
-    const gradR = ctx.createLinearGradient(590, 0, 740, 0);
-    gradR.addColorStop(0, 'rgba(10, 12, 16, 0)');
-    gradR.addColorStop(0.5, 'rgba(8, 10, 14, 0.45)');
-    gradR.addColorStop(1, 'rgba(10, 12, 16, 0)');
-    ctx.fillStyle = gradR;
-    ctx.fillRect(590, 0, 150, 1024);
+    // 4. Outer FIA Green Astroturf Verge (0..22 and 1002..1024)
+    ctx.fillStyle = '#15803d';
+    ctx.fillRect(0, 0, 22, 1024);
+    ctx.fillRect(1002, 0, 22, 1024);
 
-    // 4. Red & White FIA Racing Apex Curbs (Kerbler) at left & right edges
-    const curbW = 46;
+    // 5. Red & White FIA Serrated Vibrating Kerbs (Kerbler: 22..78 and 946..1002)
+    const curbStartL = 22;
+    const curbW = 56;
+    const curbStartR = 1024 - curbStartL - curbW;
     for (let y = 0; y < 1024; y += 64) {
       const isRed = (y / 64) % 2 === 0;
+      const mainCol = isRed ? '#dc2626' : '#f8fafc';
+      const bevelCol = isRed ? '#ef4444' : '#ffffff';
+      const shadeCol = isRed ? '#991b1b' : '#cbd5e1';
 
-      // Left Curb
-      ctx.fillStyle = isRed ? '#dc2626' : '#f8fafc';
-      ctx.fillRect(0, y, curbW, 64);
-      // Dark grooved shadow between curb stones
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-      ctx.fillRect(0, y + 61, curbW, 3);
+      // Left Kerb Stone + 3D bevel highlight & rumble groove
+      ctx.fillStyle = mainCol;
+      ctx.fillRect(curbStartL, y, curbW, 64);
+      ctx.fillStyle = bevelCol;
+      ctx.fillRect(curbStartL + curbW - 14, y, 10, 60);
+      ctx.fillStyle = shadeCol;
+      ctx.fillRect(curbStartL, y, 10, 60);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(curbStartL, y + 59, curbW, 5);
 
-      // Right Curb
-      ctx.fillStyle = isRed ? '#dc2626' : '#f8fafc';
-      ctx.fillRect(1024 - curbW, y, curbW, 64);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-      ctx.fillRect(1024 - curbW, y + 61, curbW, 3);
+      // Right Kerb Stone + 3D bevel highlight & rumble groove
+      ctx.fillStyle = mainCol;
+      ctx.fillRect(curbStartR, y, curbW, 64);
+      ctx.fillStyle = bevelCol;
+      ctx.fillRect(curbStartR + 4, y, 10, 60);
+      ctx.fillStyle = shadeCol;
+      ctx.fillRect(curbStartR + curbW - 10, y, 10, 60);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(curbStartR, y + 59, curbW, 5);
     }
 
-    // 5. Solid White Track Edge Boundary Lines (inside curbs)
+    // Yellow/Red FIA Sausage Kerb ridge along outer kerb boundary
+    for (let y = 0; y < 1024; y += 128) {
+      ctx.fillStyle = (y / 128) % 2 === 0 ? '#facc15' : '#dc2626';
+      ctx.fillRect(curbStartL - 4, y + 8, 8, 112);
+      ctx.fillRect(curbStartR + curbW - 4, y + 8, 8, 112);
+    }
+
+    // 6. Crisp Solid White FIA Track Limit Boundary Lines (inside kerbs)
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(curbW, 0, 12, 1024); // Left track limit
-    ctx.fillRect(1024 - curbW - 12, 0, 12, 1024); // Right track limit
-
-    // 6. Subtle White Dashed Lane Dividers (Guides for multi-car racing)
-    ctx.fillStyle = 'rgba(241, 245, 249, 0.65)';
-    const roadInnerStart = curbW + 12;
-    const roadInnerWidth = 1024 - 2 * (curbW + 12);
-    for (let lane = 1; lane <= 3; lane++) {
-      const lx = roadInnerStart + (roadInnerWidth / 4) * lane - 5;
-      ctx.fillRect(lx, 70, 10, 320);
-      ctx.fillRect(lx, 580, 10, 320);
-    }
+    ctx.fillRect(curbStartL + curbW, 0, 14, 1024); // Left white line
+    ctx.fillRect(curbStartR - 14, 0, 14, 1024); // Right white line
   }
 
   // Asphalt, edge lines and lane markings for the current layout, drawn across the whole road plane
@@ -812,8 +1154,8 @@ export class HighwayWorld {
     const roadMesh = new THREE.Mesh(roadGeo, this.roadMat);
     this.scene.add(roadMesh);
 
-    // Outer Ground Plane (Dark terrain alongside highway)
-    const groundGeo = new THREE.PlaneGeometry(320, roadLength, 1, 40);
+    // Outer Ground Plane (Dark terrain alongside highway, lush turf in track mode)
+    const groundGeo = new THREE.PlaneGeometry(360, roadLength, 1, 55);
     groundGeo.rotateX(-Math.PI / 2);
     groundGeo.translate(0, -0.05, -140);
     this.registerCurvableGeometry(groundGeo);
@@ -848,9 +1190,31 @@ export class HighwayWorld {
     ];
   }
 
-  // Switches between the motorway and the two-way road: redraws the markings, narrows or widens the
-  // road surface, moves the barriers and rebuilds the roadside (poles, reflectors; no overhead
-  // gantries on the two-way road). Only runs when the layout actually changes.
+  updateGroundAndTrackColors() {
+    const isTrack = this.roadMode === 'track';
+    const w = this.weatherKey;
+    if (this.groundMesh) {
+      if (!isTrack) {
+        this.groundMesh.material.color.setHex(0x090d14);
+      } else if (w === 'day') {
+        this.groundMesh.material.color.setHex(0x1f4d23);
+      } else if (w === 'sunset') {
+        this.groundMesh.material.color.setHex(0x233b1d);
+      } else {
+        this.groundMesh.material.color.setHex(0x0f2414);
+      }
+      this.groundMesh.material.needsUpdate = true;
+    }
+    if (this.trackHillMat) {
+      this.trackHillMat.color.setHex(w === 'day' ? 0x19421e : w === 'sunset' ? 0x1c3219 : 0x0b1c10);
+    }
+    if (this.trackTreeMat) {
+      this.trackTreeMat.color.setHex(w === 'day' ? 0x0f2e15 : w === 'sunset' ? 0x122411 : 0x07130a);
+    }
+  }
+
+  // Switches between the motorway, two-way road, and İstanbul Park track: redraws the markings,
+  // scales the road surface, hides motorway Jersey barriers on the circuit, and rebuilds roadside scenery.
   setRoadLayout(mode) {
     if (!ROAD_MODES.includes(mode) || mode === this.roadMode) return;
     this.roadMode = mode;
@@ -859,11 +1223,6 @@ export class HighwayWorld {
     this.drawRoadMarkings(this.roadTexture.image.getContext('2d'), mode);
     this.roadTexture.needsUpdate = true;
 
-    if (this.groundMesh) {
-      this.groundMesh.material.color.setHex(mode === 'track' ? 0x142818 : 0x090d14);
-      this.groundMesh.material.needsUpdate = true;
-    }
-
     const widthScale = (this.roadHalfWidth + 0.8) / (ROAD_HALF_WIDTH + 0.8);
     const road = this.roadCurvable;
     for (let i = 0; i < road.baseX.length; i++) road.baseX[i] = road.originalX[i] * widthScale;
@@ -871,7 +1230,21 @@ export class HighwayWorld {
       const shift = b.side * (this.roadHalfWidth - ROAD_HALF_WIDTH);
       for (let i = 0; i < b.curvable.baseX.length; i++) b.curvable.baseX[i] = b.curvable.originalX[i] + shift;
       b.mesh.scale.y = mode === 'twoway' ? 0.75 : 1; // a lower roadside barrier
+      // Hide concrete motorway barriers on the race track so run-off areas, kerbs & gravel traps are open!
+      b.mesh.visible = mode !== 'track';
     }
+
+    // Reset Y deformation when switching modes and force vertex buffer upload
+    for (let j = 0; j < this.curvableGeometries.length; j++) {
+      const item = this.curvableGeometries[j];
+      const arr = item.geo.attributes.position.array;
+      const baseY = item.baseY;
+      for (let i = 0; i < item.geo.attributes.position.count; i++) {
+        arr[i * 3 + 1] = baseY[i];
+      }
+      item.geo.attributes.position.needsUpdate = true;
+    }
+    this._prevMaxCurveOffset = 1;
 
     // Rebuild the roadside segments where the current ones are
     const zs = this.sceneryItems.map((seg) => seg.position.z);
@@ -889,7 +1262,7 @@ export class HighwayWorld {
     this.lampFixtures = [];
     this.buildRoadsideScenery();
     this.sceneryItems.forEach((seg, i) => (seg.position.z = zs[i] ?? seg.position.z));
-    this.applyWeather(this.weatherKey); // lamp colours for the new fixtures
+    this.applyWeather(this.weatherKey); // lamp & terrain colours for the new fixtures
   }
 
   createHighwayGantrySign(textMain, textSub) {
@@ -1051,18 +1424,57 @@ export class HighwayWorld {
       metalness: 0.35,
     });
 
-    // Shared track materials (İstanbul Park Grand Prix Circuit)
+    // Shared track materials (Intercity İstanbul Park Grand Prix Circuit)
     const trackArmcoMat = new THREE.MeshStandardMaterial({
       color: 0x94a3b8,
       roughness: 0.35,
       metalness: 0.8,
     });
+    const trackMarshalOrangeMat = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      roughness: 0.5,
+      metalness: 0.3,
+    });
+    const trackCatchFenceMat = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      roughness: 0.5,
+      metalness: 0.7,
+      transparent: true,
+      opacity: 0.52,
+      side: THREE.DoubleSide,
+    });
+    const trackRunoffTex = createTrackRunoffTexture();
+    trackRunoffTex.repeat.set(1, 2);
+    const trackRunoffMat = new THREE.MeshStandardMaterial({
+      map: trackRunoffTex,
+      roughness: 0.65,
+      metalness: 0.1,
+    });
+    const trackGravelMat = new THREE.MeshStandardMaterial({
+      color: 0xc2a878,
+      roughness: 0.96,
+      metalness: 0.02,
+    });
     const trackTurfMat = new THREE.MeshStandardMaterial({
       color: 0x16381d,
       roughness: 0.9,
     });
+    const trackHillMat = new THREE.MeshStandardMaterial({
+      color: 0x19421e,
+      roughness: 0.95,
+    });
+    const trackTreeMat = new THREE.MeshStandardMaterial({
+      color: 0x0f2e15,
+      roughness: 0.9,
+    });
+    this.trackHillMat = trackHillMat;
+    this.trackTreeMat = trackTreeMat;
+
     const trackFinishLineMat = new THREE.MeshBasicMaterial({
       map: createTrackFinishLineTexture(),
+    });
+    const trackGridLineMat = new THREE.MeshBasicMaterial({
+      color: 0xf8fafc,
     });
     const trackGantryMat = new THREE.MeshBasicMaterial({
       map: createTrackStartGantryTexture(),
@@ -1073,26 +1485,47 @@ export class HighwayWorld {
       metalness: 0.7,
     });
     const trackPitGarageMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
-      roughness: 0.7,
-      metalness: 0.2,
+      color: 0x1e293b,
+      roughness: 0.55,
+      metalness: 0.3,
     });
-    const trackGrandstandSeatMat = new THREE.MeshStandardMaterial({
-      color: 0x1d4ed8,
-      roughness: 0.65,
+    const trackPitGlassMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      roughness: 0.15,
+      metalness: 0.85,
+    });
+    const trackPitLightMat = new THREE.MeshBasicMaterial({
+      color: 0xfffbeb,
+    });
+    const trackGrandstandSeatRedMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626,
+      roughness: 0.6,
+    });
+    const trackGrandstandSeatWhiteMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.6,
+    });
+    const trackGrandstandSeatBlueMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.6,
     });
     const trackGrandstandRoofMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      roughness: 0.45,
-      metalness: 0.5,
+      color: 0xf1f5f9,
+      roughness: 0.35,
+      metalness: 0.25,
+      side: THREE.DoubleSide,
     });
     const trackTireRedMat = new THREE.MeshStandardMaterial({
       color: 0xdc2626,
-      roughness: 0.9,
+      roughness: 0.88,
     });
     const trackTireWhiteMat = new THREE.MeshStandardMaterial({
-      color: 0xf1f5f9,
+      color: 0xf8fafc,
       roughness: 0.85,
+    });
+    const trackTireBlueMat = new THREE.MeshStandardMaterial({
+      color: 0x0891b2,
+      roughness: 0.88,
     });
     const trackFloodlightPoleMat = new THREE.MeshStandardMaterial({
       color: 0xe2e8f0,
@@ -1103,9 +1536,25 @@ export class HighwayWorld {
       color: 0xffffff,
     });
     this.lampFixtures.push(trackFloodlightGlowMat);
+    const trackLedFlagMat = new THREE.MeshBasicMaterial({
+      color: 0x22c55e,
+    });
+    const trackTurkishFlagMat = new THREE.MeshBasicMaterial({
+      color: 0xe11d48,
+      side: THREE.DoubleSide,
+    });
     const trackBrake150Mat = new THREE.MeshBasicMaterial({ map: createTrackBrakeBoardTexture(150) });
     const trackBrake100Mat = new THREE.MeshBasicMaterial({ map: createTrackBrakeBoardTexture(100) });
     const trackBrake50Mat = new THREE.MeshBasicMaterial({ map: createTrackBrakeBoardTexture(50) });
+    this.trackBrakeMats = { 150: trackBrake150Mat, 100: trackBrake100Mat, 50: trackBrake50Mat };
+
+    const trackChevronLeftMat = new THREE.MeshBasicMaterial({ map: createTrackChevronTexture(-1) });
+    const trackChevronRightMat = new THREE.MeshBasicMaterial({ map: createTrackChevronTexture(1) });
+    this.trackBridgeBannerMats = [
+      new THREE.MeshBasicMaterial({ map: createTrackBridgeBannerTexture(0) }),
+      new THREE.MeshBasicMaterial({ map: createTrackBridgeBannerTexture(1) }),
+      new THREE.MeshBasicMaterial({ map: createTrackBridgeBannerTexture(2) }),
+    ];
 
     // Static pieces of a segment are baked into one geometry per material, so each segment
     // costs ~5 draw calls instead of ~10 (x18 segments, and again for the rear-view mirror)
@@ -1122,20 +1571,23 @@ export class HighwayWorld {
     for (let i = 0; i < numSegments; i++) {
       const z = 40 - i * spacing;
       const segGroup = new THREE.Group();
+      segGroup.rotation.order = 'YXZ';
       segGroup.position.z = z;
 
-      // 1. Reflective Cat-Eye Posts on top of Jersey Barriers (Always visible)
+      // 1. Reflective Cat-Eye Posts on top of Jersey Barriers (Hidden in track mode)
       const leftRef = new THREE.Mesh(
         placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), -half - 0.55, twoWay ? 0.8 : 1.05, 0),
         redReflectorMat
       );
       segGroup.add(leftRef);
+      segGroup.leftRef = leftRef;
 
       const rightRef = new THREE.Mesh(
         placed(new THREE.BoxGeometry(0.12, 0.22, 0.08), half + 0.55, twoWay ? 0.8 : 1.05, 0),
         whiteReflectorMat
       );
       segGroup.add(rightRef);
+      segGroup.rightRef = rightRef;
 
       // --- A. HIGHWAY GROUP ---
       const highwayGroup = new THREE.Group();
@@ -1307,120 +1759,322 @@ export class HighwayWorld {
       segGroup.bridgeGroup = bridgeGroup;
       segGroup.pylonGroup = pylonGroup;
 
-      // --- D. TRACK GROUP (İstanbul Park Grand Prix Circuit) ---
+      // --- D. TRACK GROUP (Intercity İstanbul Park Grand Prix Circuit) ---
       const trackGroup = new THREE.Group();
       const trackArmcoParts = [];
-      const trackTurfParts = [];
+      const trackMarshalParts = [];
+      const trackFenceParts = [];
+      const trackRunoffParts = [];
+      const trackHillParts = [];
+      const trackTreeParts = [];
 
-      // Steel Armco Guardrails on Left & Right
+      // 1. Wide FIA Green Astroturf + Turkish GP Red/White/Turquoise Painted Asphalt Run-Off Aprons
+      const runoffWidth = 6.2;
       [-1, 1].forEach((side) => {
-        const bx = side * (half + 0.65);
-        // Double W-beam steel rail
-        trackArmcoParts.push(placed(new THREE.BoxGeometry(0.18, 0.35, spacing), bx, 0.42, 0));
-        trackArmcoParts.push(placed(new THREE.BoxGeometry(0.18, 0.35, spacing), bx, 0.82, 0));
-        // Steel I-beam posts
-        for (let k = -2; k <= 2; k++) {
-          trackArmcoParts.push(placed(new THREE.BoxGeometry(0.14, 1.05, 0.14), bx, 0.52, k * 4.5));
+        const rx = side * (half + 0.5 + runoffWidth * 0.5);
+        const rGeo = new THREE.PlaneGeometry(runoffWidth, spacing);
+        rGeo.rotateX(-Math.PI / 2);
+        if (side < 0) rGeo.rotateY(Math.PI);
+        rGeo.translate(rx, 0.012, 0);
+        trackRunoffParts.push(rGeo);
+      });
+      trackGroup.add(new THREE.Mesh(mergeGeometries(trackRunoffParts), trackRunoffMat));
+      trackRunoffParts.forEach((g) => g.dispose());
+
+      // 2. Set-Back Steel Triple-Wave Armco Guardrails & Tall FIA Debris Catch Fencing
+      const barrierX = half + 6.7;
+      [-1, 1].forEach((side) => {
+        const bx = side * barrierX;
+        // Triple W-beam steel rails
+        trackArmcoParts.push(placed(new THREE.BoxGeometry(0.18, 0.28, spacing), bx, 0.32, 0));
+        trackArmcoParts.push(placed(new THREE.BoxGeometry(0.18, 0.28, spacing), bx, 0.68, 0));
+        trackArmcoParts.push(placed(new THREE.BoxGeometry(0.18, 0.28, spacing), bx, 1.04, 0));
+        // Orange Marshal Safety Posts at segment ends every 3rd segment
+        if (i % 3 === 0) {
+          trackMarshalParts.push(placed(new THREE.BoxGeometry(0.22, 1.15, 1.8), bx - side * 0.03, 0.6, -7.5));
         }
+        // Tall FIA Catch Fence posts & overhanging top cantilevers
+        for (let k = -2; k <= 2; k++) {
+          const pz = k * 4.5;
+          trackArmcoParts.push(placed(new THREE.BoxGeometry(0.14, 4.2, 0.14), bx + side * 0.12, 2.1, pz));
+          trackArmcoParts.push(
+            placed(new THREE.BoxGeometry(0.95, 0.1, 0.1), bx - side * 0.28, 4.35, pz, 0, 0, side * 0.35)
+          );
+        }
+        // Semi-transparent FIA Wire Mesh Catch Fence Panel above Armco
+        trackFenceParts.push(placed(new THREE.PlaneGeometry(spacing, 3.0), bx + side * 0.05, 2.7, 0, 0, Math.PI / 2, 0));
       });
       trackGroup.add(new THREE.Mesh(mergeGeometries(trackArmcoParts), trackArmcoMat));
       trackArmcoParts.forEach((g) => g.dispose());
+      if (trackMarshalParts.length > 0) {
+        trackGroup.add(new THREE.Mesh(mergeGeometries(trackMarshalParts), trackMarshalOrangeMat));
+        trackMarshalParts.forEach((g) => g.dispose());
+      }
+      trackGroup.add(new THREE.Mesh(mergeGeometries(trackFenceParts), trackCatchFenceMat));
+      trackFenceParts.forEach((g) => g.dispose());
 
-      // Astroturf Runoff Margin (Extends outside the road on both sides)
+      // 3. Natural Rolling Akfırat / Tepeören Anatolian Hills & Pine/Cypress Trees (Background Silhouette)
       [-1, 1].forEach((side) => {
-        const tx = side * (half + 4.0);
-        const turfGeo = new THREE.PlaneGeometry(6.5, spacing);
-        turfGeo.rotateX(-Math.PI / 2);
-        turfGeo.translate(tx, 0.01, 0);
-        trackTurfParts.push(turfGeo);
+        const hDist = 36 + ((i * 5 + (side > 0 ? 2 : 0)) % 3) * 9;
+        const hHeight = 9 + ((i * 7 + (side > 0 ? 4 : 1)) % 14);
+        const hWidth = 24 + (i % 3) * 8;
+        trackHillParts.push(
+          placed(new THREE.ConeGeometry(hWidth * 0.65, hHeight, 6), side * hDist, hHeight * 0.42 - 0.5, 0)
+        );
+        // Cluster of Mediterranean Cypress / Pine trees on the hillside slopes
+        for (let tIdx = 0; tIdx < 2; tIdx++) {
+          const tx = side * (20 + ((i * 3 + tIdx * 7) % 16));
+          const tz = (tIdx - 0.5) * 9;
+          const th = 4.8 + ((i + tIdx) % 3) * 1.6;
+          trackTreeParts.push(placed(new THREE.ConeGeometry(1.45, th, 6), tx, th * 0.5, tz));
+        }
       });
-      trackGroup.add(new THREE.Mesh(mergeGeometries(trackTurfParts), trackTurfMat));
-      trackTurfParts.forEach((g) => g.dispose());
+      const hillsMesh = new THREE.Mesh(mergeGeometries(trackHillParts), trackHillMat);
+      hillsMesh.layers.set(MIRROR_SKIP_LAYER);
+      trackGroup.add(hillsMesh);
+      const treesMesh = new THREE.Mesh(mergeGeometries(trackTreeParts), trackTreeMat);
+      treesMesh.layers.set(MIRROR_SKIP_LAYER);
+      trackGroup.add(treesMesh);
+      trackHillParts.forEach((g) => g.dispose());
+      trackTreeParts.forEach((g) => g.dispose());
 
-      // 1. Checkered Finish Line Mesh on the road plane
+      // 4. Checkered Start/Finish Line Mesh on the road plane
       const trackFinishLine = new THREE.Mesh(
-        new THREE.PlaneGeometry(half * 2 + 1.2, 2.8),
+        new THREE.PlaneGeometry(half * 2 + 1.2, 3.2),
         trackFinishLineMat
       );
       trackFinishLine.rotation.x = -Math.PI / 2;
-      trackFinishLine.position.set(0, 0.02, 0);
+      trackFinishLine.position.set(0, 0.025, 0);
       trackFinishLine.visible = false;
       trackGroup.add(trackFinishLine);
       segGroup.trackFinishLine = trackFinishLine;
 
-      // 2. Start/Finish Overhead Gantry Arch
+      // 5. Formula 1 Staggered Starting Grid Boxes on the Main Straight
+      const gridGroup = new THREE.Group();
+      const gridParts = [];
+      [-3.2, 3.2].forEach((gx, gIdx) => {
+        const gz = gIdx === 0 ? -3.5 : 3.5;
+        // Front line + left/right bracket wings of F1 grid box
+        gridParts.push(placed(new THREE.PlaneGeometry(2.5, 0.18), gx, 0.02, gz - 2.1, -Math.PI / 2, 0, 0));
+        gridParts.push(placed(new THREE.PlaneGeometry(0.16, 1.8), gx - 1.17, 0.02, gz - 1.2, -Math.PI / 2, 0, 0));
+        gridParts.push(placed(new THREE.PlaneGeometry(0.16, 1.8), gx + 1.17, 0.02, gz - 1.2, -Math.PI / 2, 0, 0));
+      });
+      gridGroup.add(new THREE.Mesh(mergeGeometries(gridParts), trackGridLineMat));
+      gridParts.forEach((g) => g.dispose());
+      gridGroup.visible = false;
+      trackGroup.add(gridGroup);
+      segGroup.trackGridBoxes = gridGroup;
+
+      // 6. Start/Finish Overhead FIA Light Gantry Bridge
       const gantryGroup = new THREE.Group();
       const gantryFrameParts = [];
-      gantryFrameParts.push(placed(new THREE.BoxGeometry(0.45, 9.6, 0.45), -half - 1.8, 4.8, 0));
-      gantryFrameParts.push(placed(new THREE.BoxGeometry(0.45, 9.6, 0.45), half + 1.8, 4.8, 0));
-      gantryFrameParts.push(placed(new THREE.BoxGeometry((half + 2.0) * 2, 0.45, 0.45), 0, 9.2, 0));
+      const spanW = (half + 2.8) * 2;
+      gantryFrameParts.push(placed(new THREE.BoxGeometry(0.55, 9.8, 0.55), -half - 2.6, 4.9, 0));
+      gantryFrameParts.push(placed(new THREE.BoxGeometry(0.55, 9.8, 0.55), half + 2.6, 4.9, 0));
+      gantryFrameParts.push(placed(new THREE.BoxGeometry(spanW, 0.5, 0.5), 0, 9.4, 0));
+      gantryFrameParts.push(placed(new THREE.BoxGeometry(spanW, 0.35, 0.35), 0, 7.6, 0));
       gantryGroup.add(new THREE.Mesh(mergeGeometries(gantryFrameParts), trackGantryFrameMat));
       gantryFrameParts.forEach((g) => g.dispose());
 
       const gantrySign = new THREE.Mesh(
-        new THREE.BoxGeometry((half + 1.6) * 2, 2.4, 0.16),
+        new THREE.BoxGeometry(half * 2 + 2.4, 2.5, 0.18),
         trackGantryMat
       );
-      gantrySign.position.set(0, 8.8, 0.25);
+      gantrySign.position.set(0, 8.7, 0.28);
       gantryGroup.add(gantrySign);
       gantryGroup.visible = false;
       trackGroup.add(gantryGroup);
       segGroup.trackGantry = gantryGroup;
 
-      // 3. Pit Lane Wall & Team Garages (Right side)
+      // 7. Overhead Track Sponsor & VIP Pedestrian Bridge (Turn 1, Turn 8 Approach, Back Straight DRS)
+      const ovBridgeGroup = new THREE.Group();
+      const ovFrameParts = [];
+      const ovSpan = (barrierX + 1.5) * 2;
+      ovFrameParts.push(placed(new THREE.BoxGeometry(1.4, 9.2, 2.2), -barrierX - 1.2, 4.6, 0));
+      ovFrameParts.push(placed(new THREE.BoxGeometry(1.4, 9.2, 2.2), barrierX + 1.2, 4.6, 0));
+      ovFrameParts.push(placed(new THREE.BoxGeometry(ovSpan, 0.8, 2.4), 0, 8.4, 0));
+      ovBridgeGroup.add(new THREE.Mesh(mergeGeometries(ovFrameParts), trackGantryFrameMat));
+      ovFrameParts.forEach((g) => g.dispose());
+
+      const ovBannerMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(ovSpan - 1.2, 1.9, 0.16),
+        this.trackBridgeBannerMats[0]
+      );
+      ovBannerMesh.position.set(0, 8.6, 1.25);
+      ovBridgeGroup.add(ovBannerMesh);
+      ovBridgeGroup.visible = false;
+      trackGroup.add(ovBridgeGroup);
+      segGroup.trackOverheadBridge = ovBridgeGroup;
+      segGroup.trackBridgeBanner = ovBannerMesh;
+
+      // 8. Right Side Pit Wall, F1 Team Garages & Paddock Club Building (Main Straight)
       const pitGroup = new THREE.Group();
-      const pitParts = [];
-      pitParts.push(placed(new THREE.BoxGeometry(0.7, 1.2, spacing), half + 2.4, 0.6, 0));
-      pitParts.push(placed(new THREE.BoxGeometry(8.5, 5.5, spacing), half + 7.5, 2.75, 0));
-      pitGroup.add(new THREE.Mesh(mergeGeometries(pitParts), trackPitGarageMat));
-      pitParts.forEach((g) => g.dispose());
+      const pitBodyParts = [];
+      const pitGlassParts = [];
+      const pitRoofParts = [];
+      const pitLightParts = [];
+      const pitTeamRedParts = [];
+      // Concrete Pit Wall + Engineer Timing Perch on trackside right
+      pitBodyParts.push(placed(new THREE.BoxGeometry(0.55, 1.35, spacing), half + 1.8, 0.68, 0));
+      pitGlassParts.push(placed(new THREE.BoxGeometry(1.1, 1.2, 3.8), half + 1.9, 1.95, 0));
+      // Two-story F1 Pit Building & Paddock Club (set back across pit lane at half + 11.5)
+      const pitX = half + 12.0;
+      pitBodyParts.push(placed(new THREE.BoxGeometry(9.0, 8.2, spacing - 0.3), pitX, 4.1, 0));
+      // Garage bay dividers & glowing interior lights
+      for (let gBay = -1; gBay <= 1; gBay += 2) {
+        pitLightParts.push(placed(new THREE.BoxGeometry(0.25, 2.8, 6.5), pitX - 4.45, 1.5, gBay * 4.8));
+      }
+      // Red/Turkish GP Team Fascia band above garage doors
+      pitTeamRedParts.push(placed(new THREE.BoxGeometry(0.35, 0.85, spacing - 0.2), pitX - 4.45, 3.55, 0));
+      // Upper floor Paddock Club panoramic blue glass facade
+      pitGlassParts.push(placed(new THREE.BoxGeometry(0.3, 2.6, spacing - 0.6), pitX - 4.42, 5.8, 0));
+      // Cantilevered white Paddock Club roof overhang
+      pitRoofParts.push(placed(new THREE.BoxGeometry(11.4, 0.45, spacing), pitX - 0.8, 8.35, 0));
+
+      pitGroup.add(new THREE.Mesh(mergeGeometries(pitBodyParts), trackPitGarageMat));
+      pitGroup.add(new THREE.Mesh(mergeGeometries(pitGlassParts), trackPitGlassMat));
+      pitGroup.add(new THREE.Mesh(mergeGeometries(pitRoofParts), trackGrandstandRoofMat));
+      pitGroup.add(new THREE.Mesh(mergeGeometries(pitLightParts), trackPitLightMat));
+      pitGroup.add(new THREE.Mesh(mergeGeometries(pitTeamRedParts), trackTireRedMat));
+      [...pitBodyParts, ...pitGlassParts, ...pitRoofParts, ...pitLightParts, ...pitTeamRedParts].forEach((g) =>
+        g.dispose()
+      );
       pitGroup.visible = false;
       trackGroup.add(pitGroup);
       segGroup.trackPit = pitGroup;
 
-      // 4. Spectator Grandstand (Left side)
+      // 9. Iconic Intercity İstanbul Park Octagonal VIP & Race Control Tower (Main Straight Right)
+      const towerGroup = new THREE.Group();
+      const towerStructParts = [];
+      const towerGlassParts = [];
+      const txTower = half + 18.5;
+      // Central core + flared observation crown at 26m height
+      towerStructParts.push(placed(new THREE.CylinderGeometry(2.6, 3.2, 24.0, 8), txTower, 12.0, 0));
+      towerGlassParts.push(placed(new THREE.CylinderGeometry(4.8, 3.0, 5.2, 8), txTower, 24.5, 0));
+      towerStructParts.push(placed(new THREE.CylinderGeometry(5.4, 4.9, 1.1, 8), txTower, 27.6, 0));
+      towerStructParts.push(placed(new THREE.CylinderGeometry(0.18, 0.18, 6.0, 6), txTower, 31.0, 0));
+      towerGroup.add(new THREE.Mesh(mergeGeometries(towerStructParts), trackGrandstandRoofMat));
+      towerGroup.add(new THREE.Mesh(mergeGeometries(towerGlassParts), trackPitGlassMat));
+      towerStructParts.forEach((g) => g.dispose());
+      towerGlassParts.forEach((g) => g.dispose());
+      towerGroup.visible = false;
+      trackGroup.add(towerGroup);
+      segGroup.trackControlTower = towerGroup;
+
+      // 10. Iconic İstanbul Park Wing-Roof Grandstand (Multi-color seats + Suspended Tent Wing Roof & Masts)
       const grandstandGroup = new THREE.Group();
-      const seatParts = [];
-      const roofParts = [];
-      for (let tier = 0; tier < 4; tier++) {
-        seatParts.push(
-          placed(
-            new THREE.BoxGeometry(2.0, 0.7 + tier * 0.7, spacing),
-            -half - 6.5 - tier * 2.0,
-            (0.7 + tier * 0.7) / 2,
-            0
-          )
+      const seatRedParts = [];
+      const seatWhiteParts = [];
+      const seatBlueParts = [];
+      const roofWingParts = [];
+      const mastParts = [];
+      const gsBaseX = -barrierX - 2.2;
+      for (let tier = 0; tier < 5; tier++) {
+        const tH = 0.8 + tier * 0.85;
+        const sGeo = placed(
+          new THREE.BoxGeometry(1.85, tH, spacing - 0.2),
+          gsBaseX - tier * 1.85,
+          tH * 0.5,
+          0
         );
+        if ((tier + i) % 3 === 0) seatRedParts.push(sGeo);
+        else if ((tier + i) % 3 === 1) seatWhiteParts.push(sGeo);
+        else seatBlueParts.push(sGeo);
       }
-      roofParts.push(
-        placed(
-          new THREE.BoxGeometry(10.5, 0.2, spacing),
-          -half - 9.5,
-          5.6,
-          0,
-          0,
-          0,
-          -0.12
-        )
+      // Iconic white cantilevered wing roof & peaked tent ridge
+      roofWingParts.push(
+        placed(new THREE.BoxGeometry(11.8, 0.24, spacing - 0.1), gsBaseX - 3.6, 7.6, 0, 0, 0, -0.14)
       );
-      roofParts.push(placed(new THREE.BoxGeometry(0.3, 5.6, 0.3), -half - 14.5, 2.8, -6));
-      roofParts.push(placed(new THREE.BoxGeometry(0.3, 5.6, 0.3), -half - 14.5, 2.8, 6));
-      grandstandGroup.add(new THREE.Mesh(mergeGeometries(seatParts), trackGrandstandSeatMat));
-      grandstandGroup.add(new THREE.Mesh(mergeGeometries(roofParts), trackGrandstandRoofMat));
-      seatParts.forEach((g) => g.dispose());
-      roofParts.forEach((g) => g.dispose());
+      roofWingParts.push(
+        placed(new THREE.ConeGeometry(4.2, 2.2, 4), gsBaseX - 3.6, 8.7, 0, 0, Math.PI / 4, 0)
+      );
+      // Tall angled steel suspension mast & rear columns behind the grandstand
+      mastParts.push(
+        placed(new THREE.CylinderGeometry(0.18, 0.28, 13.5, 8), gsBaseX - 8.8, 6.75, 0, 0, 0, -0.1)
+      );
+      mastParts.push(
+        placed(new THREE.CylinderGeometry(0.05, 0.05, 7.2, 6), gsBaseX - 5.2, 10.2, 0, 0, 0, 0.72)
+      );
+
+      if (seatRedParts.length) grandstandGroup.add(new THREE.Mesh(mergeGeometries(seatRedParts), trackGrandstandSeatRedMat));
+      if (seatWhiteParts.length) grandstandGroup.add(new THREE.Mesh(mergeGeometries(seatWhiteParts), trackGrandstandSeatWhiteMat));
+      if (seatBlueParts.length) grandstandGroup.add(new THREE.Mesh(mergeGeometries(seatBlueParts), trackGrandstandSeatBlueMat));
+      grandstandGroup.add(new THREE.Mesh(mergeGeometries(roofWingParts), trackGrandstandRoofMat));
+      grandstandGroup.add(new THREE.Mesh(mergeGeometries(mastParts), trackFloodlightPoleMat));
+      [...seatRedParts, ...seatWhiteParts, ...seatBlueParts, ...roofWingParts, ...mastParts].forEach((g) =>
+        g.dispose()
+      );
       grandstandGroup.visible = false;
       trackGroup.add(grandstandGroup);
       segGroup.trackGrandstand = grandstandGroup;
 
-      // 5. Stadium Floodlight Tower (every 3rd segment)
+      // 11. Corner Outside Safety Zones: Gravel Trap + Red/White/Turquoise Tire Stacks + Corner Chevron Boards
+      const buildCornerOutsideSide = (side, chevronMat) => {
+        const cGroup = new THREE.Group();
+        const tRed = [];
+        const tWhite = [];
+        const tBlue = [];
+
+        // Sandy-beige FIA Gravel Trap bed in the run-off zone
+        const gravGeo = new THREE.PlaneGeometry(4.2, spacing);
+        gravGeo.rotateX(-Math.PI / 2);
+        gravGeo.translate(side * (half + 4.3), 0.022, 0);
+        cGroup.add(new THREE.Mesh(gravGeo, trackGravelMat));
+
+        // 3-row Tire Barrier Stack in front of the Armco barrier
+        const tireX = side * (barrierX - 0.55);
+        for (let row = 0; row < 3; row++) {
+          for (let col = -4; col <= 4; col++) {
+            const tGeo = placed(
+              new THREE.CylinderGeometry(0.42, 0.42, 0.36, 8),
+              tireX,
+              0.2 + row * 0.36,
+              col * 2.1,
+              0,
+              0,
+              Math.PI / 2
+            );
+            const mod = Math.abs(row + col + i) % 3;
+            if (mod === 0) tRed.push(tGeo);
+            else if (mod === 1) tWhite.push(tGeo);
+            else tBlue.push(tGeo);
+          }
+        }
+        if (tRed.length) cGroup.add(new THREE.Mesh(mergeGeometries(tRed), trackTireRedMat));
+        if (tWhite.length) cGroup.add(new THREE.Mesh(mergeGeometries(tWhite), trackTireWhiteMat));
+        if (tBlue.length) cGroup.add(new THREE.Mesh(mergeGeometries(tBlue), trackTireBlueMat));
+        [...tRed, ...tWhite, ...tBlue].forEach((g) => g.dispose());
+
+        // High-visibility Corner Direction Chevron Board mounted above Tire Barrier
+        const chevBoard = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.15, 0.1), chevronMat);
+        chevBoard.position.set(side * (barrierX - 0.25), 1.85, 0);
+        chevBoard.rotation.y = -side * 0.28;
+        cGroup.add(chevBoard);
+
+        cGroup.visible = false;
+        return cGroup;
+      };
+
+      // Left corners throw cars to the RIGHT (+1) outside; Right corners throw cars to the LEFT (-1) outside
+      const cornerOutsideRight = buildCornerOutsideSide(1, trackChevronLeftMat);
+      const cornerOutsideLeft = buildCornerOutsideSide(-1, trackChevronRightMat);
+      trackGroup.add(cornerOutsideRight);
+      trackGroup.add(cornerOutsideLeft);
+      segGroup.trackCornerRight = cornerOutsideRight;
+      segGroup.trackCornerLeft = cornerOutsideLeft;
+
+      // 12. Stadium Floodlight Tower & Turkish / Racing Flagpoles
       const floodlightGroup = new THREE.Group();
       const lightPoleParts = [];
       const lightLampParts = [];
-      lightPoleParts.push(placed(new THREE.CylinderGeometry(0.25, 0.38, 16.5, 8), -half - 3.8, 8.25, 0));
-      lightPoleParts.push(placed(new THREE.BoxGeometry(3.2, 0.2, 0.8), -half - 3.8, 16.2, 0));
+      const flSide = i % 2 === 0 ? -1 : 1;
+      const flX = flSide * (barrierX + 1.6);
+      lightPoleParts.push(placed(new THREE.CylinderGeometry(0.22, 0.36, 17.0, 8), flX, 8.5, 0));
+      lightPoleParts.push(placed(new THREE.BoxGeometry(3.4, 0.22, 0.8), flX, 16.7, 0));
       for (let k = -1; k <= 1; k++) {
-        lightLampParts.push(placed(new THREE.BoxGeometry(0.8, 0.5, 0.4), -half - 3.8 + k * 1.0, 16.4, 0.3, 0.25, 0, 0));
+        lightLampParts.push(
+          placed(new THREE.BoxGeometry(0.85, 0.52, 0.4), flX + k * 1.05, 16.9, 0.3, 0.25, 0, 0)
+        );
       }
       floodlightGroup.add(new THREE.Mesh(mergeGeometries(lightPoleParts), trackFloodlightPoleMat));
       floodlightGroup.add(new THREE.Mesh(mergeGeometries(lightLampParts), trackFloodlightGlowMat));
@@ -1430,49 +2084,41 @@ export class HighwayWorld {
       trackGroup.add(floodlightGroup);
       segGroup.trackFloodlight = floodlightGroup;
 
-      // 6. Brake Marker Boards (150m, 100m, 50m)
+      // Trackside Flagpoles & FIA Digital LED Flag Panel (every 2nd segment)
+      if (i % 2 === 0) {
+        const flagSide = i % 4 === 0 ? 1 : -1;
+        const fx = flagSide * (barrierX + 0.9);
+        const poleMesh = new THREE.Mesh(
+          placed(new THREE.CylinderGeometry(0.06, 0.08, 7.5, 6), fx, 3.75, -5),
+          trackFloodlightPoleMat
+        );
+        const flagCloth = new THREE.Mesh(
+          placed(new THREE.PlaneGeometry(1.9, 1.15), fx - flagSide * 0.95, 6.8, -5, 0, 0.2, 0),
+          trackTurkishFlagMat
+        );
+        trackGroup.add(poleMesh);
+        trackGroup.add(flagCloth);
+      }
+      if (i % 4 === 1) {
+        const ledPanel = new THREE.Mesh(
+          placed(new THREE.BoxGeometry(1.1, 0.85, 0.12), barrierX - 0.2, 2.2, 4),
+          trackLedFlagMat
+        );
+        trackGroup.add(ledPanel);
+      }
+
+      // 13. Sequential Brake Marker Boards (150m, 100m, 50m - dynamically placed on Left or Right verge)
       const brakeBoardGroup = new THREE.Group();
-      const bMat = i % 3 === 0 ? trackBrake150Mat : i % 3 === 1 ? trackBrake100Mat : trackBrake50Mat;
-      const bMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 0.08), bMat);
-      bMesh.position.set(-half - 2.2, 1.4, 0);
-      const bPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6), trackArmcoMat);
-      bPole.position.set(-half - 2.2, 0.7, 0);
+      const bMesh = new THREE.Mesh(new THREE.BoxGeometry(1.35, 1.35, 0.08), trackBrake150Mat);
+      bMesh.position.set(0, 1.45, 0);
+      const bPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.45, 6), trackArmcoMat);
+      bPole.position.set(0, 0.72, 0);
       brakeBoardGroup.add(bMesh);
       brakeBoardGroup.add(bPole);
       brakeBoardGroup.visible = false;
       trackGroup.add(brakeBoardGroup);
       segGroup.trackBrakeBoards = brakeBoardGroup;
-
-      // 7. Red & White Tire Barrier Stacks
-      const tireGroup = new THREE.Group();
-      const tireRedParts = [];
-      const tireWhiteParts = [];
-      [-1, 1].forEach((side) => {
-        const tx = side * (half + 0.95);
-        for (let row = 0; row < 2; row++) {
-          for (let col = -1; col <= 1; col++) {
-            const isRedTire = (row + col + i) % 2 === 0;
-            const tGeo = placed(
-              new THREE.CylinderGeometry(0.42, 0.42, 0.38, 8),
-              tx,
-              0.22 + row * 0.38,
-              col * 0.9,
-              Math.PI / 2,
-              0,
-              0
-            );
-            if (isRedTire) tireRedParts.push(tGeo);
-            else tireWhiteParts.push(tGeo);
-          }
-        }
-      });
-      tireGroup.add(new THREE.Mesh(mergeGeometries(tireRedParts), trackTireRedMat));
-      tireGroup.add(new THREE.Mesh(mergeGeometries(tireWhiteParts), trackTireWhiteMat));
-      tireRedParts.forEach((g) => g.dispose());
-      tireWhiteParts.forEach((g) => g.dispose());
-      tireGroup.visible = false;
-      trackGroup.add(tireGroup);
-      segGroup.trackTires = tireGroup;
+      segGroup.trackBrakeMesh = bMesh;
 
       trackGroup.visible = false;
       segGroup.add(trackGroup);
@@ -1544,6 +2190,8 @@ export class HighwayWorld {
     // Adjust player low-beams based on day/night
     this.lowBeamLight.intensity = preset.streetlightsOn ? 14.0 : 2.5;
 
+    this.updateGroundAndTrackColors();
+
     return preset;
   }
 
@@ -1568,12 +2216,17 @@ export class HighwayWorld {
       this.roadTexture.offset.y = this.scrollOffset;
     }
 
-    // Deform subdivided road, ground, and concrete Jersey barriers along the 3D highway curve
+    // Deform subdivided road, ground, and concrete Jersey barriers along the 3D curve & track elevation
+    const isTrack = this.roadMode === 'track';
     const s0 = this.worldDistM;
     const c0 = this.evalRoadCenterX(s0);
     const d0 = this.evalRoadDeriv1(s0);
+    const y0 = isTrack ? this.evalTrackElevation(s0) : 0;
+    const dy0 = isTrack ? this.evalTrackElevDeriv1(s0) : 0;
     const zCache = this._zOffsetCache;
+    const yCache = this._zElevCache;
     zCache.clear();
+    yCache.clear();
 
     let maxAbsOffset = 0;
     for (let j = 0; j < this.curvableGeometries.length; j++) {
@@ -1581,6 +2234,7 @@ export class HighwayWorld {
       const pos = item.geo.attributes.position;
       const arr = pos.array;
       const baseX = item.baseX;
+      const baseY = item.baseY;
       const baseZ = item.baseZ;
       const count = pos.count;
 
@@ -1594,10 +2248,21 @@ export class HighwayWorld {
           if (absOff > maxAbsOffset) maxAbsOffset = absOff;
         }
         arr[i * 3] = baseX[i] + off;
+
+        if (isTrack) {
+          let offY = yCache.get(z);
+          if (offY === undefined) {
+            offY = this.evalTrackElevation(s0 - z) - y0 + z * dy0;
+            yCache.set(z, offY);
+            const absY = Math.abs(offY);
+            if (absY > maxAbsOffset) maxAbsOffset = absY;
+          }
+          arr[i * 3 + 1] = baseY[i] + offY;
+        }
       }
     }
 
-    // Only upload vertex buffers to GPU if the road is actually curved or just returned to straight
+    // Only upload vertex buffers to GPU if the road is actually curved/sloped or just returned to straight
     const isCurved = maxAbsOffset > 0.0001;
     if (isCurved || this._prevMaxCurveOffset > 0.0001) {
       for (let j = 0; j < this.curvableGeometries.length; j++) {
@@ -1606,18 +2271,23 @@ export class HighwayWorld {
     }
     this._prevMaxCurveOffset = maxAbsOffset;
 
-    // Move roadside poles, barriers, buildings & overhead signs toward player (+Z) and follow the curve
+    // Move roadside poles, barriers, buildings & overhead signs toward player (+Z) and follow the 3D curve
     const totalSpan = this.sceneryItems.length * 20; // 360m loop
+    const half = this.roadHalfWidth;
     for (const seg of this.sceneryItems) {
       seg.position.z += speedMs * dt;
       if (seg.position.z > 45) {
         seg.position.z -= totalSpan;
       }
       seg.position.x = this.getCurveOffsetAtZ(seg.position.z);
+      seg.position.y = isTrack ? this.getElevationOffsetAtZ(seg.position.z) : 0;
       seg.rotation.y = this.getCurveYawAtZ(seg.position.z);
+      seg.rotation.x = isTrack ? this.getElevationPitchAtZ(seg.position.z) : 0;
+
+      if (seg.leftRef) seg.leftRef.visible = !isTrack;
+      if (seg.rightRef) seg.rightRef.visible = !isTrack;
 
       // Zone visibility per segment
-      const isTrack = this.roadMode === 'track';
       const trackS = this.worldDistM - seg.position.z;
       const s = ((trackS % ZONE_CYCLE_LENGTH) + ZONE_CYCLE_LENGTH) % ZONE_CYCLE_LENGTH;
       const zone = getZoneAt(trackS, this.roadMode);
@@ -1632,14 +2302,57 @@ export class HighwayWorld {
       if (seg.trackGroup) {
         seg.trackGroup.visible = isTrack;
         if (isTrack) {
-          const u = ((trackS % TRACK_LAP_LENGTH) + TRACK_LAP_LENGTH) % TRACK_LAP_LENGTH;
-          if (seg.trackFinishLine) seg.trackFinishLine.visible = u < 25 || u > 3975;
-          if (seg.trackGantry) seg.trackGantry.visible = u < 25 || u > 3975;
-          if (seg.trackPit) seg.trackPit.visible = u >= 25 && u < 450;
-          if (seg.trackGrandstand) seg.trackGrandstand.visible = (u >= 25 && u < 450) || (u >= 2000 && u < 2700);
-          if (seg.trackBrakeBoards) seg.trackBrakeBoards.visible = (u >= 380 && u < 490) || (u >= 3180 && u < 3290);
-          if (seg.trackTires) seg.trackTires.visible = (u >= 500 && u < 800) || (u >= 2000 && u < 2700) || (u >= 3300 && u < 3600);
-          if (seg.trackFloodlight) seg.trackFloodlight.visible = (seg.segIndex % 3 === 0);
+          const { sec, u } = getTrackSectionAt(trackS);
+          const isFinish = u < 20 || u > TRACK_LAP_LENGTH - 20;
+          if (seg.trackFinishLine) seg.trackFinishLine.visible = isFinish;
+          if (seg.trackGantry) seg.trackGantry.visible = isFinish;
+          if (seg.trackGridBoxes) seg.trackGridBoxes.visible = (u >= 22 && u < 220) || u >= TRACK_LAP_LENGTH - 180;
+          if (seg.trackPit) seg.trackPit.visible = u >= 15 && u < 445;
+          if (seg.trackControlTower) seg.trackControlTower.visible = u >= 75 && u < 105;
+          if (seg.trackGrandstand) {
+            seg.trackGrandstand.visible =
+              (u >= 15 && u < 445) || (u >= 2320 && u < 2940) || (u >= 4160 && u < 4680);
+          }
+
+          // Overhead Track Bridges (Turn 1 approach, Turn 7-8 approach, Back Straight DRS zone)
+          if (seg.trackOverheadBridge) {
+            let bridgeIdx = -1;
+            if (u >= 335 && u < 358) bridgeIdx = 0;
+            else if (u >= 1815 && u < 1838) bridgeIdx = 1;
+            else if (u >= 3640 && u < 3663) bridgeIdx = 2;
+            seg.trackOverheadBridge.visible = bridgeIdx >= 0;
+            if (bridgeIdx >= 0 && seg.trackBridgeBanner && this.trackBridgeBannerMats) {
+              seg.trackBridgeBanner.material = this.trackBridgeBannerMats[bridgeIdx];
+            }
+          }
+
+          // Outside Corner Gravel Traps, Tire Stacks & Chevron Direction Boards
+          if (seg.trackCornerRight) seg.trackCornerRight.visible = sec.turnDir < 0;
+          if (seg.trackCornerLeft) seg.trackCornerLeft.visible = sec.turnDir > 0;
+
+          // Sequential 150m -> 100m -> 50m Brake Marker Boards before major corners
+          if (seg.trackBrakeBoards) {
+            let bMeters = 0;
+            let bSide = 1;
+            for (let bIdx = 0; bIdx < TRACK_BRAKE_ZONES.length; bIdx++) {
+              const bz = TRACK_BRAKE_ZONES[bIdx];
+              const distToTurn = bz.cornerStart - u;
+              if (distToTurn >= 38 && distToTurn <= 162) {
+                bSide = bz.side;
+                if (distToTurn >= 135 && distToTurn < 160) bMeters = 150;
+                else if (distToTurn >= 88 && distToTurn < 113) bMeters = 100;
+                else if (distToTurn >= 40 && distToTurn < 65) bMeters = 50;
+                break;
+              }
+            }
+            seg.trackBrakeBoards.visible = bMeters > 0;
+            if (bMeters > 0 && seg.trackBrakeMesh && this.trackBrakeMats) {
+              seg.trackBrakeBoards.position.x = bSide * (half + 2.2);
+              seg.trackBrakeMesh.material = this.trackBrakeMats[bMeters];
+            }
+          }
+
+          if (seg.trackFloodlight) seg.trackFloodlight.visible = seg.segIndex % 3 === 0;
         }
       }
 
@@ -1684,7 +2397,9 @@ export class HighwayWorld {
     // Update Headlight & Selektör position to follow player car X + Audi Matrix Adaptive Cornering light swivel
     this.headlightGroup.position.x = playerX;
     this.lowBeamTarget.position.x = this.getCurveOffsetAtZ(-55) * 0.7;
+    this.lowBeamTarget.position.y = isTrack ? this.getElevationOffsetAtZ(-55) * 0.6 : 0.0;
     this.highBeamTarget.position.x = this.getCurveOffsetAtZ(-115) * 0.7;
+    this.highBeamTarget.position.y = isTrack ? 0.5 + this.getElevationOffsetAtZ(-115) * 0.6 : 0.5;
     this.highBeamLight.intensity = highBeamActive ? 28.0 : 0.0;
 
     // Update falling rain streaks if Rainy weather is active

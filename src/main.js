@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
-import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, WEATHER_PRESETS } from './world.js';
+import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
 import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { A8Showroom } from './showroom.js';
@@ -1930,6 +1930,12 @@ class OtobanMakasGame {
       this.lapStartTime = performance.now();
       this.lastAnnouncedTurn = '';
       this.lastApexTurn = '';
+      if (!this.multiplayer.connected) {
+        this.world.worldDistM = 0;
+        this.world.sceneryItems.forEach((seg, idx) => {
+          seg.position.z = 40 - idx * 20;
+        });
+      }
     }
     this.updateHUD();
   }
@@ -2041,6 +2047,12 @@ class OtobanMakasGame {
       this.bestLapTime = Number(localStorage.getItem('otoban_track_best_lap') || 0);
       this.lastAnnouncedTurn = '';
       this.lastApexTurn = '';
+      if (!this.multiplayer.connected) {
+        this.world.worldDistM = 0;
+        this.world.sceneryItems.forEach((seg, idx) => {
+          seg.position.z = 40 - idx * 20;
+        });
+      }
       document.getElementById('hud-track-card')?.classList.remove('hidden');
     } else {
       document.getElementById('hud-track-card')?.classList.add('hidden');
@@ -2093,8 +2105,9 @@ class OtobanMakasGame {
   updateTrackProgression() {
     if (this.traffic.roadMode !== 'track') return;
 
-    const lapLen = 4000.0;
-    const currentLapNumber = Math.max(1, Math.floor(this.worldDistM / lapLen) + 1);
+    const lapLen = TRACK_LAP_LENGTH;
+    const trackDistM = this.world?.worldDistM || 0;
+    const currentLapNumber = Math.max(1, Math.floor(trackDistM / lapLen) + 1);
 
     // Lap Completion
     if (currentLapNumber > this.currentLap) {
@@ -2123,9 +2136,14 @@ class OtobanMakasGame {
       }
     }
 
-    // Turn notifications & apex scoring
-    const turnInfo = this.world.getTrackSectionAt?.(this.worldDistM);
+    // Turn notifications & apex scoring (including Turn 8's 4 distinct apexes!)
+    const turnInfo = this.world.getTrackSectionAt?.(trackDistM);
+    let hudTurnText = 'İSTANBUL PARK';
     if (turnInfo) {
+      const isT8 = turnInfo.sec.code === 'T8';
+      const t8ApexIdx = isT8 ? Math.min(4, Math.floor((turnInfo.t / turnInfo.sec.len) * 4) + 1) : 1;
+      hudTurnText = isT8 ? `8. Viraj • Diabolica (Apeks ${t8ApexIdx}/4)` : turnInfo.sec.name;
+
       if (turnInfo.sec.code !== this.lastAnnouncedTurn && turnInfo.sec.deltaC !== 0) {
         this.lastAnnouncedTurn = turnInfo.sec.code;
         this.showMakasNotification(`🏁 ${turnInfo.sec.name.toUpperCase()}`, 0, 'normal');
@@ -2133,17 +2151,23 @@ class OtobanMakasGame {
 
       // Apex Speed Reward: high speed cornering through the apex
       const isTurning = Math.abs(turnInfo.sec.deltaC) > 25;
-      const nearApex = turnInfo.t > turnInfo.sec.len * 0.35 && turnInfo.t < turnInfo.sec.len * 0.8;
+      const apexKey = isT8 ? `T8_A${t8ApexIdx}` : turnInfo.sec.code;
+      const subProgress = isT8
+        ? ((turnInfo.t / turnInfo.sec.len) * 4) % 1
+        : turnInfo.t / turnInfo.sec.len;
+      const nearApex = subProgress > 0.32 && subProgress < 0.78;
+
       if (isTurning && nearApex && this.speedKmh >= 130 && Math.abs(this.lateralG) >= 0.42) {
-        if (this.lastApexTurn !== turnInfo.sec.code) {
-          this.lastApexTurn = turnInfo.sec.code;
-          const pts = Math.round(350 * this.combo);
+        if (this.lastApexTurn !== apexKey) {
+          this.lastApexTurn = apexKey;
+          const pts = Math.round((isT8 ? 420 : 350) * this.combo);
           this.score += pts;
           this.combo = Math.min(10.0, this.combo + 0.5);
           this.comboTimer = 1.0;
           this.noteScore();
           this.coach.notifyScore();
-          this.showMakasNotification(`🏎️ MÜKEMMEL APEX (+${pts})`, pts, 'combo');
+          const apexLabel = isT8 ? `🏎️ 8. VİRAJ APEKS ${t8ApexIdx}/4 (+${pts})` : `🏎️ MÜKEMMEL APEX (+${pts})`;
+          this.showMakasNotification(apexLabel, pts, 'combo');
           this.sound.playTireChirp(this.speedKmh);
         }
       }
@@ -2156,7 +2180,7 @@ class OtobanMakasGame {
     const hudLapTime = document.getElementById('hud-lap-time');
     const hudLapBest = document.getElementById('hud-lap-best');
 
-    if (hudTrackTurn && turnInfo) hudTrackTurn.textContent = turnInfo.sec.name;
+    if (hudTrackTurn) hudTrackTurn.textContent = hudTurnText;
     if (hudLapBadge) hudLapBadge.textContent = `TUR ${this.currentLap}`;
     if (hudLapTime) hudLapTime.textContent = this.formatLapTime(lapTimeSec);
     if (hudLapBest) {
@@ -2424,8 +2448,12 @@ class OtobanMakasGame {
       this.lateralG = 0;
     }
 
-    // Keep car inside highway barriers (-7.35m to +7.35m)
+    // Keep car inside highway/track boundaries
     const maxLateralX = this.world.roadHalfWidth - 1.05;
+    if (this.traffic.roadMode === 'track' && Math.abs(this.playerX) > this.world.roadHalfWidth - 1.85 && this.speedKmh > 40) {
+      // Tactile FIA serrated kerb vibration when riding the red/white apex or exit kerbs
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.08 * Math.min(1, this.speedKmh / 160));
+    }
     if (Math.abs(this.playerX) > maxLateralX) {
       this.playerX = Math.sign(this.playerX) * maxLateralX;
       this.lateralVel *= -0.3;
@@ -2579,6 +2607,16 @@ class OtobanMakasGame {
     this.updateTrackProgression();
 
     const radarCars = this.traffic.getRadarSnapshot(this.playerX);
+    if (this.traffic.roadMode === 'track') {
+      const tDist = this.world?.worldDistM || 0;
+      const tInfo = this.world?.getTrackSectionAt?.(tDist);
+      radarCars.isTrack = true;
+      radarCars.trackProgress = (((tDist % TRACK_LAP_LENGTH) + TRACK_LAP_LENGTH) % TRACK_LAP_LENGTH) / TRACK_LAP_LENGTH;
+      radarCars.turnCode = tInfo?.sec?.code || 'MAIN';
+      radarCars.lap = this.currentLap || 1;
+    } else {
+      radarCars.isTrack = false;
+    }
 
     // Friends in the room show up on the Audi MMI Radar, and driving side by side with any of
     // them at speed scores a Tandem Makas
@@ -2956,6 +2994,16 @@ class OtobanMakasGame {
       );
       this.world.update(dt * 0.35, 22, this.playerX, false, this.multiplayer.localWorldDistM);
       const radarCars = this.traffic.getRadarSnapshot(this.playerX);
+    if (this.traffic.roadMode === 'track') {
+      const tDist = this.world?.worldDistM || 0;
+      const tInfo = this.world?.getTrackSectionAt?.(tDist);
+      radarCars.isTrack = true;
+      radarCars.trackProgress = (((tDist % TRACK_LAP_LENGTH) + TRACK_LAP_LENGTH) % TRACK_LAP_LENGTH) / TRACK_LAP_LENGTH;
+      radarCars.turnCode = tInfo?.sec?.code || 'MAIN';
+      radarCars.lap = this.currentLap || 1;
+    } else {
+      radarCars.isTrack = false;
+    }
       this.cockpit.update(
         dt,
         {
