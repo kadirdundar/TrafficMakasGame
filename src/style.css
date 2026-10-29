@@ -113,70 +113,72 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding-block: max(12px, env(safe-area-inset-top));
-    padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+    padding-block: max(10px, env(safe-area-inset-top));
+    padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right));
     pointer-events: none;
-    gap: 12px;
+    gap: 8px;
   }
 
   .hud-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 6px;
     pointer-events: auto;
   }
 
   .stat-card {
-    background: var(--glass-bg);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    padding-block: 6px;
-    padding-inline: 12px;
-    min-inline-size: 105px;
+    background: rgba(10, 16, 28, 0.48);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px;
+    padding-block: 4px;
+    padding-inline: 9px;
+    min-inline-size: auto;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    gap: 1px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
   }
 
   .stat-label {
-    font-size: 0.65rem;
+    font-size: 0.52rem;
     font-weight: 700;
     letter-spacing: 0.08em;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.52);
+    line-height: 1.1;
   }
 
   .stat-value {
     font-family: var(--font-mono);
-    font-size: 1.25rem;
+    font-size: 0.98rem;
     font-weight: 800;
     color: var(--text-main);
+    line-height: 1.15;
   }
 
   .combo-row,
   .time-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .combo-val,
   .time-val {
     color: var(--accent-cyan);
-    text-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
     font-variant-numeric: tabular-nums;
   }
 
   .combo-card.hot .combo-val {
     color: var(--accent-amber);
-    text-shadow: 0 0 14px rgba(255, 174, 0, 0.75);
+    text-shadow: 0 0 12px rgba(255, 174, 0, 0.7);
   }
 
   .combo-bar-wrap {
-    inline-size: 56px;
-    block-size: 6px;
+    inline-size: 44px;
+    block-size: 5px;
     background: rgba(255, 255, 255, 0.12);
     border-radius: 99px;
     overflow: hidden;
@@ -192,28 +194,28 @@
   .distance-row {
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    gap: 3px;
   }
 
   .distance-val {
     color: var(--accent-emerald);
-    text-shadow: 0 0 12px rgba(0, 255, 136, 0.45);
+    text-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
   }
 
   .distance-unit {
-    font-size: 0.68rem;
+    font-size: 0.56rem;
     font-weight: 700;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.45);
     font-family: var(--font-mono);
   }
 
   .health-bar-wrap {
-    inline-size: 88px;
-    block-size: 8px;
+    inline-size: 58px;
+    block-size: 5px;
     background: rgba(255, 255, 255, 0.12);
     border-radius: 99px;
     overflow: hidden;
-    margin-block-start: 6px;
+    margin-block-start: 4px;
   }
 
   .health-bar-fill {
@@ -566,7 +568,7 @@
   /* Selektör on upper-left: transparent glassmorphic button moved slightly down & enlarged */
   .touch-left-aux {
     position: fixed;
-    inset-block-start: max(98px, env(safe-area-inset-top) + 82px);
+    inset-block-start: max(82px, env(safe-area-inset-top) + 68px);
     inset-inline-start: max(16px, env(safe-area-inset-left));
     z-index: 15;
     pointer-events: auto;
@@ -2165,23 +2167,25 @@
 
   /* Live Racing Circuit / Track Lap Timing HUD Card */
   .track-card {
-    border-color: rgba(225, 29, 72, 0.55);
-    background: rgba(24, 8, 14, 0.85);
-    box-shadow: 0 0 16px rgba(225, 29, 72, 0.22);
-    min-inline-size: 160px;
-    gap: 3px;
+    border-color: rgba(225, 29, 72, 0.45);
+    background: rgba(24, 8, 14, 0.65);
+    box-shadow: 0 4px 12px rgba(225, 29, 72, 0.18);
+    min-inline-size: auto;
+    padding-block: 4px;
+    padding-inline: 9px;
+    gap: 2px;
   }
 
   .track-hud-row {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 5px;
   }
 
   .track-badge {
-    font-size: 0.65rem;
+    font-size: 0.54rem;
     font-weight: 900;
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 4px;
     background: #e11d48;
     color: #ffffff;
@@ -2191,14 +2195,14 @@
 
   .track-time {
     font-family: ui-monospace, monospace;
-    font-size: 1.15rem;
+    font-size: 0.98rem;
     font-weight: 900;
     color: #38bdf8;
     letter-spacing: 0.04em;
   }
 
   .track-best-label {
-    font-size: 0.62rem;
+    font-size: 0.54rem;
     color: #94a3b8;
     font-weight: 800;
     white-space: nowrap;
@@ -2206,10 +2210,12 @@
 
   /* Live 2-Player HUD Card */
   .mp-hud-card {
-    border-color: rgba(16, 185, 129, 0.55);
-    background: rgba(6, 22, 20, 0.82);
-    min-inline-size: 185px;
-    gap: 3px;
+    border-color: rgba(16, 185, 129, 0.45);
+    background: rgba(6, 22, 20, 0.65);
+    min-inline-size: auto;
+    padding-block: 4px;
+    padding-inline: 9px;
+    gap: 2px;
   }
 
   .mp-peer-list {
@@ -2720,7 +2726,7 @@
 
   .hud-stats {
     flex-wrap: nowrap !important;
-    gap: 5px !important;
+    gap: 4px !important;
     align-items: center !important;
     overflow-x: auto;
     max-inline-size: 68vw;
@@ -2728,22 +2734,22 @@
 
   .stat-card {
     min-inline-size: auto !important;
-    padding-block: 3px !important;
-    padding-inline: 8px !important;
-    border-radius: 8px !important;
+    padding-block: 2px !important;
+    padding-inline: 6px !important;
+    border-radius: 6px !important;
     flex-direction: row !important;
     align-items: baseline !important;
-    gap: 5px !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+    gap: 4px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
   }
 
   .stat-label {
-    font-size: 0.55rem !important;
+    font-size: 0.48rem !important;
     letter-spacing: 0.04em !important;
   }
 
   .stat-value {
-    font-size: 0.88rem !important;
+    font-size: 0.80rem !important;
   }
 
   .track-card {
