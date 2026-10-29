@@ -532,6 +532,9 @@ class OtobanMakasGame {
 
     // Settings sheet and the first-drive control picker
     document.getElementById('btn-settings-close')?.addEventListener('click', () => this.closeSettings());
+    document.getElementById('settings-sheet')?.addEventListener('click', (e) => {
+      if (e.target.id === 'settings-sheet') this.closeSettings();
+    });
     document.querySelectorAll('[data-settings-tab]').forEach((tab) => {
       tab.addEventListener('click', () => this.showSettingsTab(tab.dataset.settingsTab));
     });
@@ -652,8 +655,19 @@ class OtobanMakasGame {
     document.addEventListener('gesturechange', preventSafariZoom, { passive: false });
     document.addEventListener('gestureend', preventSafariZoom, { passive: false });
     document.addEventListener('dblclick', preventSafariZoom, { passive: false });
+
+    // Allow scrolling, clicking and native slider interaction inside menus, settings sheets and modals
+    const isInteractiveUI = (target) => {
+      if (!target || !target.closest) return false;
+      return Boolean(
+        target.closest(
+          '#menu-overlay, #settings-sheet, #first-drive-sheet, .sheet-overlay, .sheet-panel, .menu-modal, .pause-card, .picker-card, .game-dialog, input, select, textarea, button, label'
+        )
+      );
+    };
+
     document.addEventListener('contextmenu', (e) => {
-      if (!e.target.closest('#menu-overlay')) {
+      if (!isInteractiveUI(e.target)) {
         e.preventDefault();
       }
     });
@@ -663,7 +677,7 @@ class OtobanMakasGame {
     document.addEventListener(
       'touchstart',
       (e) => {
-        if (e.touches.length > 1 && !e.target.closest('#menu-overlay')) {
+        if (e.touches.length > 1 && !isInteractiveUI(e.target)) {
           e.preventDefault();
         }
       },
@@ -672,9 +686,17 @@ class OtobanMakasGame {
     document.addEventListener(
       'touchmove',
       (e) => {
-        if (e.touches.length > 1 || (e.scale !== undefined && e.scale !== 1) || !e.target.closest('#menu-overlay')) {
+        // Multi-touch pinch-zoom is blocked everywhere
+        if (e.touches.length > 1 || (e.scale !== undefined && e.scale !== 1)) {
           e.preventDefault();
+          return;
         }
+        // Allow smooth native scrolling & slider interaction inside menus, settings sheet, and modals
+        if (isInteractiveUI(e.target)) {
+          return;
+        }
+        // In gameplay canvas, prevent pull-to-refresh and unwanted viewport rubber-banding
+        e.preventDefault();
       },
       { passive: false }
     );
@@ -682,7 +704,7 @@ class OtobanMakasGame {
       'touchend',
       (e) => {
         const now = performance.now();
-        if (now - lastTouchEndTime <= 350 && !e.target.closest('#menu-overlay')) {
+        if (now - lastTouchEndTime <= 350 && !isInteractiveUI(e.target)) {
           e.preventDefault();
         }
         lastTouchEndTime = now;
