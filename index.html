@@ -583,14 +583,70 @@
             </div>
           </div>
 
-          <label class="setting-row" for="sound-switch">
-            <span class="setting-copy">
-              <strong>Ses</strong>
-              <small>Motor, makas ve radyo sesleri</small>
-            </span>
-            <input type="checkbox" id="sound-switch" class="switch-input" role="switch" checked />
-            <span class="switch-track" aria-hidden="true"></span>
-          </label>
+          <div class="panel-section sound-panel-section">
+            <div class="sound-section-header">
+              <h3>Ses Seviyeleri</h3>
+              <label class="sound-master-switch-wrap" for="sound-switch" title="Tüm sesleri aç / kapat">
+                <span class="sound-switch-label">Ana Ses</span>
+                <input type="checkbox" id="sound-switch" class="switch-input" role="switch" checked />
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="sound-sliders-list" id="sound-sliders-group">
+              <!-- Lastik / Kayma Sesi -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">🛞</span> Lastik &amp; Kayma Sesi
+                  </span>
+                  <span class="sound-pct" id="val-tire-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-tire-volume" min="0" max="150" step="5" value="100" aria-label="Lastik ve kayma sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Rüzgar / Yakın Geçiş Sesi -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">💨</span> Rüzgar &amp; Yakın Geçiş Sesi
+                  </span>
+                  <span class="sound-pct" id="val-wind-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-wind-volume" min="0" max="150" step="5" value="100" aria-label="Rüzgar ve yakın geçiş sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Motor / Egzoz Sesi -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">🏎️</span> Motor &amp; Egzoz Sesi
+                  </span>
+                  <span class="sound-pct" id="val-engine-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-engine-volume" min="0" max="150" step="5" value="100" aria-label="Motor ve egzoz sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Genel Ses (Master) -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">🔊</span> Genel Ses Düzeyi
+                  </span>
+                  <span class="sound-pct" id="val-master-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-master-volume" min="0" max="100" step="5" value="100" aria-label="Genel ses düzeyi" />
+                </div>
+              </div>
+            </div>
+          </div>
 
           <button id="btn-replay-coach" type="button" class="secondary-btn">İlk sürüş ipuçlarını tekrar göster</button>
         </section>

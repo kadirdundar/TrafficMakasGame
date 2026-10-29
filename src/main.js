@@ -539,6 +539,7 @@ class OtobanMakasGame {
     document.getElementById('sound-switch')?.addEventListener('change', (e) => {
       if (e.target.checked === this.sound.muted) this.toggleSound();
     });
+    this.setupAudioSettings();
     const coachBtn = document.getElementById('btn-replay-coach');
     coachBtn?.addEventListener('click', () => {
       resetCoach();
@@ -1395,6 +1396,7 @@ class OtobanMakasGame {
     const soundSwitch = document.getElementById('sound-switch');
     if (soundSwitch) soundSwitch.checked = !muted;
     this.radio.setMuted(muted);
+    document.getElementById('sound-sliders-group')?.classList.toggle('muted', muted);
   }
 
   toggleRadio() {
@@ -1633,8 +1635,62 @@ class OtobanMakasGame {
     this.touchBrake = 0;
   }
 
+  setupAudioSettings() {
+    const bindSlider = (id, valId, category, soundPreview) => {
+      const slider = document.getElementById(id);
+      const valEl = document.getElementById(valId);
+      if (!slider) return;
+
+      const current = this.sound.volumes[category] ?? 1.0;
+      slider.value = Math.round(current * 100);
+      if (valEl) valEl.textContent = `${slider.value}%`;
+
+      const update = () => {
+        const pct = parseInt(slider.value, 10) || 0;
+        if (valEl) valEl.textContent = `${pct}%`;
+        this.sound.setVolume(category, pct / 100);
+      };
+
+      slider.addEventListener('input', update);
+      slider.addEventListener('change', () => {
+        update();
+        if (soundPreview && !this.sound.muted) {
+          this.sound.init();
+          soundPreview();
+        }
+      });
+    };
+
+    bindSlider('slider-tire-volume', 'val-tire-volume', 'tire', () => this.sound.playTireChirp(120));
+    bindSlider('slider-wind-volume', 'val-wind-volume', 'wind', () => this.sound.playMakasWhoosh(1, false, 140, false));
+    bindSlider('slider-engine-volume', 'val-engine-volume', 'engine');
+    bindSlider('slider-master-volume', 'val-master-volume', 'master');
+
+    document.getElementById('sound-sliders-group')?.classList.toggle('muted', this.sound.muted);
+  }
+
+  syncAudioSliders() {
+    const sync = (id, valId, category) => {
+      const slider = document.getElementById(id);
+      const valEl = document.getElementById(valId);
+      if (!slider) return;
+      const current = this.sound.volumes[category] ?? 1.0;
+      slider.value = Math.round(current * 100);
+      if (valEl) valEl.textContent = `${slider.value}%`;
+    };
+    sync('slider-tire-volume', 'val-tire-volume', 'tire');
+    sync('slider-wind-volume', 'val-wind-volume', 'wind');
+    sync('slider-engine-volume', 'val-engine-volume', 'engine');
+    sync('slider-master-volume', 'val-master-volume', 'master');
+
+    document.getElementById('sound-sliders-group')?.classList.toggle('muted', this.sound.muted);
+    const soundSwitch = document.getElementById('sound-switch');
+    if (soundSwitch) soundSwitch.checked = !this.sound.muted;
+  }
+
   openSettings() {
     this.settingsOpen = true;
+    this.syncAudioSliders();
     this.showSettingsTab('prefs');
     document.getElementById('settings-sheet')?.classList.remove('hidden');
   }

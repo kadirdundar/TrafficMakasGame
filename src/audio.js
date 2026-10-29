@@ -17,6 +17,7 @@ export class SoundEngine {
     this.running = false;
 
     this.master = null;
+    this.masterGain = null;
     this.engineGain = null;
     this.turboGain = null;
     this.roadGain = null;
@@ -32,6 +33,15 @@ export class SoundEngine {
     this.tunnelGain = null;
     this.tunnelDelay = null;
     this.acousticZone = 'highway';
+
+    // Kullanıcıya özel ses seviyeleri (0.0 - 1.5 arası, varsayılan 1.0; localStorage üzerinde saklanır)
+    this.volumes = {
+      master: 1.0,
+      engine: 1.0,
+      tire: 1.0,
+      wind: 1.0,
+    };
+    this.loadSavedVolumes();
 
     // Smoothed engine load / turbo boost and gear-change envelope (see updateEngine)
     this.load = 0;
@@ -61,7 +71,11 @@ export class SoundEngine {
     this.master.ratio.value = 3;
     this.master.attack.value = 0.005;
     this.master.release.value = 0.2;
-    this.master.connect(this.ctx.destination);
+
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = this.muted ? 0.0 : this.volumes.master;
+    this.master.connect(this.masterGain);
+    this.masterGain.connect(this.ctx.destination);
 
     // One looping noise source feeds rain, tyres, road, wind and the turbo
     const bufferSize = this.ctx.sampleRate * 2;
@@ -399,18 +413,18 @@ export class SoundEngine {
 
     // Executive cabin sound volume: quiet, calming, and never loud or raspy
     const shiftLevel = now < this.shiftDipUntil ? this.shiftDipLevel : 1;
-    const engineVol = (0.016 + rpmNorm * 0.022 + this.load * 0.026) * shiftLevel;
+    const engineVol = (0.016 + rpmNorm * 0.022 + this.load * 0.026) * shiftLevel * this.volumes.engine;
     this.engineGain.gain.setTargetAtTime(engineVol, now, 0.06);
 
     // Muted turbo breath (heavily insulated Hot-V turbos, no boy-racer whistle)
     this.turboFilter.frequency.setTargetAtTime(1100 + this.boost * 1200, now, 0.15);
-    this.turboGain.gain.setTargetAtTime(this.boost * 0.0025, now, 0.15);
+    this.turboGain.gain.setTargetAtTime(this.boost * 0.0025 * this.volumes.engine, now, 0.15);
 
     // Tyre roar and laminar wind create a peaceful, serene highway cruiser ambience
     this.roadFilter.frequency.setTargetAtTime(160 + speedNorm * 320, now, 0.2);
-    this.roadGain.gain.setTargetAtTime(0.010 + Math.pow(speedNorm, 1.6) * 0.045, now, 0.2);
+    this.roadGain.gain.setTargetAtTime((0.010 + Math.pow(speedNorm, 1.6) * 0.045) * this.volumes.wind, now, 0.2);
     this.windFilter.frequency.setTargetAtTime(600 + speedNorm * 800, now, 0.2);
-    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.5) * 0.0045, now, 0.2);
+    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.5) * 0.0045 * this.volumes.wind, now, 0.2);
 
     // Gerçekçi lastik sesi: Hızlı ve sert sağ-sol manevralarda kauçuğun asfaltta kayma & ötüş hissi
     if (this.tireGain) {
@@ -421,8 +435,8 @@ export class SoundEngine {
       const slipExcess = Math.max(0, absG - 0.30);
       // Non-lineer kauçuk kayma tepkisi (sert manevrada belirginleşir)
       const slipIntensity = Math.min(1.0, Math.pow(slipExcess / 0.60, 1.3));
-      // Kullanıcının istediği gibi "kısık bir lastik sesi... lastik biraz kayar gibi" (maks ~0.042)
-      const scrubVol = (paused || this.muted) ? 0.0 : Math.min(0.042, slipIntensity * 0.045 * speedFactor);
+      // Kullanıcının ayarladığı lastik sesi çarpanı ile ölçeklenir
+      const scrubVol = (paused || this.muted) ? 0.0 : Math.min(0.042, slipIntensity * 0.045 * speedFactor) * this.volumes.tire;
 
       // Yanal G ve hıza bağlı doğal kauçuk stick-slip formant frekans kayması
       const basePitch = 830 + Math.min(1.2, absG) * 220 + speedFactor * 50;
@@ -473,7 +487,7 @@ export class SoundEngine {
 
   // Ani yön değiştirme veya apex viraj sınırında tatlı, kısık bir lastik ötüşü (chirp)
   playTireChirp(speedKmh = 140) {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.muted || (this.volumes?.tire ?? 1) <= 0) return;
     const now = this.ctx.currentTime;
     const dur = 0.11;
     const sampleRate = this.ctx.sampleRate;
@@ -496,7 +510,7 @@ export class SoundEngine {
 
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.032, now + 0.02);
+    gain.gain.linearRampToValueAtTime(0.032 * (this.volumes?.tire ?? 1), now + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
 
     source.connect(f1);
@@ -507,7 +521,7 @@ export class SoundEngine {
   }
 
   playMakasWhoosh(comboLevel = 1, isDouble = false, speedKmh = 140, isRazor = false) {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.muted || (this.volumes?.wind ?? 1) <= 0) return;
     const now = this.ctx.currentTime;
 
     // Gerçekçi Aerodinamik Rüzgar Yarılması & Basınç Dalgası (Whoosh)
@@ -567,9 +581,9 @@ export class SoundEngine {
     shearFilter.frequency.exponentialRampToValueAtTime(260, now + dur);
     shearFilter.Q.value = 1.6;
 
-    // Ana Rüzgar Kazanç Zarfı (Yakın geçiş rüzgar yarılması sesi %50 oranında düşürüldü)
+    // Ana Rüzgar Kazanç Zarfı (Kullanıcı ses ayarı çarpanı ile ölçeklenir)
     const whooshGain = this.ctx.createGain();
-    const peakGain = (isDouble ? 0.085 : isRazor ? 0.075 : 0.06) * speedRatio;
+    const peakGain = (isDouble ? 0.085 : isRazor ? 0.075 : 0.06) * speedRatio * (this.volumes?.wind ?? 1);
     whooshGain.gain.setValueAtTime(0.001, now);
     whooshGain.gain.linearRampToValueAtTime(peakGain, now + dur * 0.25);
     whooshGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
@@ -619,13 +633,52 @@ export class SoundEngine {
 
   toggleMute() {
     this.muted = !this.muted;
-    if (this.muted && this.ctx) {
-      for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain, this.tunnelGain]) {
-        g?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+    if (this.ctx) {
+      const now = this.ctx.currentTime;
+      if (this.masterGain) {
+        this.masterGain.gain.setTargetAtTime(this.muted ? 0.0 : (this.volumes?.master ?? 1), now, 0.04);
       }
-    } else {
-      this.setRainAmbience(this.isRaining);
+      if (this.muted) {
+        for (const g of [this.engineGain, this.turboGain, this.roadGain, this.windGain, this.tireGain, this.rainGain, this.tunnelGain]) {
+          g?.gain.setTargetAtTime(0, now, 0.05);
+        }
+      } else {
+        this.setRainAmbience(this.isRaining);
+      }
     }
     return this.muted;
+  }
+
+  setVolume(category, value) {
+    if (!this.volumes || this.volumes[category] === undefined) return;
+    this.volumes[category] = Math.max(0, Math.min(1.5, Number(value) || 0));
+    this.saveVolumes();
+
+    if (this.ctx && this.running) {
+      const now = this.ctx.currentTime;
+      if (category === 'master' && this.masterGain) {
+        const target = this.muted ? 0.0 : this.volumes.master;
+        this.masterGain.gain.setTargetAtTime(target, now, 0.03);
+      }
+    }
+  }
+
+  loadSavedVolumes() {
+    try {
+      const raw = localStorage.getItem('otoban_audio_volumes');
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (typeof d.master === 'number') this.volumes.master = Math.max(0, Math.min(1.5, d.master));
+        if (typeof d.engine === 'number') this.volumes.engine = Math.max(0, Math.min(1.5, d.engine));
+        if (typeof d.tire === 'number') this.volumes.tire = Math.max(0, Math.min(1.5, d.tire));
+        if (typeof d.wind === 'number') this.volumes.wind = Math.max(0, Math.min(1.5, d.wind));
+      }
+    } catch (_) {}
+  }
+
+  saveVolumes() {
+    try {
+      localStorage.setItem('otoban_audio_volumes', JSON.stringify(this.volumes));
+    } catch (_) {}
   }
 }
