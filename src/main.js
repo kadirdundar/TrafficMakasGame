@@ -27,6 +27,11 @@ const A8_GEAR_RATIOS = [0, 5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64];
 const A8_FINAL_DRIVE = 2.85;
 const A8_WHEEL_CIRCUMFERENCE_M = 2.23;
 const A8_IDLE_RPM = 700;
+// İstanbul Park tyre grip: the most lateral acceleration (in g) the tyres hold before the car
+// washes out of a corner, for a car with handling 1. Peak T1 (R≈80 m) is then ~130 km/h,
+// the T11 kink (R≈160 m) ~185 km/h, so the big corners need real braking.
+const TRACK_GRIP_G = 1.6;
+const GRAVITY = 9.81;
 
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
@@ -127,6 +132,7 @@ class OtobanMakasGame {
         this.speedKmh = 0; // everyone starts from a standstill
         this.lateralVel = 0;
         this.headingAngle = 0;
+        this.trackSlideAngle = 0;
         this.sound.init();
         this.sound.setRainAmbience(this.world.weatherKey === 'rain');
         this.beginDrive();
@@ -255,6 +261,7 @@ class OtobanMakasGame {
     this.lateralVel = 0;
     this.yawRate = 0; // rad/s chassis yaw angular velocity
     this.headingAngle = 0; // rad chassis slip/heading angle relative to highway
+    this.trackSlideAngle = 0; // rad, track only: how far the car has washed out past the tyres' grip
     this.bodyRoll = 0; // rad suspension roll angle (spring-damper)
     this.rollVel = 0;
     this.bodyPitch = 0; // rad suspension pitch angle (spring-damper)
@@ -1945,6 +1952,7 @@ class OtobanMakasGame {
     this.lateralVel = 0;
     this.yawRate = 0;
     this.headingAngle = 0;
+    this.trackSlideAngle = 0;
     this.bodyRoll = 0;
     this.rollVel = 0;
     this.bodyPitch = 0;
@@ -2065,6 +2073,7 @@ class OtobanMakasGame {
     this.playerX = this.startX();
     this.lateralVel = 0;
     this.headingAngle = 0;
+    this.trackSlideAngle = 0;
 
     // Track mode state
     if (mode === 'track') {
@@ -2464,7 +2473,32 @@ class OtobanMakasGame {
     const steerLatVel =
       Math.sin(this.headingAngle) * speedMs * (this.traffic.roadMode === 'track' ? 0.90 : 0.62) * offTrackGripPenalty +
       this.steerInput * steerPower * Math.min(1, this.speedKmh / 35); // no sideways creep when standing
-    const desiredLatVel = steerLatVel + centrifugalDriftVel;
+    let desiredLatVel = steerLatVel + centrifugalDriftVel;
+
+    // Track only: the tyres can hold v²·κ of cornering up to their grip. Past it the car runs a
+    // wider arc than the corner and its nose turns out at (needed − grip) / v rad/s, so carrying
+    // 230 km/h into a corner sends it off; under the limit the spare grip pulls it back in line.
+    let trackSlipG = 0;
+    if (this.traffic.roadMode === 'track' && speedMs > 1) {
+      const gripAccel =
+        TRACK_GRIP_G * GRAVITY * (0.75 + 0.25 * phys.handling) * wetFactor * offTrackGripPenalty;
+      const neededAccel = speedMs * speedMs * Math.abs(curveKappa);
+      const outward = -Math.sign(curveKappa) || Math.sign(this.trackSlideAngle);
+      if (neededAccel > gripAccel) {
+        this.trackSlideAngle += outward * ((neededAccel - gripAccel) / speedMs) * dt;
+        this.trackSlideAngle = THREE.MathUtils.clamp(this.trackSlideAngle, -0.35, 0.35);
+        // Tyres pushing wide scrub speed
+        this.speedKmh = Math.max(0, this.speedKmh - (neededAccel - gripAccel) * 0.35 * 3.6 * dt);
+        trackSlipG = (neededAccel - gripAccel) / GRAVITY;
+      } else if (this.trackSlideAngle !== 0) {
+        const recover = Math.max(0.6, (gripAccel - neededAccel) / speedMs) * dt;
+        this.trackSlideAngle =
+          Math.sign(this.trackSlideAngle) * Math.max(0, Math.abs(this.trackSlideAngle) - recover);
+      }
+      desiredLatVel += Math.sin(this.trackSlideAngle) * speedMs;
+    } else {
+      this.trackSlideAngle = 0;
+    }
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
       ? 12.5 * wetFactor
@@ -2483,6 +2517,7 @@ class OtobanMakasGame {
     const latAccelG = (this.lateralVel - prevLatVel) / (Math.max(0.001, dt) * 24.0);
     const rawLatG = (this.lateralVel - centrifugalDriftVel * 0.75) / 9.8 + latAccelG * 0.25;
     this.lateralG = THREE.MathUtils.lerp(this.lateralG, rawLatG, Math.min(1, dt * 12));
+    this.trackSlipG = trackSlipG; // drives the tyre squeal while the car washes wide
     if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralG) < 0.005) {
       this.lateralG = 0;
     }
@@ -2515,8 +2550,8 @@ class OtobanMakasGame {
         const nowMs = performance.now();
         if (!this._lastOffTrackWarnMs || nowMs - this._lastOffTrackWarnMs > 2200) {
           this._lastOffTrackWarnMs = nowMs;
-          this.showMinorNotification('⚠️ PİST DIŞI! ÇAKIL HAVUZU (HIZ KAYBI)');
-          this.sound.playTireSqueal(0.35);
+          this.showMakasNotification('⚠️ PİST DIŞI! ÇAKIL HAVUZU (HIZ KAYBI)', 0, 'normal');
+          this.sound.playTireChirp(this.speedKmh);
         }
       }
 
@@ -2525,6 +2560,7 @@ class OtobanMakasGame {
         this.playerX = Math.sign(this.playerX) * (barrierWallX - 0.35);
         this.lateralVel *= -0.35;
         this.headingAngle *= 0.25;
+        this.trackSlideAngle = 0;
         this.rollVel += -Math.sign(this.playerX) * 0.3;
         this.handleCollision('💥 BARİYERE ÇARPTIN! VİRAJA ÇOK HIZLI GİRDİN');
       }
@@ -2780,7 +2816,8 @@ class OtobanMakasGame {
       radarCars
     );
 
-    this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, this.lateralG);
+    const squealG = Math.max(Math.abs(this.lateralG), this.trackSlipG ? 0.6 + this.trackSlipG : 0);
+    this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, squealG);
     this.updateHUD();
 
     // Zero-overhead 10s ring buffer recording (writes flat typed arrays only, ~0.01ms)

@@ -111,7 +111,7 @@ export const TRACK_SECTIONS = [
   { name: '9. Viraj (Vadi Girişi Sert Sol Şikan)', code: 'T9', start: 3180, len: 170, kappa: -0.0122, deltaC: -78, turnDir: -1 },
   { name: '10. Viraj (Arka Düzlüğe Sağ Çıkış)', code: 'T10', start: 3350, len: 170, kappa: 0.0095, deltaC: 62, turnDir: 1 },
   { name: 'Arka Düzlük (DRS Bölgesi • Tırmanış)', code: 'BACK', start: 3520, len: 260, kappa: 0, deltaC: 0, turnDir: 0 },
-  { name: '11. Viraj (Tam Gaz Sağ Kink • 260 KM/S)', code: 'T11', start: 3780, len: 180, kappa: 0.0062, deltaC: 40, turnDir: 1 },
+  { name: '11. Viraj (Hızlı Sağ Kink)', code: 'T11', start: 3780, len: 180, kappa: 0.0062, deltaC: 40, turnDir: 1 },
   { name: '12. Viraj Ağır Frenleme Bölgesi', code: 'STR5', start: 3960, len: 200, kappa: 0, deltaC: 0, turnDir: 0 },
   { name: '12. Viraj (Sert Sol Saç Tokası)', code: 'T12', start: 4160, len: 200, kappa: -0.0135, deltaC: -95, turnDir: -1 },
   { name: '13. Viraj (Stadyum Teknik Sağ)', code: 'T13', start: 4360, len: 170, kappa: 0.0110, deltaC: 72, turnDir: 1 },
