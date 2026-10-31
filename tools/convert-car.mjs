@@ -644,7 +644,13 @@ async function buildCockpit(matrices) {
     for (const src of from) {
       const prim = nodeByName(src)?.getMesh()?.listPrimitives()[0];
       const tex = prim?.getMaterial()?.getBaseColorTexture();
-      if (!tex) continue;
+      if (!tex) {
+        // Untextured strip material (a solid blue colour): the whole part is the strip
+        const [r, g, b] = (prim?.getMaterial()?.getBaseColorFactor() ?? [0, 0, 0]).map((c) => c * 255);
+        const led = b > minBlue && b > r * overRed && b > g * overGreen && splitTriangles(doc, prim, () => true);
+        if (led) ledPrims.push(led);
+        continue;
+      }
       const sample = await textureSampler(tex);
       const uv = prim.getAttribute('TEXCOORD_0');
       const e = [];

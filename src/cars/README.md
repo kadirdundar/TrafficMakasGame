@@ -67,7 +67,7 @@ fiziği kullanır. Açıkken aracın fiziği bu değerlerden ve alınan yükselt
 
 Mevcut araçlar: A8 (başlangıç, 250 km/s, 0-100 3,9 sn), M4 CS (15.000), G 700 (18.000, hızlı
 kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Giriş seviyesi: Passat B5 (3.000,
-200 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s). Yükseltmeler, spoylerler, jant renkleri,
+200 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s), C 200 (12.000, 246 km/s). Yükseltmeler, spoylerler, jant renkleri,
 kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 
 ### `exterior`
