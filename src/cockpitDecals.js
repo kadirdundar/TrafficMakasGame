@@ -14,11 +14,13 @@ const MAX_CANVAS = 2048;
 //          flipV?: true when the model maps this area upside down,
 //          project?: {axis, up} to ignore the source UVs and map the selection planarly onto a
 //          disc facing `axis` (for badges whose atlas mapping is scrambled), paint(ctx, w, h, at) }
+// With `project`, meshes without UVs (untextured materials) work too: every triangle of the
+// matched material is taken and the canvas spans the unit square (`uv` is then ignored).
 export function applyAtlasPatch(root, patch) {
-  const [su0, su1, sv0, sv1] = patch.uv;
+  const [su0, su1, sv0, sv1] = patch.uv ?? [0, 1, 0, 1];
   const picks = [];
   root.traverse((o) => {
-    if (!o.isMesh || !o.geometry.index || !o.geometry.attributes.uv) return;
+    if (!o.isMesh || !o.geometry.index || (!o.geometry.attributes.uv && !patch.project)) return;
     if (patch.material && o.material.name !== patch.material) return;
     let named = false;
     for (let p = o; p && !named; p = p.parent) named = patch.meshes.includes(p.name);
@@ -31,6 +33,11 @@ export function applyAtlasPatch(root, patch) {
     const { index, attributes } = mesh.geometry;
     const uv = attributes.uv;
     const tris = [];
+    if (!uv) {
+      for (let t = 0; t < index.count; t += 3) tris.push(t, 0);
+      if (tris.length) box.splice(0, 4, 0, 1, 0, 1);
+      return { mesh, tris };
+    }
     for (let t = 0; t < index.count; t += 3) {
       let cu = 0;
       let cv = 0;

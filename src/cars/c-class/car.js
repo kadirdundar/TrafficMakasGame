@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { paintMercedesWheelButtons } from './painters.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -79,5 +80,18 @@ export default {
     wiperLen: 0.6,
     floor: null,
     occlusion: { y0: 0.3, y1: 0.85, min: 0.35 },
+    // Steering wheel buttons: the export lost their symbol texture (plain black faces)
+    atlasPatches: [
+      {
+        meshes: ['steering_wheel'],
+        material: 'w206_simbs',
+        scale: 2,
+        background: false,
+        project: { axis: [0, 0.474, 0.88] },
+        // Satin rather than gloss: upward-facing buttons would mirror the sky white
+        surface: { roughness: 0.5, metalness: 0.0 },
+        paint: paintMercedesWheelButtons,
+      },
+    ],
   },
 };
