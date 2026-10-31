@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.5 }, rear: { y: 0.46 } },
     url: `${BASE}models/brabus-g700.glb`,
     length: 4.87,
     // Stealth matte finish: low reflection, diffuse matte surface without harsh mirror glares

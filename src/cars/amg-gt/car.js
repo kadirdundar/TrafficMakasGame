@@ -27,6 +27,8 @@ export default {
   exterior: {
     // Rim colour (src/cars/rims.js): the rims are 'silver' with 'chrome' lips
     rims: { materials: ['silver', 'chrome'] },
+    // Number plates (src/cars/plate.js): ours take the place of the model's own
+    plate: { replace: 'plate' },
     url: `${BASE}models/amg-gt.glb`,
     length: 4.54,
     envMapIntensity: 0.25,

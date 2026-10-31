@@ -18,6 +18,7 @@ const VIEWS = {
   front34: { azimuth: -2.3, polar: 1.3 },
   side: { azimuth: -Math.PI / 2, polar: 1.44 },
   rear34: { azimuth: 0.62, polar: 1.28 },
+  rear: { azimuth: 0, polar: 1.42, zoom: 0.92 },
   front: { azimuth: Math.PI, polar: 1.42, zoom: 0.92 },
 };
 

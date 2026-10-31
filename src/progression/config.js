@@ -80,6 +80,11 @@ export const RIM_COLORS = [
   { id: 'gold', label: 'Altın', hex: 0xc9a227, price: 2000, per: {} },
 ];
 
+// Custom number plate (src/progression/plate.js): what a car wears before one is bought, and
+// the price of each new plate, the same for every car. Looks only.
+export const DEFAULT_PLATE = '34 MKS 34';
+export const PLATE_PRICE = 3000;
+
 // Visual parts a car can be fitted with: where the profile keeps them, the catalogue, and what
 // a car has before anything is bought. A new kind of part is one more entry here.
 export const PARTS = {

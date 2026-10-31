@@ -3,6 +3,8 @@ import { Peer } from 'peerjs';
 import { WEATHER_PRESETS } from './world.js';
 import { createLuxurySedan } from './vehicleModels.js';
 import { DEFAULT_CAR_ID, getCar, loadCarExterior } from './cars/index.js';
+import { DEFAULT_PLATE } from './progression/config.js';
+import { cleanPlate } from './progression/plate.js';
 
 const PEER_PREFIX = 'otoban-makas-v1-room-';
 
@@ -71,7 +73,7 @@ export class MultiplayerManager {
     this.localPaintSlot = (Number.isFinite(savedPaint) && savedPaint >= 0 && savedPaint < SLOT_STYLES.length)
       ? savedPaint
       : 0;
-    this.localParts = {}; // spoiler and rim colour of our car (src/progression/config.js → PARTS), sent with the state
+    this.localParts = {}; // spoiler, rim colour and plate of our car (src/progression/profile.js → parts), sent with the state
     this.localId = null;
     this.localSlot = 0;
     this.hostId = null; // who hosts the room right now (changes on a hand-over)
@@ -975,13 +977,16 @@ export class MultiplayerManager {
         player.car.setPaint(newPaintHex);
       }
     }
-    // Parts come as flat fields; older versions send none: their car has none
+    // Parts come as flat fields; older versions send none: their car has none (and the plate
+    // every car comes with)
     const spoiler = typeof d.spoiler === 'string' ? d.spoiler : 'none';
     const rim = typeof d.rim === 'string' ? d.rim : 'factory';
-    if (player.spoiler !== spoiler || player.rim !== rim) {
+    const plate = cleanPlate(d.plate) ?? DEFAULT_PLATE;
+    if (player.spoiler !== spoiler || player.rim !== rim || player.plate !== plate) {
       player.spoiler = spoiler;
       player.rim = rim;
-      player.parts = { spoiler, rim };
+      player.plate = plate;
+      player.parts = { spoiler, rim, plate };
       player.car.setParts(player.parts);
     }
     player.targetX = num(d.x, player.targetX);
@@ -1065,6 +1070,7 @@ export class MultiplayerManager {
       paintSlot: this.localPaintSlot,
       spoiler: this.localParts.spoiler ?? 'none',
       rim: this.localParts.rim ?? 'factory',
+      plate: this.localParts.plate ?? DEFAULT_PLATE,
       x: Number(localState.playerX.toFixed(2)),
       worldDistM: Number(this.localWorldDistM.toFixed(2)),
       speedKmh: Math.round(localState.speedKmh),
@@ -1127,6 +1133,7 @@ export class MultiplayerManager {
             paintSlot: p.paintSlot,
             spoiler: p.spoiler,
             rim: p.rim,
+            plate: p.plate,
             x: p.targetX,
             worldDistM: Number(p.targetWorldDistM.toFixed(2)),
             speedKmh: p.speedKmh,

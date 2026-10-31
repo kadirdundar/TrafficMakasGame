@@ -5,12 +5,14 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { createGlowMaterial } from '../vehicleModels.js';
 import { createSpoilerMount } from './spoiler.js';
 import { createRimPaint } from './rims.js';
-import { rimColorHex } from '../progression/config.js';
+import { createPlateMount } from './plate.js';
+import { DEFAULT_PLATE, rimColorHex } from '../progression/config.js';
 
 // Exterior car model for the garage turntable and online friends, driven by a car's `exterior`
 // config (src/cars/<id>/car.js, fields in src/cars/README.md). Returns
-// { group, bodyMat, setLights({ night, braking, highBeam }), setParts({ spoiler, rim }) }; the garage
-// recolours bodyMat. setSpoiler(id) and setRimColor(hex) fit one part directly (preview pages).
+// { group, bodyMat, setLights({ night, braking, highBeam }), setParts({ spoiler, rim, plate }) }; the
+// garage recolours bodyMat. setSpoiler(id), setRimColor(hex) and setPlate(text) fit one part
+// directly (preview pages).
 
 function glowQuads(points, w, h, facingFront, material) {
   const geos = points.map(([x, y, z]) => {
@@ -162,6 +164,9 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     cfg.url
   );
 
+  // Number plates (src/cars/plate.js): placed on the bumpers the first time one is set
+  const plateMount = createPlateMount(group, model, cfg.length / 2, cfg.plate, cfg.url);
+
   const { head: HEAD, tail: TAIL } = cfg;
   let lastKey = '';
   return {
@@ -169,10 +174,13 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     bodyMat,
     setSpoiler: spoilerMount.set,
     setRimColor,
-    // Parts the player fitted in the garage (ids from src/progression/config.js → PARTS)
-    setParts({ spoiler = 'none', rim = 'factory' } = {}) {
+    setPlate: plateMount.set,
+    // Parts the player fitted in the garage (ids from src/progression/config.js → PARTS) and
+    // the plate's text
+    setParts({ spoiler = 'none', rim = 'factory', plate = DEFAULT_PLATE } = {}) {
       spoilerMount.set(spoiler);
       setRimColor(rimColorHex(rim));
+      plateMount.set(plate);
     },
     setLights({ night = false, braking = false, highBeam = false }) {
       const key = `${night ? 1 : 0}${braking ? 1 : 0}${highBeam ? 1 : 0}`;

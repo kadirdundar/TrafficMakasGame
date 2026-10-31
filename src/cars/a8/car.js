@@ -25,6 +25,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.38 }, rear: { y: 0.49 } },
     // Rim colour (src/cars/rims.js): the rims share 'chrome' with the window trim
     rims: { materials: ['chrome'] },
     url: `${BASE}models/audi-a8.glb`,

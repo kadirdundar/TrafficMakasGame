@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.3 }, rear: { y: 0.53 } },
     // Rim colour (src/cars/rims.js): tyres and rims are one textured material, so only the
     // inner 72 % of the wheel (the rim) is painted
     rims: { reach: 0.72 },

@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.37 }, rear: { y: 0.815 } },
     url: `${BASE}models/focus.glb`,
     length: 4.48,
     envMapIntensity: 0.25,

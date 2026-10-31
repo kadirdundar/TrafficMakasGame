@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.38 }, rear: { y: 0.58 } },
     // Rim colour (src/cars/rims.js): the spokes share a textured material with the calipers
     // behind them, and 'rim' also holds the tyre: paint the outer face, inside the rim's radius
     rims: { materials: ['caliper', 'rim'], reach: 0.82, outer: 0.07 },

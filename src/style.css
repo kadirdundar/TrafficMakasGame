@@ -3310,6 +3310,95 @@
 }
 
 @layer modal {
+  /* New version: number plate (src/progression/garageUI.js → buildPlate) */
+  .plate-form {
+    display: grid;
+    gap: 8px;
+  }
+
+  .plate-preview {
+    display: flex;
+    align-items: stretch;
+    justify-self: center;
+    inline-size: min(100%, 250px);
+    block-size: 52px;
+    border: 3px solid #0f172a;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #f8fafc;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+
+  .plate-preview i {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    inline-size: 30px;
+    padding-block-end: 5px;
+    background: #1d4ed8;
+    color: #fff;
+    font-size: 0.62rem;
+    font-style: normal;
+    font-weight: 800;
+  }
+
+  .plate-preview span {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    color: #0f172a;
+    font-family: var(--font-mono);
+    font-size: 1.45rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .plate-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .plate-input {
+    flex: 1;
+    min-inline-size: 0;
+    padding: 8px 11px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .plate-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+
+  .plate-input:focus-visible {
+    outline: none;
+    border-color: rgba(255, 209, 102, 0.7);
+  }
+
+  .plate-note {
+    margin: 0;
+  }
+
+  .plate-note.error {
+    color: #ff6b81;
+  }
+
+  .plate-try.shake {
+    animation: buyShake 0.4s ease;
+  }
+}
+
+@layer modal {
   /* New version: rim colours, as many to a row as fit */
   .rim-grid {
     grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));

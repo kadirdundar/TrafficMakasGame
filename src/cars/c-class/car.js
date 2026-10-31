@@ -39,6 +39,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.36 }, rear: { y: 0.52 } },
     url: `${BASE}models/c-class.glb`,
     length: 4.79,
     // Metallic paint under clearcoat (the defaults are a satin finish)

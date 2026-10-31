@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): ours take the place of the model's own
+    plate: { replace: 'Material.010' },
     url: `${BASE}models/corolla.glb`,
     length: 4.62,
     envMapIntensity: 1.2,

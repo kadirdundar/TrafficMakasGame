@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Number plates (src/cars/plate.js): heights in m above the ground
+    plate: { front: { y: 0.42 }, rear: { y: 0.72 } },
     url: `${BASE}models/passat-b8.glb`,
     length: 4.77,
     envMapIntensity: 1.2,

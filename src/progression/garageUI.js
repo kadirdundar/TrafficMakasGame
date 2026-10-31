@@ -1,10 +1,12 @@
 import { CAR_LIST } from '../cars/index.js';
-import { MAX_UPGRADE_LEVEL, PARTS, UPGRADES } from './config.js';
+import { MAX_UPGRADE_LEVEL, PARTS, PLATE_PRICE, UPGRADES } from './config.js';
 import { carStats, partCost, statBars } from './performance.js';
+import { parsePlate } from './plate.js';
 import { carPrice } from './profile.js';
 
 // Garage side of the new version (the menu's garage screen): the switch, the wallet, prices on
-// the car cards, and per car three tabs — stats (and buying the car), upgrades, and parts.
+// the car cards, and per car three tabs — stats (and buying the car), upgrades, and parts (with
+// the number plate).
 // Nothing is bought on the first tap: a part goes on the turntable car to try, an upgrade shows
 // what it changes, and the purchase bar asks for a yes. While the switch is off only the paint
 // (static markup in index.html) shows, so the classic garage stays as it was.
@@ -20,6 +22,9 @@ const STAT_ROWS = [
 
 const PART_HEADINGS = { spoiler: 'Spoyler', rim: 'Jant Rengi' };
 const PART_NAMES = { spoiler: 'spoyler', rim: 'jant' };
+
+// A pending purchase that is tried on the garage car (a part or a plate)
+const isTried = (pending) => pending?.type === 'part' || pending?.type === 'plate';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -48,7 +53,8 @@ export class GarageProgressUI {
     this.car = null;
     this.runCoins = 0;
     this.tab = 'look';
-    this.pending = null; // { type: 'car' } | { type: 'upgrade', upgrade } | { type: 'part', kind, part }
+    // { type: 'car' } | { type: 'upgrade', upgrade } | { type: 'part', kind, part } | { type: 'plate', plate }
+    this.pending = null;
 
     this.switchEl = document.getElementById('newver-switch');
     this.walletEl = document.getElementById('garage-wallet');
@@ -185,7 +191,7 @@ export class GarageProgressUI {
   // Stats the car would have with the pending upgrade or part, or null
   pendingStats(car) {
     const p = this.pending;
-    if (!p || p.type === 'car') return null;
+    if (!p || p.type === 'car' || p.type === 'plate') return null;
     const levels = this.profile.levels(car.id);
     const parts = this.profile.parts(car.id);
     if (p.type === 'upgrade') levels[p.upgrade.id] = this.profile.level(car.id, p.upgrade.id) + 1;
@@ -258,7 +264,7 @@ export class GarageProgressUI {
 
   renderParts(car) {
     if (!this.profile.owns(car)) {
-      this.partsEl.replaceChildren(this.lockedNote(car, 'Spoyler ve jant rengi için önce aracı satın al.'));
+      this.partsEl.replaceChildren(this.lockedNote(car, 'Spoyler, jant rengi ve plaka için önce aracı satın al.'));
       return;
     }
     const sections = Object.keys(PARTS).map((kind) => {
@@ -266,7 +272,61 @@ export class GarageProgressUI {
       section.append(el('h3', '', PART_HEADINGS[kind] ?? kind), this.buildParts(car, kind));
       return section;
     });
-    this.partsEl.replaceChildren(...sections);
+    const plate = el('div', 'panel-section');
+    plate.append(el('h3', '', 'Plaka'), this.buildPlate(car));
+    this.partsEl.replaceChildren(...sections, plate);
+  }
+
+  // The car's plate and a field for a new one. "DENE" puts a valid plate on the garage car and
+  // waits in the purchase bar like a part; a plate that is not valid says why under the field.
+  buildPlate(car) {
+    const current = this.profile.plate(car.id);
+    const trying = this.pending?.type === 'plate' ? this.pending.plate : null;
+
+    const form = el('form', 'plate-form');
+    form.noValidate = true;
+    const shown = el('div', 'plate-preview');
+    shown.append(el('i', '', 'TR'), el('span', '', trying ?? current));
+    const input = el('input', 'plate-input');
+    Object.assign(input, {
+      type: 'text',
+      value: trying ?? '',
+      placeholder: current,
+      maxLength: 12,
+      autocomplete: 'off',
+      spellcheck: false,
+    });
+    input.setAttribute('autocapitalize', 'characters');
+    input.setAttribute('aria-label', 'Yeni plaka');
+    const btn = el('button', 'upgrade-btn plate-try', trying ? 'DENENİYOR' : 'DENE');
+    btn.type = 'submit';
+    btn.disabled = Boolean(trying);
+    const note = el('p', 'panel-note plate-note', `Her yeni plaka ${fmt(PLATE_PRICE)} para · örnek: 34 ABC 123`);
+
+    input.addEventListener('input', () => {
+      btn.disabled = false;
+      btn.textContent = 'DENE';
+      note.classList.remove('error');
+      note.textContent = `Her yeni plaka ${fmt(PLATE_PRICE)} para · örnek: 34 ABC 123`;
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const { plate, error } = parsePlate(input.value);
+      const why = error ?? (plate === current ? 'Bu plaka zaten takılı' : null);
+      if (why) {
+        note.textContent = why;
+        note.classList.add('error');
+        this.shake(btn);
+        return;
+      }
+      input.blur();
+      this.setPending({ type: 'plate', plate });
+    });
+
+    const row = el('div', 'plate-row');
+    row.append(input, btn);
+    form.append(shown, row, note);
+    return form;
   }
 
   // One card per part of a kind. A part bought is fitted for free; one not bought yet goes on
@@ -309,11 +369,13 @@ export class GarageProgressUI {
 
   setPending(pending) {
     if (!this.car) return;
-    const wasPart = this.pending?.type === 'part';
+    const wasTried = isTried(this.pending);
     this.pending = pending;
     if (pending.type === 'part') {
       this.onPreview?.({ ...this.profile.parts(this.car.id), [pending.kind]: pending.part.id }, pending.kind);
-    } else if (wasPart) {
+    } else if (pending.type === 'plate') {
+      this.onPreview?.({ ...this.profile.parts(this.car.id), plate: pending.plate }, 'plate');
+    } else if (wasTried) {
       this.onPreview?.(null);
     }
     this.renderPages();
@@ -322,9 +384,9 @@ export class GarageProgressUI {
 
   cancelPending() {
     if (!this.pending) return;
-    const wasPart = this.pending.type === 'part';
+    const wasTried = isTried(this.pending);
     this.pending = null;
-    if (wasPart) this.onPreview?.(null);
+    if (wasTried) this.onPreview?.(null);
     if (this.car && this.enabled) this.renderPages();
     this.renderConfirm();
   }
@@ -334,6 +396,7 @@ export class GarageProgressUI {
     if (!p || !this.car) return null;
     if (p.type === 'car') return carPrice(this.car);
     if (p.type === 'upgrade') return this.profile.nextUpgradeCost(this.car, p.upgrade.id);
+    if (p.type === 'plate') return PLATE_PRICE;
     return partCost(this.car, p.part);
   }
 
@@ -355,6 +418,9 @@ export class GarageProgressUI {
       const level = this.profile.level(car.id, p.upgrade.id) + 1;
       title = `${p.upgrade.label} · Seviye ${level}/${MAX_UPGRADE_LEVEL}`;
       detail = statChanges(carStats(car, this.profile.levels(car.id), this.profile.parts(car.id)), this.pendingStats(car));
+    } else if (p.type === 'plate') {
+      title = `Plaka · ${p.plate}`;
+      detail = 'Yalnızca görünüm · arabada deniyorsun';
     } else {
       title = `${p.part.label} ${PART_NAMES[p.kind] ?? ''}`.trim();
       detail =
@@ -375,6 +441,7 @@ export class GarageProgressUI {
     let ok = false;
     if (p.type === 'car') ok = this.profile.buyCar(car);
     else if (p.type === 'upgrade') ok = this.profile.buyUpgrade(car, p.upgrade.id);
+    else if (p.type === 'plate') ok = this.profile.buyPlate(car, p.plate);
     else ok = this.profile.fitPart(car, p.kind, p.part.id);
     if (!ok) {
       this.shake(document.getElementById('btn-confirm-buy'));

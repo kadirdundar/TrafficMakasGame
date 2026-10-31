@@ -1325,6 +1325,7 @@ class OtobanMakasGame {
     this.showroom?.setParts(parts ?? this.fittedParts());
     if (kind === 'spoiler') this.showroom?.goToView('rear34');
     if (kind === 'rim') this.showroom?.goToView('front34');
+    if (kind === 'plate') this.showroom?.goToView('rear');
   }
 
   onGaragePurchase({ type }) {
@@ -1334,9 +1335,10 @@ class OtobanMakasGame {
     // Turn the garage car round so the new part is in view
     if (type === 'spoiler') this.showroom?.goToView('rear34');
     if (type === 'rim') this.showroom?.goToView('front34');
+    if (type === 'plate') this.showroom?.goToView('rear');
   }
 
-  // Parts on the selected car ({ spoiler, rim }); none in the classic game
+  // Parts on the selected car ({ spoiler, rim, plate }); none in the classic game
   fittedParts() {
     return this.newVersion ? this.profile.parts(this.selectedCar) : {};
   }

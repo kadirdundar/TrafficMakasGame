@@ -1,8 +1,18 @@
-import { DEFAULT_CAR_PRICE, MAX_UPGRADE_LEVEL, PARTS, STARTING_COINS, TEST_MIN_COINS, UPGRADES } from './config.js';
+import {
+  DEFAULT_CAR_PRICE,
+  DEFAULT_PLATE,
+  MAX_UPGRADE_LEVEL,
+  PARTS,
+  PLATE_PRICE,
+  STARTING_COINS,
+  TEST_MIN_COINS,
+  UPGRADES,
+} from './config.js';
 import { partCost, upgradeCost } from './performance.js';
+import { cleanPlate, parsePlate } from './plate.js';
 
-// The player's save in the new version: coins, cars bought, and per car the upgrade levels and
-// the parts (spoilers, rim colours) bought / fitted.
+// The player's save in the new version: coins, cars bought, and per car the upgrade levels,
+// the parts (spoilers, rim colours) bought / fitted and the number plate.
 // Stored in localStorage under one versioned key; cars are referred to by their car.js id, so
 // cars added later simply start out unowned and unupgraded.
 
@@ -14,7 +24,7 @@ export function carPrice(car) {
 }
 
 function freshProfile() {
-  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, spoilers: {}, rims: {} };
+  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, spoilers: {}, rims: {}, plates: {} };
 }
 
 function readStored() {
@@ -29,6 +39,7 @@ function readStored() {
       upgrades: data.upgrades && typeof data.upgrades === 'object' ? data.upgrades : {},
       spoilers: data.spoilers && typeof data.spoilers === 'object' ? data.spoilers : {},
       rims: data.rims && typeof data.rims === 'object' ? data.rims : {},
+      plates: data.plates && typeof data.plates === 'object' ? data.plates : {},
     };
   } catch (_) {
     return freshProfile();
@@ -107,9 +118,28 @@ export class PlayerProfile {
     return list.some((p) => p.id === id) ? id : none;
   }
 
-  // Everything fitted on a car: { spoiler, rim }
+  // Everything fitted on a car: { spoiler, rim, plate }
   parts(carId) {
-    return Object.fromEntries(Object.keys(PARTS).map((kind) => [kind, this.fitted(kind, carId)]));
+    return {
+      ...Object.fromEntries(Object.keys(PARTS).map((kind) => [kind, this.fitted(kind, carId)])),
+      plate: this.plate(carId),
+    };
+  }
+
+  // Number plate on a car: the one bought, or the plate every car comes with
+  plate(carId) {
+    return cleanPlate(this.data.plates[carId]) ?? DEFAULT_PLATE;
+  }
+
+  // A new plate costs PLATE_PRICE each time; `text` in any spacing ("34abc123")
+  buyPlate(car, text) {
+    const { plate } = parsePlate(text);
+    if (!plate || plate === this.plate(car.id) || !this.owns(car) || this.data.coins < PLATE_PRICE) return false;
+    this.data.coins -= PLATE_PRICE;
+    this.data.plates[car.id] = plate;
+    this.flush();
+    this.emit();
+    return true;
   }
 
   ownsPart(car, kind, id) {

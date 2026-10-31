@@ -85,11 +85,14 @@ function makeGlowTexture() {
   return tex;
 }
 
-function makePlateTexture(text) {
+// Turkish plate (white, blue "TR" strip). `scale` 1 is 256×64 for traffic; the garage car,
+// seen up close, uses a sharper one.
+export function makePlateTexture(text, scale = 1) {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 64;
+  canvas.width = 256 * scale;
+  canvas.height = 64 * scale;
   const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
   ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, 256, 64);
   ctx.strokeStyle = '#0f172a';
@@ -113,6 +116,7 @@ function makePlateTexture(text) {
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
+  if (scale > 1) tex.anisotropy = 4;
   return tex;
 }
 
