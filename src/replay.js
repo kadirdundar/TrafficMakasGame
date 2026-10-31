@@ -718,7 +718,10 @@ export class DroneReplayManager {
 
     this.applyFrameAtTime(this.playTime, dt, false);
 
-    this.droneCamera.aspect = window.innerWidth / window.innerHeight;
+    // The canvas' laid-out size: right after a phone rotation window.innerWidth can still be stale
+    const canvas = this.renderer.domElement;
+    this.droneCamera.aspect =
+      (canvas.clientWidth || window.innerWidth) / (canvas.clientHeight || window.innerHeight);
     this.droneCamera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.droneCamera);
   }

@@ -919,7 +919,7 @@ export class CarCockpit {
       this.interior3d.update({
         steerAngle: this.currentSteerVisual,
         night: Boolean(state.cabinNight),
-        aspect: window.innerWidth / window.innerHeight,
+        aspect: (this.overlayCanvas.clientWidth || window.innerWidth) / (this.overlayCanvas.clientHeight || window.innerHeight),
         ambientHex: AMBIENT_COLORS[this.ambientKey]?.hex ?? 0x00f0ff,
         flash: this.makasFlashIntensity,
         wiperSweep: Math.sin(this.wiperPhase),
@@ -969,8 +969,9 @@ export class CarCockpit {
     if (!this.overlayCanvas || !this.overlayCtx || !this.imageLoaded) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const cssW = window.innerWidth;
-    const cssH = window.innerHeight;
+    // The canvas' laid-out size: right after a phone rotation window.innerWidth can still be stale
+    const cssW = this.overlayCanvas.clientWidth || window.innerWidth;
+    const cssH = this.overlayCanvas.clientHeight || window.innerHeight;
     const targetW = Math.round(cssW * dpr);
     const targetH = Math.round(cssH * dpr);
 

@@ -93,7 +93,8 @@ class OtobanMakasGame {
     this.pixelRatio = this.maxPixelRatio;
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.info.autoReset = false; // count draw calls of both passes (mirror + main)
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    // CSS keeps the canvas full-screen (style.css); only its drawing buffer follows the size
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
     this.container.appendChild(this.renderer.domElement);
@@ -371,9 +372,17 @@ class OtobanMakasGame {
     });
   }
 
+  // Size of the full-screen game view. Read from the laid-out container rather than
+  // window.innerWidth/innerHeight, which mobile browsers can still report from the old
+  // orientation when the resize event of a rotation fires.
+  viewportSize() {
+    const w = this.container.clientWidth || window.innerWidth;
+    const h = this.container.clientHeight || window.innerHeight;
+    return { w, h };
+  }
+
   updateCameraProjection() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const { w, h } = this.viewportSize();
     const preset = CAMERA_PRESETS[this.cameraPresetIndex];
     this.camera.aspect = w / h;
     // Shift optical center upward so the 3D highway horizon sits inside the Audi A8 windshield
@@ -382,10 +391,22 @@ class OtobanMakasGame {
   }
 
   bindEvents() {
-    window.addEventListener('resize', () => {
+    const resize = () => {
+      const { w, h } = this.viewportSize();
+      if (w === this._viewW && h === this._viewH) return;
+      this._viewW = w;
+      this._viewH = h;
       this.updateCameraProjection();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.setSize(w, h, false);
+    };
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    new ResizeObserver(resize).observe(this.container);
+    // Some phones finish laying out a rotation well after its events: check again once it settles
+    window.addEventListener('orientationchange', () => {
+      for (const ms of [100, 350, 800]) setTimeout(resize, ms);
     });
+    resize();
 
     // Keyboard Controls
     window.addEventListener('keydown', (e) => {
