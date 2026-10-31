@@ -73,6 +73,8 @@ export default {
       [/^mirrorGlass$/, { color: [0.6, 0.62, 0.65], metallic: 0.9, roughness: 0.05 }],
     ],
     cleanAttributes: true,
+    // Baked ambient occlusion in vertex colours: panel gaps, grille, arches, sills
+    ao: { rays: 32, distance: 0.3, strength: 0.8, min: 0.35 },
     // The swapped-in C200 lettering loses its 'C' at the body's error: kept as is (3k triangles)
     simplify: { targetTris: 60000, maxError: 0.012, excludeNodes: ['w206_c200_w206_lettering_0'] },
     maxTextureSize: 1024,
@@ -283,6 +285,17 @@ export default {
       [/^w206_leather_paintable$/, { color: [0.03, 0.028, 0.027], metallic: 0.0, roughness: 0.55 }],
       [/^w206_screen$/, { color: [0.004, 0.004, 0.005], metallic: 0.0, roughness: 0.06 }],
     ],
+    // Leather grain and plastic stipple: the tiling leathers from their own textures, the
+    // untextured door leather and dash plastic (no UVs in the source) from generated grain
+    detail: [
+      // w206_leather_black also covers the headliner and pillars: a light touch there
+      { materials: /^w206_leather_black$/, from: 'base', strength: 0.3 },
+      { materials: /^w206_leather_(black_paintable|paintable_perf)$/, from: 'base', strength: 0.8 },
+      { materials: /^w206_(leather_paintable|leather_perf)$/, from: 'leather', repeat: 28, strength: 0.7 },
+      { materials: /^w206_(color2|plast_rgb)$/, from: 'plastic', repeat: 40, strength: 0.35 },
+    ],
+    // Short rays in the tight cabin: footwells, seams, vent throats, under the dash
+    ao: { rays: 32, distance: 0.12, strength: 0.75, min: 0.4, skip: [/^(w206_gauges|w206_screen|AmbientLED|MirrorMaterial)$/] },
     join: true,
     cleanAttributes: true,
     simplify: { targetTris: 65000, maxError: 0.006, excludeNodes: ['steering_wheel'] },

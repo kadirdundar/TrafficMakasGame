@@ -1,7 +1,19 @@
 import * as THREE from 'three';
-import { paintMercedesWheelButtons } from './painters.js';
+import { cabinSymbolPainter, paintMercedesWheelButtons } from './painters.js';
 
 const BASE = import.meta.env.BASE_URL;
+
+// Small cabin symbols (w206_simbs without UVs), picked by region in model coordinates
+const symbolPatch = (group, region, project) => ({
+  meshes: ['CockpitRoot'],
+  material: 'w206_simbs',
+  region,
+  scale: 2,
+  background: false,
+  project,
+  surface: { roughness: 0.5, metalness: 0.0, alphaTest: 0.4 },
+  paint: cabinSymbolPainter(group),
+});
 
 // Mercedes-Benz C 200 (W206, AMG Line). Model built by src/cars/c-class/prep.mjs + convert.mjs.
 // Field reference: src/cars/README.md
@@ -29,7 +41,14 @@ export default {
   exterior: {
     url: `${BASE}models/c-class.glb`,
     length: 4.79,
-    envMapIntensity: 1.2,
+    // Metallic paint under clearcoat (the defaults are a satin finish)
+    envMapIntensity: 1.0,
+    metalness: 0.5,
+    roughness: 0.32,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.1,
+    // Chrome, window trims, rims and glass keep their converted finish (convert.mjs → materials)
+    keepFinish: ['chrome', 'trim', 'trimGloss', 'rim', 'glass', 'mirrorGlass'],
     rims: { materials: ['rim', 'chrome'], tyres: ['tire'] },
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
@@ -80,7 +99,7 @@ export default {
     wiperLen: 0.6,
     floor: null,
     occlusion: { y0: 0.3, y1: 0.85, min: 0.35 },
-    // Steering wheel buttons: the export lost their symbol texture (plain black faces)
+    // Button symbols: the export lost their symbol texture (plain black faces)
     atlasPatches: [
       {
         meshes: ['steering_wheel'],
@@ -92,6 +111,22 @@ export default {
         surface: { roughness: 0.5, metalness: 0.0 },
         paint: paintMercedesWheelButtons,
       },
+      // driver door top: mirror select/fold, windows, child lock
+      symbolPatch('windows', [[-0.722, 0.718, -0.26], [-0.694, 0.736, -0.13]], { axis: [0.11, 0.99, 0], up: [0, 0, -1] }),
+      // driver door: seat buttons, memory M/1/2/3
+      symbolPatch('doorDriver', [[-0.7, 0.892, -0.295], [-0.678, 0.922, -0.23]], { axis: [0.98, -0.21, 0.05] }),
+      // driver door: central locking
+      symbolPatch('locks', [[-0.706, 0.878, -0.078], [-0.694, 0.902, -0.052]], { axis: [0.98, -0.13, 0.12] }),
+      // light panel left of the wheel
+      symbolPatch('lights', [[-0.606, 0.77, -0.385], [-0.574, 0.806, -0.37]], { axis: [0, 0.02, 1] }),
+      // start/stop
+      symbolPatch('start', [[-0.165, 0.858, -0.408], [-0.13, 0.882, -0.38]], { axis: [-0.02, 0.78, 0.62] }),
+      // button row under the centre screen
+      symbolPatch('centre', [[-0.1, 0.725, -0.256], [0.115, 0.745, -0.234]], { axis: [-0.05, 0.6, 0.8] }),
+      // overhead console
+      symbolPatch('overhead', [[-0.065, 1.28, 0.06], [0.065, 1.322, 0.118]], { axis: [0, -0.68, 0.74] }),
+      // passenger door: seat buttons, memory
+      symbolPatch('doorPassenger', [[0.678, 0.892, -0.295], [0.7, 0.922, -0.23]], { axis: [-0.98, -0.21, 0.05] }),
     ],
   },
 };

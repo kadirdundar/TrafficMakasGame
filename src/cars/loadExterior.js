@@ -78,6 +78,8 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     const mat = o.material;
     const name = mat?.name || '';
     if (name === paintName) {
+      // Baked ambient occlusion (vertex colours, convert.mjs → exterior.ao) carries over to the paint
+      if (o.geometry.attributes.color) bodyMat.vertexColors = true;
       o.material = bodyMat;
       return;
     }
@@ -96,7 +98,12 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
       if (rule.box) boxes[rule.box].expandByObject(o);
       return;
     }
-    // Tame mirror reflections across all secondary exterior materials (trim, glass, rims, bodykit, etc.)
+    // Tame mirror reflections across all secondary exterior materials (trim, glass, rims, bodykit, etc.).
+    // `keepFinish` names materials whose converted PBR values are tuned and kept as they are.
+    if (mat && cfg.keepFinish?.includes(name)) {
+      if ('envMapIntensity' in mat) mat.envMapIntensity = cfg.keepFinishEnv ?? 0.6;
+      return;
+    }
     if (mat) {
       const isGlass = /glass|lens|window/i.test(name) || mat.transparent;
       if ('roughness' in mat) {

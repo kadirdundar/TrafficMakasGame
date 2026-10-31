@@ -15,9 +15,11 @@ const MAX_CANVAS = 2048;
 //          project?: {axis, up} to ignore the source UVs and map the selection planarly onto a
 //          disc facing `axis` (for badges whose atlas mapping is scrambled), paint(ctx, w, h, at) }
 // With `project`, meshes without UVs (untextured materials) work too: every triangle of the
-// matched material is taken and the canvas spans the unit square (`uv` is then ignored).
+// matched material is taken (or those whose centroid lies in `region` [[x0, y0, z0], [x1, y1, z1]],
+// in the model's coordinates) and the canvas spans the unit square (`uv` is then ignored).
 export function applyAtlasPatch(root, patch) {
   const [su0, su1, sv0, sv1] = patch.uv ?? [0, 1, 0, 1];
+  root.updateMatrixWorld(true);
   const picks = [];
   root.traverse((o) => {
     if (!o.isMesh || !o.geometry.index || (!o.geometry.attributes.uv && !patch.project)) return;
@@ -34,7 +36,16 @@ export function applyAtlasPatch(root, patch) {
     const uv = attributes.uv;
     const tris = [];
     if (!uv) {
-      for (let t = 0; t < index.count; t += 3) tris.push(t, 0);
+      const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(mesh.matrixWorld);
+      const [lo, hi] = patch.region ?? [[-Infinity, -Infinity, -Infinity], [Infinity, Infinity, Infinity]];
+      const c = new THREE.Vector3();
+      const p = new THREE.Vector3();
+      for (let t = 0; t < index.count; t += 3) {
+        c.set(0, 0, 0);
+        for (let k = 0; k < 3; k++) c.add(p.fromBufferAttribute(attributes.position, index.getX(t + k)));
+        c.divideScalar(3).applyMatrix4(toRoot);
+        if (c.x >= lo[0] && c.x <= hi[0] && c.y >= lo[1] && c.y <= hi[1] && c.z >= lo[2] && c.z <= hi[2]) tris.push(t, 0);
+      }
       if (tris.length) box.splice(0, 4, 0, 1, 0, 1);
       return { mesh, tris };
     }
@@ -97,10 +108,12 @@ export function applyAtlasPatch(root, patch) {
     const pos = geo.attributes.position;
     const nrm = geo.attributes.normal;
     const uv = geo.attributes.uv;
+    const col = geo.attributes.color; // baked AO: the cloned material reads vertex colours
     const n = tris.length / 2;
     const P = new Float32Array(n * 9);
     const N = new Float32Array(n * 9);
     const T = new Float32Array(n * 6);
+    const C = col && new Float32Array(n * 9);
     const taken = new Set();
     for (let s = 0; s < tris.length; s += 2) {
       const [t, shift] = [tris[s], tris[s + 1]];
@@ -110,6 +123,7 @@ export function applyAtlasPatch(root, patch) {
         const o = (s / 2) * 3 + k;
         P.set([pos.getX(i), pos.getY(i), pos.getZ(i)], o * 3);
         if (nrm) N.set([nrm.getX(i), nrm.getY(i), nrm.getZ(i)], o * 3);
+        if (C) C.set([col.getX(i), col.getY(i), col.getZ(i)], o * 3);
         T.set(
           planar ? planar(pos.getX(i), pos.getY(i), pos.getZ(i)) : [(uv.getX(i) - shift - u0) / (u1 - u0), (uv.getY(i) - v0) / (v1 - v0)],
           o * 2
@@ -126,6 +140,7 @@ export function applyAtlasPatch(root, patch) {
     patchGeo.setAttribute('position', new THREE.BufferAttribute(P, 3));
     patchGeo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
     patchGeo.setAttribute('uv', new THREE.BufferAttribute(T, 2));
+    if (C) patchGeo.setAttribute('color', new THREE.BufferAttribute(C, 3));
     if (!nrm) patchGeo.computeVertexNormals();
     const mat = mesh.material.clone();
     mat.name = `${mesh.material.name}#patch`;

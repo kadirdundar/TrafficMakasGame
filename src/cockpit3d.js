@@ -249,6 +249,7 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
     o.material.side = THREE.DoubleSide;
     if (cfg.paintMaterials?.has(o.material.name)) {
+      if (o.geometry.attributes.color) paintMat.vertexColors = true; // baked AO (convert.mjs → cockpit.ao)
       o.material = paintMat;
       return;
     }

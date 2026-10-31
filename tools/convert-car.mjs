@@ -21,6 +21,8 @@ import {
   splitTriangles,
   textureSampler,
 } from './lib/gltf-utils.mjs';
+import { addDetailNormals } from './lib/surface-detail.mjs';
+import { bakeAmbientOcclusion } from './lib/ambient-occlusion.mjs';
 
 // GLTFLoader runs in Node with these globals
 globalThis.self = globalThis;
@@ -326,6 +328,7 @@ async function buildExterior(matrices) {
   if (ex.cleanAttributes) cleanAttributes(root);
   await simplifyDoc(doc, ex.simplify);
   if (ex.join !== false) await doc.transform(join());
+  bakeAmbientOcclusion(doc, ex.ao);
   await compressTextures(doc, { quality: ex.webpQuality ?? 85, maxSize: ex.maxTextureSize, sizes: ex.textureSizes });
   await finish(doc, ex);
   await save(io, doc, outPath(ex.out));
@@ -695,6 +698,7 @@ async function buildCockpit(matrices) {
 
   mergeMaterials(root, ck.mergeMaterials);
   applyMaterialFixes(root, ck.materials);
+  await addDetailNormals(doc, ck.detail); // before cleanAttributes: normal-mapped parts keep UVs
   if (ck.cleanAttributes) cleanAttributes(root);
 
   await simplifyDoc(doc, ck.simplify);
@@ -704,6 +708,7 @@ async function buildCockpit(matrices) {
     const separate = new Set(['steering_wheel', 'steering_column', 'mirror_left', 'mirror_right', 'mirror_center', 'ambient_led', 'cabin_floor', ...(ck.keepSeparate || [])]);
     await doc.transform(join({ filter: (node) => !separate.has(node.getName()) }));
   }
+  bakeAmbientOcclusion(doc, ck.ao);
   await compressTextures(doc, { quality: ck.webpQuality ?? 90, maxSize: ck.maxTextureSize, sizes: ck.textureSizes });
   await finish(doc, ck);
   await save(io, doc, outPath(ck.out));

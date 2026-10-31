@@ -78,6 +78,7 @@ kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 | `length` | Gerçek araç boyu (m). Model bu boya ölçeklenir, tekerlekler y = 0'a oturur. |
 | `paintMaterial` | Oyuncu rengiyle boyanan malzemenin adı (varsayılan `paint`). |
 | `envMapIntensity` | Boya yansıma gücü (varsayılan 1.2). |
+| `keepFinish` | İsteğe bağlı. Yükleyici boya dışındaki malzemeleri mat yapar (metalness ≤ 0.3, roughness ≥ 0.62); burada adı geçen malzemeler (ör. `['chrome', 'trim', 'rim', 'glass']`) `convert.mjs` → `materials` değerlerini korur. Yansıma gücü `keepFinishEnv` (varsayılan 0.6). |
 | `head`, `tail` | Far/stop parlaklıkları: `{ day, night, highBeam }`, `{ day, night, brake }`. |
 | `lamps` | Malzeme adına göre lamba kuralları; ilk eşleşen kazanır. `match` (RegExp), `role` (`head`/`tail`), isteğe bağlı `emissive`, `color`, `removeMap`, `emissiveFromMap`, `intensity`, `box` (halenin konumu bu lambaların sınır kutusundan alınır). |
 | `spoiler` | İsteğe bağlı. Spoyler yeri modelden kendiliğinden ölçülür (bagaj kapağının ya da SUV'da tavanın arka kenarı, `src/cars/spoiler.js`). Yanlış yere oturursa `{ z, y, width }` (model metresi) ile elle verilir. Kontrol: `/tools/model-preview/car.html?car=<id>&spoiler=wing&az=0.8&pol=1.25&dist=5&t=0,0.9,1.4` (`lip`, `ducktail`, `wing`). |
@@ -123,6 +124,7 @@ Düğüm adları `npm run car:inspect` çıktısındaki adlardır; desenler RegE
 | `*.cleanAttributes` | Dokusuz malzemelerden UV/tangent/renk verisini siler (dosya küçülür, birleştirme artar). |
 | `*.maxTextureSize`, `*.webpQuality` | Doku boyu sınırı ve WebP kalitesi. |
 | `*.textureSizes` | `[desen, px]`: eşleşen malzemelerin dokularına ayrı sınır (ör. panel boyunca tekrar eden kumaş/plastik doku ve normal haritaları için 256). Kokpit dosyasını en çok bunlar büyütür. |
+| `*.ao` | `{ rays, distance, strength, min, skip }`: önceden hesaplanmış ortam gölgesi (`tools/lib/ambient-occlusion.mjs`), köşe rengi (COLOR_0) olarak saklanır; oyunda ek maliyeti yok. `distance` ışın boyu (m): dışta ~0.3, kabinde ~0.12. |
 | `*.compress` | meshopt geometri sıkıştırması (oyun çözer; dosya ~2-3 kat küçülür). |
 | `cockpit.out`, `cockpit.keepNodes` | Kokpit çıktısı ve sürücüden görünen düğümler (boşsa kokpit atlanır). |
 | `cockpit.eye` | Göz noktası (sahne extras'ına yazılır). |
@@ -131,6 +133,7 @@ Düğüm adları `npm run car:inspect` çıktısındaki adlardır; desenler RegE
 | `cockpit.mirrors` | `{ name: 'mirror_left' / 'mirror_right' / 'mirror_center', from, uv?, x?, y?, z?, facing? }`: modelin ayna camı üçgenleri; UV kutusu ve/veya üçgen merkezinin konum aralığı ve yönü ile seçilir. |
 | `cockpit.join`, `cockpit.keepSeparate` | Statik parçaları malzemeye göre birleştirir; oyunun adla aradığı düğümler (direksiyon, aynalar, LED, zemin) ve `keepSeparate` ayrı kalır (`atlasPatches`/`satinPieces` düğümlerini buraya yaz). |
 | `cockpit.ambientLed` | `{ from, minBlue, overRed, overGreen }`: atlasta mavi boyalı şeritleri `ambient_led` mesh'ine ayırır. |
+| `cockpit.detail` | `[{ materials, from, strength, repeat }]`: deri/plastik yüzey dokusu (normal haritası, `tools/lib/surface-detail.mjs`). `from: 'base'` malzemenin kendi dokusunu yükseklik haritası sayar; `'leather'` / `'plastic'` döşenebilir prosedürel doku, UV'si olmayan parçalara kutu izdüşümlü UV (`repeat`: metre başına tekrar). |
 | `cockpit.floor` | `{ y, x: [x0, x1], z: [z0, z1], color }`: zemini olmayan modellere ayak boşluğu düzlemi. |
 
 

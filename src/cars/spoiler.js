@@ -53,11 +53,19 @@ function fitToLid(geo, m) {
   return geo;
 }
 
+// A paint that multiplies baked vertex colours (AO) would turn a part without them black
+function paintedMesh(geo, paint) {
+  if (paint.vertexColors) {
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3).fill(1), 3));
+  }
+  return new THREE.Mesh(geo, paint);
+}
+
 const BUILDERS = {
   // Thin lip on the lid's trailing edge
   lip(m, paint) {
     const geo = extrudeProfile([[-0.1, -0.012], [0.02, -0.012], [0.03, 0.035], [-0.1, 0.004]], m.width, LID_STEPS);
-    return [new THREE.Mesh(fitToLid(geo, m), paint)];
+    return [paintedMesh(fitToLid(geo, m), paint)];
   },
   // Kicked-up ducktail, 911 style
   ducktail(m, paint) {
@@ -66,7 +74,7 @@ const BUILDERS = {
       m.width,
       LID_STEPS
     );
-    return [new THREE.Mesh(fitToLid(geo, m), paint)];
+    return [paintedMesh(fitToLid(geo, m), paint)];
   },
   // Level GT wing on two stands that stand on the lid, with endplates
   wing(m) {
