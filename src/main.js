@@ -11,7 +11,8 @@ import { DroneReplayManager } from './replay.js';
 import { CLASSIC_PHYSICS, carStats, longitudinalAccel, resolvePhysics } from './progression/performance.js';
 import { PlayerProfile } from './progression/profile.js';
 import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js';
-import { COINS_PER_KM, COINS_PER_POINT } from './progression/config.js';
+import { COINS_PER_KM, COINS_PER_POINT, neonColorHex } from './progression/config.js';
+import { createNeonGlow, createNeonSpill } from './cars/neon.js';
 import { GarageProgressUI } from './progression/garageUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
 import { MenuMusicPlayer } from './menuMusic.js';
@@ -63,6 +64,18 @@ const STEER_MODES = [
   },
 ];
 const STEER_MODE_KEY = 'otoban_steer_mode';
+
+// Garage camera view that shows each part best (src/showroom.js → VIEWS)
+const PART_VIEWS = {
+  spoiler: 'rear34',
+  rim: 'front34',
+  finish: 'front34',
+  hood: 'front34',
+  mirrors: 'front34',
+  tint: 'side',
+  neon: 'side',
+  plate: 'rear',
+};
 
 const ROAD_LABELS = { highway: 'Otoban', twoway: 'Gidiş-Geliş', track: 'İstanbul Park' };
 // Each number of the 3-2-1 before a paused drive goes on
@@ -1306,9 +1319,29 @@ class OtobanMakasGame {
     this.showroom?.setParts(parts);
     this.multiplayer?.setLocalParts(parts);
     this.replay?.ensurePlayerExteriorModel(car.id, this.selectedPaintSlot || 0, parts);
+    this.updateRoadNeon(car, parts);
     const top = this.carPhysics.maxSpeed;
     this.cockpit?.setSpeedoMax(top <= 260 ? 260 : top <= 320 ? 320 : 360);
     this.garageUI.render(car);
+  }
+
+  // Neon underglow of the driven car: its light on the road round the car (in the mirrors) and
+  // the part of it that spills out ahead onto the road the driver sees over the bonnet. The car
+  // itself is not drawn in the cockpit view.
+  updateRoadNeon(car, parts) {
+    if (!this.roadNeonGroup) {
+      this.roadNeonGroup = new THREE.Group();
+      this.scene.add(this.roadNeonGroup);
+    }
+    const length = car.exterior?.length ?? 4.8;
+    if (this.roadNeonLength !== length) {
+      this.roadNeonGroup.clear();
+      this.roadNeon = [createNeonGlow(1.9, length, 1.6), createNeonSpill(length)];
+      this.roadNeonGroup.add(...this.roadNeon.map((glow) => glow.mesh));
+      this.roadNeonLength = length;
+    }
+    const hex = neonColorHex(parts.neon);
+    this.roadNeon.forEach((glow) => glow.setColor(hex));
   }
 
   setNewVersion(on = true) {
@@ -1323,19 +1356,20 @@ class OtobanMakasGame {
   // Garage: parts tried on the turntable car before they are bought (null: back to the fitted ones)
   previewParts(parts, kind) {
     this.showroom?.setParts(parts ?? this.fittedParts());
-    if (kind === 'spoiler') this.showroom?.goToView('rear34');
-    if (kind === 'rim') this.showroom?.goToView('front34');
-    if (kind === 'plate') this.showroom?.goToView('rear');
+    this.showPartView(kind);
+  }
+
+  // Turns the garage car round so a part just tried or bought is in view
+  showPartView(kind) {
+    const view = PART_VIEWS[kind];
+    if (view) this.showroom?.goToView(view);
   }
 
   onGaragePurchase({ type }) {
     this.sound.init();
     this.sound.playSelektorClick();
     this.applyCarPerformance();
-    // Turn the garage car round so the new part is in view
-    if (type === 'spoiler') this.showroom?.goToView('rear34');
-    if (type === 'rim') this.showroom?.goToView('front34');
-    if (type === 'plate') this.showroom?.goToView('rear');
+    this.showPartView(type);
   }
 
   // Parts on the selected car ({ spoiler, rim, plate }); none in the classic game
@@ -2839,6 +2873,14 @@ class OtobanMakasGame {
       radarCars
     );
 
+    if (this.roadNeonGroup) {
+      this.roadNeonGroup.visible = true;
+      this.roadNeonGroup.position.set(this.playerX, 0, 0);
+      this.roadNeonGroup.rotation.set(this.world.getElevationPitchAtZ?.(0) ?? 0, -this.headingAngle, 0);
+      const night = Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn);
+      this.roadNeon.forEach((glow) => glow.setNight(night));
+    }
+
     const squealG = Math.max(Math.abs(this.lateralG), this.trackSlipG ? 0.6 + this.trackSlipG : 0);
     this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, squealG);
     this.updateHUD();
@@ -3092,6 +3134,7 @@ class OtobanMakasGame {
         },
         null
       );
+      if (this.roadNeonGroup) this.roadNeonGroup.visible = false; // the replay's car has its own
       this.replay.updateAndRender(dt);
       return;
     } else if (this.uiState !== 'menu') {

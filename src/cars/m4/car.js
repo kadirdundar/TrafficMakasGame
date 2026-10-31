@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Carbon bonnet (src/cars/carbon.js): the bonnet is a material of its own
+    carbon: { hood: { materials: ['m4car_hood1.006'] } },
     // Number plates (src/cars/plate.js): heights in m above the ground
     plate: { front: { y: 0.3 }, rear: { y: 0.53 } },
     // Rim colour (src/cars/rims.js): tyres and rims are one textured material, so only the

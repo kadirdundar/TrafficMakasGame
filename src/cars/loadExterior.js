@@ -6,13 +6,18 @@ import { createGlowMaterial } from '../vehicleModels.js';
 import { createSpoilerMount } from './spoiler.js';
 import { createRimPaint } from './rims.js';
 import { createPlateMount } from './plate.js';
-import { DEFAULT_PLATE, rimColorHex } from '../progression/config.js';
+import { createPaintFinish } from './finish.js';
+import { createWindowTint } from './tint.js';
+import { createCarbonParts } from './carbon.js';
+import { createNeonGlow } from './neon.js';
+import { DEFAULT_PLATE, neonColorHex, rimColorHex, tintShade } from '../progression/config.js';
 
 // Exterior car model for the garage turntable and online friends, driven by a car's `exterior`
 // config (src/cars/<id>/car.js, fields in src/cars/README.md). Returns
-// { group, bodyMat, setLights({ night, braking, highBeam }), setParts({ spoiler, rim, plate }) }; the
-// garage recolours bodyMat. setSpoiler(id), setRimColor(hex) and setPlate(text) fit one part
-// directly (preview pages).
+// { group, bodyMat, setLights({ night, braking, highBeam }), setParts(parts) } with parts as in
+// src/progression/profile.js → parts(); the garage recolours bodyMat. setSpoiler(id),
+// setRimColor(hex), setPlate(text), setFinish(id), setCarbon({ hood, mirrors }), setTint(shade)
+// and setNeon(hex) fit one part directly (preview pages).
 
 function glowQuads(points, w, h, facingFront, material) {
   const geos = points.map(([x, y, z]) => {
@@ -167,6 +172,19 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
   // Number plates (src/cars/plate.js): placed on the bumpers the first time one is set
   const plateMount = createPlateMount(group, model, cfg.length / 2, cfg.plate, cfg.url);
 
+  // Paint finish, window film, carbon bonnet / mirror caps and neon underglow
+  const setFinish = createPaintFinish(bodyMat);
+  const setTint = createWindowTint(model, cfg.tint);
+  const carbon = createCarbonParts(
+    group,
+    model,
+    bodyMat,
+    { halfLength: cfg.length / 2, halfWidth: (size.x * s) / 2, height: size.y * s },
+    cfg.carbon
+  );
+  const neon = createNeonGlow(size.x * s, cfg.length);
+  group.add(neon.mesh);
+
   const { head: HEAD, tail: TAIL } = cfg;
   let lastKey = '';
   return {
@@ -175,11 +193,28 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     setSpoiler: spoilerMount.set,
     setRimColor,
     setPlate: plateMount.set,
+    setFinish,
+    setCarbon: carbon.set,
+    setTint,
+    setNeon: neon.setColor,
     // Parts the player fitted in the garage (ids from src/progression/config.js → PARTS) and
     // the plate's text
-    setParts({ spoiler = 'none', rim = 'factory', plate = DEFAULT_PLATE } = {}) {
+    setParts({
+      spoiler = 'none',
+      rim = 'factory',
+      finish = 'factory',
+      hood = 'paint',
+      mirrors = 'paint',
+      tint = 'none',
+      neon: neonId = 'none',
+      plate = DEFAULT_PLATE,
+    } = {}) {
       spoilerMount.set(spoiler);
       setRimColor(rimColorHex(rim));
+      setFinish(finish);
+      carbon.set({ hood: hood === 'carbon', mirrors: mirrors === 'carbon' });
+      setTint(tintShade(tint));
+      neon.setColor(neonColorHex(neonId));
       plateMount.set(plate);
     },
     setLights({ night = false, braking = false, highBeam = false }) {
@@ -191,6 +226,7 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
       lampMats.head.forEach((m) => (m.emissiveIntensity = head));
       lampMats.tail.forEach((m) => (m.emissiveIntensity = tail));
       glowRearMat.opacity = braking ? 1.0 : 0.7;
+      neon.setNight(night);
       frontGlow.visible = night || highBeam;
       rearGlow.visible = night || braking;
       flare.visible = highBeam;

@@ -12,7 +12,8 @@ import { partCost, upgradeCost } from './performance.js';
 import { cleanPlate, parsePlate } from './plate.js';
 
 // The player's save in the new version: coins, cars bought, and per car the upgrade levels,
-// the parts (spoilers, rim colours) bought / fitted and the number plate.
+// the parts (spoilers, rim colours, paint finish, carbon, window film, neon) bought / fitted and
+// the number plate.
 // Stored in localStorage under one versioned key; cars are referred to by their car.js id, so
 // cars added later simply start out unowned and unupgraded.
 
@@ -23,8 +24,12 @@ export function carPrice(car) {
   return car?.price ?? DEFAULT_CAR_PRICE;
 }
 
+const PART_KEYS = Object.values(PARTS).map((p) => p.key);
+const isObject = (v) => Boolean(v) && typeof v === 'object';
+
 function freshProfile() {
-  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, spoilers: {}, rims: {}, plates: {} };
+  const parts = Object.fromEntries(PART_KEYS.map((key) => [key, {}]));
+  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, ...parts, plates: {} };
 }
 
 function readStored() {
@@ -36,10 +41,9 @@ function readStored() {
       coins: Math.max(0, Math.floor(Number(data.coins) || 0)),
       totalEarned: Math.max(0, Math.floor(Number(data.totalEarned) || 0)),
       owned: Array.isArray(data.owned) ? data.owned.filter((id) => typeof id === 'string') : [],
-      upgrades: data.upgrades && typeof data.upgrades === 'object' ? data.upgrades : {},
-      spoilers: data.spoilers && typeof data.spoilers === 'object' ? data.spoilers : {},
-      rims: data.rims && typeof data.rims === 'object' ? data.rims : {},
-      plates: data.plates && typeof data.plates === 'object' ? data.plates : {},
+      upgrades: isObject(data.upgrades) ? data.upgrades : {},
+      ...Object.fromEntries(PART_KEYS.map((key) => [key, isObject(data[key]) ? data[key] : {}])),
+      plates: isObject(data.plates) ? data.plates : {},
     };
   } catch (_) {
     return freshProfile();
@@ -111,14 +115,14 @@ export class PlayerProfile {
     return true;
   }
 
-  // Part of a kind ('spoiler', 'rim') fitted on a car, or that kind's `none`
+  // Part of a kind (src/progression/config.js → PARTS) fitted on a car, or that kind's `none`
   fitted(kind, carId) {
     const { key, list, none } = PARTS[kind];
     const id = this.data[key][carId]?.fitted;
     return list.some((p) => p.id === id) ? id : none;
   }
 
-  // Everything fitted on a car: { spoiler, rim, plate }
+  // Everything fitted on a car: { spoiler, rim, finish, hood, mirrors, tint, neon, plate }
   parts(carId) {
     return {
       ...Object.fromEntries(Object.keys(PARTS).map((kind) => [kind, this.fitted(kind, carId)])),

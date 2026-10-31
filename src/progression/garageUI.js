@@ -20,8 +20,26 @@ const STAT_ROWS = [
   { key: 'braking', label: 'Fren', text: (s) => fmt(s.bar * 100) },
 ];
 
-const PART_HEADINGS = { spoiler: 'Spoyler', rim: 'Jant Rengi' };
-const PART_NAMES = { spoiler: 'spoyler', rim: 'jant' };
+const PART_HEADINGS = {
+  finish: 'Boya Kaplaması',
+  spoiler: 'Spoyler',
+  rim: 'Jant Rengi',
+  hood: 'Karbon Kaput',
+  mirrors: 'Karbon Ayna Kapağı',
+  tint: 'Cam Filmi',
+  neon: 'Neon Alt Işık',
+};
+const PART_NAMES = {
+  finish: 'kaplama',
+  spoiler: 'spoyler',
+  rim: 'jant',
+  hood: 'kaput',
+  mirrors: 'ayna kapağı',
+  tint: 'cam filmi',
+  neon: 'neon',
+};
+// Parts shown as colour swatches in a tighter grid
+const SWATCH_KINDS = new Set(['rim', 'neon']);
 
 // A pending purchase that is tried on the garage car (a part or a plate)
 const isTried = (pending) => pending?.type === 'part' || pending?.type === 'plate';
@@ -264,7 +282,7 @@ export class GarageProgressUI {
 
   renderParts(car) {
     if (!this.profile.owns(car)) {
-      this.partsEl.replaceChildren(this.lockedNote(car, 'Spoyler, jant rengi ve plaka için önce aracı satın al.'));
+      this.partsEl.replaceChildren(this.lockedNote(car, 'Görünüm parçaları ve plaka için önce aracı satın al.'));
       return;
     }
     const sections = Object.keys(PARTS).map((kind) => {
@@ -330,10 +348,11 @@ export class GarageProgressUI {
   }
 
   // One card per part of a kind. A part bought is fitted for free; one not bought yet goes on
-  // the garage car to try and waits in the purchase bar. Rim colours get a swatch and a tighter grid.
+  // the garage car to try and waits in the purchase bar. Rim and neon colours get a swatch and a
+  // tighter grid.
   buildParts(car, kind) {
-    const isRim = kind === 'rim';
-    const grid = el('div', isRim ? 'spoiler-grid rim-grid' : 'spoiler-grid');
+    const isSwatch = SWATCH_KINDS.has(kind);
+    const grid = el('div', isSwatch ? 'spoiler-grid rim-grid' : 'spoiler-grid');
     const fitted = this.profile.fitted(kind, car.id);
     for (const part of PARTS[kind].list) {
       const owned = this.profile.ownsPart(car, kind, part.id);
@@ -344,8 +363,8 @@ export class GarageProgressUI {
       btn.setAttribute('aria-pressed', String(trying || (!this.pending && part.id === fitted)));
       const state = trying ? 'DENENİYOR' : part.id === fitted ? 'TAKILI' : owned ? 'TAK' : fmt(cost);
       const title = el('strong', '', part.label);
-      if (isRim) {
-        const dot = el('i', 'rim-swatch');
+      if (isSwatch) {
+        const dot = el('i', kind === 'neon' ? 'rim-swatch neon' : 'rim-swatch');
         dot.style.setProperty('--rim', part.hex === null ? '' : `#${part.hex.toString(16).padStart(6, '0')}`);
         dot.classList.toggle('factory', part.hex === null);
         title.prepend(dot);

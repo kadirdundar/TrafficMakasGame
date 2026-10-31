@@ -26,6 +26,8 @@ export default {
   },
 
   exterior: {
+    // Carbon bonnet (src/cars/carbon.js): the front wings stand above the lid, keep them painted
+    carbon: { hood: { halfWidth: 0.5 } },
     // Number plates (src/cars/plate.js): heights in m above the ground
     plate: { front: { y: 0.38 }, rear: { y: 0.58 } },
     // Rim colour (src/cars/rims.js): the spokes share a textured material with the calipers

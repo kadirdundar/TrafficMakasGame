@@ -3430,6 +3430,17 @@
   .rim-swatch.factory {
     background: conic-gradient(#c4c8ce 0 25%, #2a2d33 0 50%, #c4c8ce 0 75%, #2a2d33 0);
   }
+
+  /* Neon colours glow; "none" is an empty ring */
+  .rim-swatch.neon {
+    background: var(--rim);
+    box-shadow: 0 0 6px 1px var(--rim);
+  }
+
+  .rim-swatch.neon.factory {
+    background: transparent;
+    box-shadow: none;
+  }
 }
 
 /* ===== Menu screens (home, garage, online), pause card, countdown, settings, first-drive hints ===== */

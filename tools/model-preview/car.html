@@ -29,6 +29,10 @@ c.setLights({ night, braking: q.get('brake') === '1', highBeam: q.get('high') ==
 if (q.get('spoiler')) c.setSpoiler(q.get('spoiler')); // lip | ducktail | wing
 if (q.get('rim')) c.setRimColor(Number(q.get('rim'))); // e.g. 0xc9a227
 if (q.get('plate')) c.setPlate(q.get('plate')); // e.g. 34 ABC 123
+if (q.get('finish')) c.setFinish(q.get('finish')); // metallic | matte | pearl
+if (q.get('carbon')) c.setCarbon({ hood: /hood/.test(q.get('carbon')), mirrors: /mirror/.test(q.get('carbon')) }); // hood,mirrors
+if (q.get('tint')) c.setTint(Number(q.get('tint'))); // 0-1
+if (q.get('neon')) c.setNeon(Number(q.get('neon'))); // e.g. 0x00e5ff
 const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 35), W / H, 0.05, 100);
 const az = +(q.get('az') || -2.3), pol = +(q.get('pol') || 1.3), dist = +(q.get('dist') || 9.5);
 const tgt = new THREE.Vector3(...(q.get('t') || '0,0.65,0').split(',').map(Number));

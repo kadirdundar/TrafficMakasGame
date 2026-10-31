@@ -3,10 +3,17 @@ import { Peer } from 'peerjs';
 import { WEATHER_PRESETS } from './world.js';
 import { createLuxurySedan } from './vehicleModels.js';
 import { DEFAULT_CAR_ID, getCar, loadCarExterior } from './cars/index.js';
-import { DEFAULT_PLATE } from './progression/config.js';
+import { DEFAULT_PLATE, PARTS, partOrNone } from './progression/config.js';
 import { cleanPlate } from './progression/plate.js';
 
 const PEER_PREFIX = 'otoban-makas-v1-room-';
+
+// A car's parts as the flat fields of a state packet, each one checked against the catalogue
+function remoteParts(d) {
+  const parts = Object.fromEntries(Object.keys(PARTS).map((kind) => [kind, partOrNone(kind, d[kind])]));
+  parts.plate = cleanPlate(d.plate) ?? DEFAULT_PLATE;
+  return parts;
+}
 
 // Host-centred room: every guest connects only to the host. The host owns the traffic, relays
 // everyone's car state to everyone else in one 'states' packet, and admits up to 3 guests.
@@ -977,17 +984,14 @@ export class MultiplayerManager {
         player.car.setPaint(newPaintHex);
       }
     }
-    // Parts come as flat fields; older versions send none: their car has none (and the plate
-    // every car comes with)
-    const spoiler = typeof d.spoiler === 'string' ? d.spoiler : 'none';
-    const rim = typeof d.rim === 'string' ? d.rim : 'factory';
-    const plate = cleanPlate(d.plate) ?? DEFAULT_PLATE;
-    if (player.spoiler !== spoiler || player.rim !== rim || player.plate !== plate) {
-      player.spoiler = spoiler;
-      player.rim = rim;
-      player.plate = plate;
-      player.parts = { spoiler, rim, plate };
-      player.car.setParts(player.parts);
+    // Parts come as flat fields (spoiler, rim, finish, ...); a part an older version does not
+    // send is that kind's `none`, its plate the one every car comes with
+    const parts = remoteParts(d);
+    const key = JSON.stringify(parts);
+    if (player.partsKey !== key) {
+      player.partsKey = key;
+      player.parts = parts;
+      player.car.setParts(parts);
     }
     player.targetX = num(d.x, player.targetX);
     player.targetWorldDistM = num(d.worldDistM, player.targetWorldDistM);
@@ -1068,9 +1072,7 @@ export class MultiplayerManager {
       name: this.playerName,
       carModel: this.localCarModel,
       paintSlot: this.localPaintSlot,
-      spoiler: this.localParts.spoiler ?? 'none',
-      rim: this.localParts.rim ?? 'factory',
-      plate: this.localParts.plate ?? DEFAULT_PLATE,
+      ...remoteParts(this.localParts),
       x: Number(localState.playerX.toFixed(2)),
       worldDistM: Number(this.localWorldDistM.toFixed(2)),
       speedKmh: Math.round(localState.speedKmh),
@@ -1131,9 +1133,7 @@ export class MultiplayerManager {
             name: p.name,
             carModel: p.carModel,
             paintSlot: p.paintSlot,
-            spoiler: p.spoiler,
-            rim: p.rim,
-            plate: p.plate,
+            ...remoteParts(p.parts ?? {}),
             x: p.targetX,
             worldDistM: Number(p.targetWorldDistM.toFixed(2)),
             speedKmh: p.speedKmh,
