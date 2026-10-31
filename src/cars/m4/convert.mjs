@@ -1,8 +1,9 @@
 // How tools/convert-car.mjs builds the M4's GLBs from the raw Sketchfab model.
 //   npm run car:convert -- m4
+// The source is pre-processed first (VR46 badge texture cropped): node src/cars/m4/prep.mjs
 // Fields: src/cars/README.md → "convert.mjs". Node names come from: npm run car:inspect -- <source>
 export default {
-  source: 'model-kaynak/2025_bmw_m4_cs_vr46_edition.glb',
+  source: 'model-kaynak/2025_bmw_m4_cs_vr46_edition.prep.glb',
   // Source faces +Z and is 1.712 m long; 2.80 gives the real 4.79 m
   transform: { rotateY: 180, scale: 2.8 },
   dropNodes: [/^Plane\./], // Sketchfab backdrop planes
@@ -14,7 +15,28 @@ export default {
       [/m4car_glass1/, 'glass'],
       [/m4car_emissive1/, 'emissive'],
     ],
+    // Copies of one material (same colour, textures and finish) per wheel / stripe: one draw call each
+    mergeMaterials: [
+      [/Wheel1A_Material\.0(28|29|30|31)$/, 'BMW_M4CSLRewardRecycled_2022_Wheel1A_3D_3DWheel1A_Material.032'],
+      // (RED_PAINT.012 is the yellow grille outline: it stays on its own)
+      [/^RED_PAINT\.013$/, 'RED_PAINT.016'],
+      [/^BLACK_PAINT\.009$/, 'BLACK_PAINT.008'],
+      [/Coloured_Material\.015$/, 'BMW_M4CSLRewardRecycled_2022Coloured_Material.014'],
+    ],
+    // Budget (recipe §3): ≤ 60k triangles. One absolute error everywhere, so the dense parts
+    // (brake calipers 15k, wheels 32k, cabin) give up the most; panels stay smooth.
+    simplify: { targetTris: 60000, maxError: 0.012 },
+    maxTextureSize: 1024,
+    // Parts seen small or only through the glass: smaller textures, same look at game distance
+    textureSizes: [
+      [/red_caliper|metal_Capiler/, 256],
+      [/interior1\.00[78]|InteriorA|Carbon1M/, 512],
+      // Livery and paint detail stay 1024 px; their roughness/AO/normal maps are smooth fields
+      [/body1|hood1|bodykit|glass1|plast1|emissive1/, 512, ['metallicRoughness', 'occlusion', 'normal']],
+    ],
+    // No cleanAttributes: grille, wheels, carbon and lamps shade with the source's vertex colours
     webpQuality: 85,
+    compress: true,
   },
 
   cockpit: {
@@ -65,6 +87,12 @@ export default {
       [/Carbon1M/, { metallic: 0.25, roughness: 0.22 }],
       [/hood1|body1|PAINT/, { metallic: 0.85, roughness: 0.22 }],
     ],
+    // Budget: ≤ 65k triangles; the wheel keeps every triangle (it fills the view)
+    simplify: { targetTris: 65000, maxError: 0.006, excludeNodes: ['steering_wheel'] },
+    maxTextureSize: 1024,
+    // Body panels seen only at the edges of the view
+    textureSizes: [[/body1|hood1|bodykit/, 512], [/interior1|plast1|InteriorA/, 512, ['metallicRoughness', 'normal']]],
     webpQuality: 90,
+    compress: true,
   },
 };

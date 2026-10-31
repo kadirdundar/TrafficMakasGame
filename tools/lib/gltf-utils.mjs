@@ -3,8 +3,10 @@ import * as THREE from 'three';
 import sharp from 'sharp';
 
 // Re-encodes every texture as WebP, optionally downscaling to `maxSize` (longest side).
-// `sizes` ([pattern, px]) gives the textures of matching materials their own limit, e.g. small
-// tiling grain maps; a texture shared with an unmatched material keeps the larger limit.
+// `sizes` ([pattern, px, slots?]) gives the textures of matching materials their own limit, e.g.
+// small tiling grain maps; `slots` narrows a rule to some of the material's maps ('baseColor',
+// 'normal', 'metallicRoughness', 'occlusion', 'emissive'). A texture shared with an unmatched
+// material keeps the larger limit.
 export async function compressTextures(doc, { quality = 90, maxSize = null, sizes = [] } = {}) {
   const textures = doc.getRoot().listTextures();
   console.log(`  ${textures.length} doku WebP'ye çevriliyor (kalite ${quality}${maxSize ? `, en fazla ${maxSize}px` : ''})`);
@@ -14,7 +16,7 @@ export async function compressTextures(doc, { quality = 90, maxSize = null, size
     const limits = tex
       .listParents()
       .filter((p) => p.propertyType === 'Material')
-      .map((m) => sizes.find(([pattern]) => pattern.test(m.getName() || ''))?.[1] ?? maxSize);
+      .map((m) => sizes.find(([pattern, , slots]) => pattern.test(m.getName() || '') && (!slots || slots.some((slot) => textureIn(m, slot) === tex)))?.[1] ?? maxSize);
     const size = limits.length && !limits.includes(null) ? Math.max(...limits) : maxSize;
     try {
       let pipeline = sharp(img);
@@ -26,6 +28,8 @@ export async function compressTextures(doc, { quality = 90, maxSize = null, size
     }
   }
 }
+
+const textureIn = (mat, slot) => mat[`get${slot[0].toUpperCase()}${slot.slice(1)}Texture`]?.();
 
 // Flat quad primitive; corners: [bl, br, tr, tl]
 export function createQuadMesh(doc, name, mat, corners) {

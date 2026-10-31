@@ -123,7 +123,7 @@ Düğüm adları `npm run car:inspect` çıktısındaki adlardır; desenler RegE
 | `*.materials` | `[desen, { color, alpha, metallic, roughness }]`: PBR düzeltmeleri, ilk eşleşen (renk doğrusal RGB). |
 | `*.cleanAttributes` | Dokusuz malzemelerden UV/tangent/renk verisini siler (dosya küçülür, birleştirme artar). |
 | `*.maxTextureSize`, `*.webpQuality` | Doku boyu sınırı ve WebP kalitesi. |
-| `*.textureSizes` | `[desen, px]`: eşleşen malzemelerin dokularına ayrı sınır (ör. panel boyunca tekrar eden kumaş/plastik doku ve normal haritaları için 256). Kokpit dosyasını en çok bunlar büyütür. |
+| `*.textureSizes` | `[desen, px, kanallar?]`: eşleşen malzemelerin dokularına ayrı sınır (`kanallar` ile sadece ör. `['metallicRoughness', 'occlusion', 'normal']`) (ör. panel boyunca tekrar eden kumaş/plastik doku ve normal haritaları için 256). Kokpit dosyasını en çok bunlar büyütür. |
 | `*.ao` | `{ rays, distance, strength, min, skip }`: önceden hesaplanmış ortam gölgesi (`tools/lib/ambient-occlusion.mjs`), köşe rengi (COLOR_0) olarak saklanır; oyunda ek maliyeti yok. `distance` ışın boyu (m): dışta ~0.3, kabinde ~0.12. |
 | `*.compress` | meshopt geometri sıkıştırması (oyun çözer; dosya ~2-3 kat küçülür). |
 | `cockpit.out`, `cockpit.keepNodes` | Kokpit çıktısı ve sürücüden görünen düğümler (boşsa kokpit atlanır). |
