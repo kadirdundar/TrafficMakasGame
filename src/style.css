@@ -4848,3 +4848,97 @@
     }
   }
 }
+
+/* ===== Performance probe (src/perfProbe.js): countdown badge and result card ===== */
+@layer modal {
+  .perf-probe-badge {
+    position: fixed;
+    inset-block-start: max(6px, env(safe-area-inset-top));
+    inset-inline-end: max(10px, env(safe-area-inset-right));
+    z-index: 10000;
+    padding-block: 3px;
+    padding-inline: 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.62);
+    color: var(--accent-amber);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    pointer-events: none;
+  }
+
+  .perf-probe-card {
+    position: fixed;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10001;
+    inline-size: min(440px, calc(100vw - 32px));
+    max-block-size: calc(100dvh - 24px);
+    overflow-y: auto;
+    padding: 16px;
+    border-radius: 14px;
+    background: rgba(9, 13, 21, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+  }
+
+  .perf-probe-card h2 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    color: var(--accent-amber);
+  }
+
+  .perf-probe-card dl {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 3px 12px;
+    margin: 0 0 10px;
+  }
+
+  .perf-probe-card dt {
+    color: var(--text-muted);
+  }
+
+  .perf-probe-card dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    text-align: end;
+  }
+
+  .perf-probe-card textarea {
+    inline-size: 100%;
+    box-sizing: border-box;
+    resize: none;
+    padding: 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+  }
+
+  .perf-probe-actions {
+    display: flex;
+    gap: 8px;
+    margin-block-start: 10px;
+  }
+
+  .perf-probe-actions button {
+    flex: 1;
+    padding-block: 9px;
+    border: 0;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+    font: inherit;
+    font-weight: 600;
+  }
+
+  .perf-probe-actions button:first-child {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+}

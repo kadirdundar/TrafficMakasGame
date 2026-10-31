@@ -806,6 +806,19 @@ export class CarCockpit {
     this.mirrorImgData32 = new Uint32Array(this.mirrorImgData.data.buffer);
   }
 
+  // Builds the mirror pass's shaders ahead of time, in the state renderRearMirror draws in: its
+  // render target bound and the cabin hidden (the cabin light changes every shader's light count)
+  compileRearMirror(scene) {
+    if (!this.renderer) return;
+    const prevTarget = this.renderer.getRenderTarget();
+    const interiorWasVisible = this.interior3d?.group?.visible;
+    if (this.interior3d?.group) this.interior3d.group.visible = false;
+    this.renderer.setRenderTarget(this.mirrorRenderTarget);
+    this.renderer.compile(scene, this.mirrorCamera);
+    this.renderer.setRenderTarget(prevTarget);
+    if (this.interior3d?.group && interiorWasVisible) this.interior3d.group.visible = true;
+  }
+
   // Redrawn every other frame: a full second scene pass is the costliest part of a frame,
   // and a 30 Hz rear view is indistinguishable in a mirror this small
   renderRearMirror(scene) {

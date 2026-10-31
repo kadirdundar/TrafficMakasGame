@@ -5,8 +5,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 // Modern procedural traffic vehicles.
 // Every body style is built ONCE (side-profile extrusions with rounded bevels, wheel arches,
 // tumblehome greenhouse) and merged into one geometry per material. All cars of the same
-// style share those geometries and almost all materials, so a car costs ~9 draw calls
-// (+2 additive glow quads at night) instead of ~40 separate boxes.
+// style share those geometries and almost all materials. Lamps of different colours are one
+// vertex-coloured mesh (and so are the night glows), and the plate and chrome/rims are dropped
+// far away, so a car costs 5-7 draw calls (+1 for the glows at night) instead of ~40 boxes.
 
 // ---------------------------------------------------------------------------------------------
 // Paints (hex is what multiplayer syncs; the finish is looked up from the hex on both peers)
@@ -160,6 +161,17 @@ function shared() {
     glowBrake: glow(0xff3043, 1.0),
     glowAmber: glow(0xffa020, 1.0),
     plates: PLATE_TEXTS.map((t) => new THREE.MeshBasicMaterial({ map: makePlateTexture(t) })),
+    // Head + tail lamps and front + rear glows of traffic cars, coloured per vertex (see painted)
+    lamps: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+    glows: new THREE.MeshBasicMaterial({
+      map: glowTex,
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    }),
   };
   return SHARED;
 }
@@ -200,6 +212,30 @@ function prep(geo, keepUv) {
 function merge(list, keepUv = false) {
   if (!list.length) return null;
   const merged = mergeGeometries(list.map((g) => prep(g, keepUv)));
+  merged.computeBoundingSphere();
+  return merged;
+}
+
+// Parts of different colours merged into one geometry, each painted a flat colour × intensity
+// through a vertex colour, so they draw in one call. parts: [geometry | null, hex, intensity?]
+function painted(parts) {
+  const list = parts
+    .filter(([g]) => g)
+    .map(([g, hex, k = 1]) => {
+      const c = new THREE.Color(hex).multiplyScalar(k);
+      const out = g.clone();
+      const n = out.attributes.position.count;
+      const colors = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        colors[i * 3] = c.r;
+        colors[i * 3 + 1] = c.g;
+        colors[i * 3 + 2] = c.b;
+      }
+      out.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      return out;
+    });
+  if (!list.length) return null;
+  const merged = mergeGeometries(list);
   merged.computeBoundingSphere();
   return merged;
 }
@@ -842,6 +878,16 @@ function getStyleGeometry(spec, style, blackRoof, rimDesign) {
   for (const k of Object.keys(P)) {
     out[k] = merge(P[k], k === 'plate' || k.startsWith('glow') || k.startsWith('halo') || k === 'flare');
   }
+  // One copy of the lamps per light state, [night][braking], and of the glows per [braking]:
+  // a car switches lights by swapping geometry, all cars sharing one material. A glow's opacity
+  // is folded into its colour (the same thing under additive blending).
+  out.lamps = [LIGHT_COLORS.day, LIGHT_COLORS.night].map((c) =>
+    [c.tail, c.brake].map((tail) => painted([[out.head, c.head], [out.tail, tail]]))
+  );
+  out.glows = [
+    [0xff2032, 0.7],
+    [0xff3043, 1.0],
+  ].map(([rear, k]) => painted([[out.glowF, 0xe4eeff, 0.95], [out.glowR, rear, k]]));
   geometryCache.set(key, out);
   return out;
 }
@@ -876,6 +922,9 @@ function createPaintMaterial(paintHex) {
   return mat;
 }
 
+const PLATE_DETAIL_M = 70;
+const RIM_DETAIL_M = 140;
+
 export function createTrafficVehicle(spec, index, variant, paintHex) {
   const m = shared();
   const styles = STYLE_VARIANTS[spec.type] || ['sedan'];
@@ -898,25 +947,29 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
   add(geo.body, bodyMat);
   add(geo.glass, m.glass);
   add(geo.trim, m.trim);
-  add(geo.rim, S.truck ? m.rims[0] : m.rims[(index * 7 + variant) % m.rims.length]);
+  const rimMesh = add(geo.rim, S.truck ? m.rims[0] : m.rims[(index * 7 + variant) % m.rims.length]);
   add(geo.cargo, m.cargo[index % m.cargo.length]);
-  add(geo.head, m.head);
-  add(geo.plate, m.plates[index % m.plates.length]);
-  const tailMesh = add(geo.tail, m.tail);
+  const plateMesh = add(geo.plate, m.plates[index % m.plates.length]);
+  const lamps = add(geo.lamps[0][0], m.lamps);
   const leftBlinker = add(geo.blinkL, m.amber);
   const rightBlinker = add(geo.blinkR, m.amber);
   addBlinkerHalo(leftBlinker, geo.haloL);
   addBlinkerHalo(rightBlinker, geo.haloR);
-  const frontGlow = add(geo.glowF, m.glowFront);
-  const rearGlow = add(geo.glowR, m.glowRear);
+  const glows = add(geo.glows[0], m.glows);
   leftBlinker.visible = false;
   rightBlinker.visible = false;
-  frontGlow.visible = false;
-  rearGlow.visible = false;
-  frontGlow.renderOrder = 2;
-  rearGlow.renderOrder = 2;
+  if (glows) {
+    glows.visible = false;
+    glows.renderOrder = 2;
+  }
 
   let braking = false;
+  let night = false;
+  let detail = 2;
+  const showLights = () => {
+    if (lamps) lamps.geometry = geo.lamps[night ? 1 : 0][braking ? 1 : 0];
+    if (glows) glows.geometry = geo.glows[braking ? 1 : 0];
+  };
   return {
     group,
     style,
@@ -926,12 +979,21 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
     setBraking(isBraking) {
       if (isBraking === braking) return;
       braking = isBraking;
-      tailMesh.material = isBraking ? m.tailBrake : m.tail;
-      rearGlow.material = isBraking ? m.glowBrake : m.glowRear;
+      showLights();
     },
-    setNight(night) {
-      frontGlow.visible = night;
-      rearGlow.visible = night;
+    setNight(isNight) {
+      night = isNight;
+      if (glows) glows.visible = isNight;
+      showLights();
+    },
+    // Small parts are only drawn near the camera: the plate within PLATE_DETAIL_M, rims and
+    // chrome within RIM_DETAIL_M (past that they are a few pixels, but each is a draw call)
+    setDistance(distM) {
+      const level = distM < PLATE_DETAIL_M ? 2 : distM < RIM_DETAIL_M ? 1 : 0;
+      if (level === detail) return;
+      detail = level;
+      if (plateMesh) plateMesh.visible = level >= 2;
+      if (rimMesh) rimMesh.visible = level >= 1;
     },
   };
 }

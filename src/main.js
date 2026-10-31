@@ -15,6 +15,7 @@ import { COINS_PER_KM, COINS_PER_POINT } from './progression/config.js';
 import { GarageProgressUI } from './progression/garageUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
 import { MenuMusicPlayer } from './menuMusic.js';
+import { PerfProbe } from './perfProbe.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -300,6 +301,19 @@ class OtobanMakasGame {
     this.lastTime = performance.now();
     this.perf = { frames: 0, elapsed: 0, calls: 0, window: 0, goodWindows: 0, lastRaise: -10, settle: 0 };
     this.fpsMeter = null;
+    // 60-second measurement for real phones: 5 taps on the home logo, or ?perf in the URL
+    this.perfProbe = new PerfProbe({
+      renderer: this.renderer,
+      describe: () => ({
+        car: this.selectedCar,
+        road: this.traffic.roadMode,
+        weather: this.world.weatherKey,
+        density: this.traffic.densityMode,
+        steer: this.steerMode,
+        online: this.multiplayer.connected,
+      }),
+      onDone: () => this.openPause(),
+    });
     this.lastZone = undefined;
     // Road layout chosen last time (motorway by default)
     let savedRoad = null;
@@ -322,6 +336,8 @@ class OtobanMakasGame {
 
     const params = new URLSearchParams(window.location.search);
     if (params.has('fps')) this.toggleFpsMeter();
+    if (params.has('perf')) this.perfProbe.arm();
+    this.perfProbe.bindSecretTap(document.querySelector('.garage-logo'));
     if (params.has('tunel')) this.multiplayer.localWorldDistM = 5440;
     if (params.has('kopru')) this.multiplayer.localWorldDistM = 12440;
 
@@ -1525,12 +1541,23 @@ class OtobanMakasGame {
     this.menuMusic?.fadeOut(0.4);
     this.sound.init();
     this.sound.setRainAmbience(this.world.weatherKey === 'rain');
+    this.warmShaders();
     this.runActive = true;
     this.hasStartedDriving = true;
     this.setUiState('drive');
     if (!coachDone()) {
       this.coach.start({ touch: this.isTouch(), steerMode: this.steerMode, roadMode: this.traffic.roadMode });
     }
+  }
+
+  // Compiles every shader a drive can need before the car moves, for the screen and for the
+  // rear-view mirror (a render target gets its own linear-output variant of each material).
+  // Without it the first traffic car to enter the mirror stalls a frame for up to ~200 ms while
+  // its paint and plate shaders compile. compile() also covers hidden objects (blinkers, night
+  // glows, tunnel and track scenery); shaders already built are only looked up.
+  warmShaders() {
+    this.cockpit.compileRearMirror(this.scene);
+    this.renderer.compile(this.scene, this.camera);
   }
 
   // Home: a mode card. A new drive on that road (one in progress ends); touch screens first
@@ -3091,6 +3118,8 @@ class OtobanMakasGame {
 
     // 2. Render main First-Person Cockpit Camera
     this.renderer.render(this.scene, this.camera);
+
+    if (!this.paused) this.perfProbe.frame(frameSec, performance.now() - now, this.pixelRatio);
   }
 }
 

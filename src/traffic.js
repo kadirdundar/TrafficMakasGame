@@ -744,6 +744,7 @@ export class TrafficManager {
       const curveYaw = world ? world.getCurveYawAtZ(car.z) : 0;
       car.mesh.position.set(car.x + curveX, curveY, car.z);
       car.mesh.rotation.y = laneChangeYaw + curveYaw + (car.dir < 0 ? Math.PI : 0);
+      car.visual.setDistance(Math.abs(car.z));
 
       // 4. COLLISION & MAKAS (NEAR-MISS) DETECTION around Z = 0
       const absZ = Math.abs(car.z);
