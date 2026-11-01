@@ -102,6 +102,20 @@
   .vignette.crash-flash {
     box-shadow: inset 0 0 140px rgba(255, 30, 66, 0.85);
   }
+
+  /* The car is on fire: an orange glow flickers around the screen edges */
+  .vignette.burning {
+    animation: burnGlow 0.35s ease-in-out infinite alternate;
+  }
+
+  @keyframes burnGlow {
+    from {
+      box-shadow: inset 0 0 120px rgba(255, 110, 20, 0.55);
+    }
+    to {
+      box-shadow: inset 0 0 170px rgba(255, 60, 10, 0.8);
+    }
+  }
 }
 
 @layer hud {
@@ -207,22 +221,6 @@
     font-weight: 700;
     color: rgba(255, 255, 255, 0.45);
     font-family: var(--font-mono);
-  }
-
-  .health-bar-wrap {
-    inline-size: 58px;
-    block-size: 5px;
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 99px;
-    overflow: hidden;
-    margin-block-start: 4px;
-  }
-
-  .health-bar-fill {
-    inline-size: 100%;
-    block-size: 100%;
-    background: linear-gradient(90deg, #00ff88, #00d4ff);
-    transition: width 0.25s ease, background 0.25s ease;
   }
 
   .hud-toolbar {
@@ -2249,7 +2247,7 @@
 
   .mp-peer-row {
     display: grid;
-    grid-template-columns: auto auto;
+    grid-template-columns: auto auto auto;
     justify-content: space-between;
     align-items: center;
     column-gap: 8px;
@@ -2290,20 +2288,39 @@
     color: #cbd5e1;
   }
 
-  .mp-catchup-btn {
-    background: rgba(16, 185, 129, 0.25);
-    border: 1px solid #10b981;
-    color: #a7f3d0;
-    font-size: 0.65rem;
-    font-weight: 800;
-    padding: 2px 7px;
-    border-radius: 6px;
-    cursor: pointer;
+  .mp-rules {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(252, 211, 77, 0.3);
+    background: rgba(252, 211, 77, 0.07);
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: #e2e8f0;
   }
 
-  .mp-catchup-btn:hover {
-    background: #10b981;
+  .mp-rules b {
+    color: #fcd34d;
+  }
+
+  /* Online match: round and points */
+  .mp-match-line {
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: #fcd34d;
+    white-space: nowrap;
+  }
+
+  .mp-peer-pts {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 900;
     color: #04130d;
+    background: #fcd34d;
+    padding: 1px 6px;
+    border-radius: 6px;
+    white-space: nowrap;
   }
 
   .mp-quick-btn.connected {
@@ -2730,7 +2747,6 @@
   .desktop-hints,
   .btn-text,
   .best-card,
-  .health-card,
   .combo-bar-wrap,
   .hud-mini-cluster,
   #btn-ambient,
@@ -2821,9 +2837,9 @@
     display: none !important;
   }
 
-  .mp-catchup-btn {
+  .mp-match-line,
+  .mp-peer-pts {
     font-size: 0.58rem !important;
-    padding: 1px 5px !important;
   }
 
   .hud-toolbar {
@@ -4169,6 +4185,131 @@
   .pause-btn.danger {
     border-color: rgba(251, 113, 133, 0.35);
     color: #fda4af;
+  }
+
+  /* --- Crash result card --- */
+  .gameover-card {
+    border-color: rgba(255, 110, 30, 0.45);
+  }
+
+  .gameover-flame {
+    font-size: 2.4rem;
+    line-height: 1;
+    animation: flameBob 0.6s ease-in-out infinite alternate;
+  }
+
+  .gameover-card h2 {
+    font-size: 1.6rem;
+    color: #ff8a3d;
+    text-shadow: 0 0 24px rgba(255, 90, 20, 0.6);
+  }
+
+  .gameover-best {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #fcd34d;
+  }
+
+  @keyframes flameBob {
+    from {
+      transform: scale(1) rotate(-4deg);
+    }
+    to {
+      transform: scale(1.12) rotate(4deg);
+    }
+  }
+
+  /* --- Online round result --- */
+  .round-banner {
+    position: fixed;
+    inset-block-start: 22vh;
+    inset-inline: 16px;
+    z-index: 26;
+    margin-inline: auto;
+    inline-size: min(420px, calc(100% - 32px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 18px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 110, 30, 0.5);
+    background: var(--panel-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    pointer-events: none;
+    animation: popIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+
+  .round-banner.win {
+    border-color: rgba(252, 211, 77, 0.7);
+  }
+
+  .round-banner-kicker {
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    color: var(--text-muted);
+  }
+
+  .round-banner-title {
+    font-size: 1.25rem;
+    font-weight: 900;
+    font-style: italic;
+    letter-spacing: 0.04em;
+    color: #ff8a3d;
+  }
+
+  .round-banner.win .round-banner-title,
+  .round-banner.over .round-banner-title {
+    color: #fcd34d;
+  }
+
+  .round-banner-sub {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #e2e8f0;
+  }
+
+  .round-banner-scores {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-block-start: 4px;
+  }
+
+  .round-score {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px 3px 10px;
+    border-radius: 99px;
+    border: 1px solid var(--tag, #fff);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .round-score b {
+    font-size: 0.72rem;
+    font-weight: 900;
+    color: var(--tag, #fff);
+    max-inline-size: 10ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .round-score i {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-weight: 900;
+    font-size: 0.8rem;
+    color: #04130d;
+    background: #fcd34d;
+    border-radius: 99px;
+    padding: 0 7px;
   }
 
   /* --- 3-2-1 --- */

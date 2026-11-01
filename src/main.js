@@ -3,7 +3,8 @@ import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
-import { MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
+import { MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
+import { CarFire } from './carFire.js';
 import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
 import { CAR_LIST, CARS, getCar } from './cars/index.js';
@@ -80,6 +81,8 @@ const PART_VIEWS = {
 const ROAD_LABELS = { highway: 'Otoban', twoway: 'Gidiş-Geliş', track: 'İstanbul Park' };
 // Each number of the 3-2-1 before a paused drive goes on
 const COUNTDOWN_STEP_MS = 650;
+// After a crash the car burns this long before the result card (single player) comes up
+const BURN_BEFORE_RESULT_SEC = 2.2;
 
 class OtobanMakasGame {
   constructor() {
@@ -125,6 +128,11 @@ class OtobanMakasGame {
     this.world = new HighwayWorld(this.scene);
     this.cockpit = new CarCockpit(this.renderer);
     this.scene.add(this.cockpit.group);
+    // Flames on our own bonnet after a crash, in front of the windscreen
+    this.carFire = new CarFire({ width: 1.5 });
+    this.carFire.group.position.set(0, 0.8, -3.0);
+    this.cockpit.group.add(this.carFire.group);
+    this.burning = null; // { t } seconds since the crash while the car burns
     this.traffic = new TrafficManager(this.scene);
     this.radio = new RadioPlayer({
       onTrackChange: (track) => {
@@ -169,6 +177,8 @@ class OtobanMakasGame {
           'gold'
         );
       },
+      onRoundStart: (info) => this.startRound(info),
+      onRoundEnd: (info) => this.showRoundResult(info),
       onPeerHorn: ({ name }) => {
         this.showMakasNotification(`📯 ${name} KORNA ÇALDI!`, 50, 'normal');
       },
@@ -264,7 +274,6 @@ class OtobanMakasGame {
     }
     this.combo = 1.0;
     this.comboTimer = 0; // 0.0 to 1.0
-    this.health = 100;
     this.odometerKm = 1428.4;
     this.tripDistanceKm = 0;
     this.playTimeSec = 0;
@@ -455,9 +464,6 @@ class OtobanMakasGame {
         this.keys.horn = true;
         this.sound.setHorn(true);
       }
-      if (code === 'KeyR') {
-        this.catchUpToFriend();
-      }
       if (code === 'KeyV') {
         this.cockpit.toggleWipers();
         this.sound.playSelektorClick();
@@ -510,7 +516,13 @@ class OtobanMakasGame {
       this.openMenu('online');
     });
 
-    document.getElementById('btn-mp-catchup')?.addEventListener('click', () => this.catchUpToFriend());
+    // Result card after a crash (single player)
+    document.getElementById('btn-gameover-retry')?.addEventListener('click', () => this.restartDrive());
+    document.getElementById('btn-gameover-garage')?.addEventListener('click', () => {
+      this.endDrive();
+      this.setScreen('garage');
+    });
+    document.getElementById('btn-gameover-home')?.addEventListener('click', () => this.endDrive());
 
     // Multiplayer Lobby Buttons (up to MAX_PLAYERS in one room)
     const nameInput = document.getElementById('mp-player-name');
@@ -1493,6 +1505,7 @@ class OtobanMakasGame {
     }
     if (hudCard) {
       hudCard.classList.toggle('hidden', !connected);
+      if (!connected) this.hideRoundBanner();
     }
     if (quickBtn) {
       quickBtn.classList.toggle('connected', Boolean(connected));
@@ -1642,7 +1655,6 @@ class OtobanMakasGame {
     if (nameInput?.value) this.multiplayer.setPlayerName(nameInput.value);
     this.setRoadMode(road, { remember: true });
     this.resetRun();
-    if (this.multiplayer.connected) this.multiplayer.catchUpToPeer();
     this.beginDrive();
   }
 
@@ -1674,7 +1686,6 @@ class OtobanMakasGame {
     this.enterAppFullscreen();
     this.requestTiltPermission();
     if (this.multiplayer.connected) {
-      this.multiplayer.catchUpToPeer();
       this.beginDrive();
     } else if (this.speedKmh < 5) {
       this.beginDrive();
@@ -1727,7 +1738,6 @@ class OtobanMakasGame {
   // Pause card: the same road again from a standstill
   restartDrive() {
     this.resetRun();
-    if (this.multiplayer.connected) this.multiplayer.catchUpToPeer();
     this.beginDrive();
   }
 
@@ -1745,6 +1755,8 @@ class OtobanMakasGame {
       this.closeControlPicker();
     } else if (this.settingsOpen) {
       this.closeSettings();
+    } else if (this.uiState === 'gameover') {
+      this.endDrive();
     } else if (this.uiState === 'drive' || this.uiState === 'countdown') {
       this.openPause();
     } else if (this.uiState === 'pause') {
@@ -1995,7 +2007,6 @@ class OtobanMakasGame {
     this.score = 0;
     this.combo = 1.0;
     this.comboTimer = 0;
-    this.health = 100;
     this.tripDistanceKm = 0;
     this.playTimeSec = 0;
     this.runCoins = 0;
@@ -2003,6 +2014,10 @@ class OtobanMakasGame {
     this.coinCarry = 0;
     this.overtakeRun = null;
     this.shakeIntensity = 0;
+    this.burning = null;
+    this.carFire.reset();
+    document.getElementById('screen-vignette')?.classList.remove('burning');
+    document.getElementById('gameover-overlay')?.classList.add('hidden');
     this.startTimeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     this.speedKmh = 0;
     this.playerX = this.startX();
@@ -2324,6 +2339,7 @@ class OtobanMakasGame {
   }
 
   handleMakas(data) {
+    if (this.burning) return;
     if (data.kind) {
       this.handleTwoWayPass(data);
       return;
@@ -2370,31 +2386,134 @@ class OtobanMakasGame {
     });
   }
 
-  handleCollision(message = '💥 SÜRTME / KAZA! KOMBO SIFIRLANDI', headOn = false) {
+  // Any crash sets the car on fire. Alone that ends the drive (see updateBurning); online the
+  // host sees it in our state and gives the round to the rival.
+  handleCollision(message = '💥 KAZA YAPTIN!', headOn = false) {
+    if (this.burning) return;
+    this.burning = { t: 0 };
     this.combo = 1.0;
     this.comboTimer = 0;
-    this.speedKmh *= headOn ? 0.25 : 0.58;
-    this.health = Math.max(0, this.health - (headOn ? 45 : 18));
-    this.shakeIntensity = headOn ? 1.0 : 0.85;
+    this.speedKmh *= headOn ? 0.25 : 0.5;
+    this.shakeIntensity = 1.0;
     this.rollVel += (Math.random() - 0.5) * 0.6;
     this.pitchVel -= 0.25;
 
     this.sound.playCrash();
+    this.sound.playIgnition();
+    this.carFire.ignite();
     this.triggerScreenFlash('crash-flash');
-    this.showMakasNotification(message, 0, 'danger');
+    document.getElementById('screen-vignette')?.classList.add('burning');
+    this.showMakasNotification(`${message} 🔥 YANDIN!`, 0, 'danger');
+    this.saveRecords();
+  }
 
-    // Auto-repair slowly or reset if health hits 0
-    if (this.health <= 0) {
-      this.health = 100;
-      this.score = Math.max(0, this.score - 1000);
+  // The burning car rolls to a stop; alone, the result card follows
+  updateBurning(dt) {
+    this.carFire.update(dt);
+    if (!this.burning) return;
+    this.burning.t += dt;
+    this.speedKmh = Math.max(0, this.speedKmh - 70 * dt);
+    if (!this.multiplayer.connected && this.burning.t >= BURN_BEFORE_RESULT_SEC && this.uiState === 'drive') {
+      this.openGameOver();
     }
   }
 
+  openGameOver() {
+    this.releaseInputs();
+    this.saveRecords();
+    this.profile.flush();
+    this.runActive = false; // nothing to resume: the next drive starts from zero
+    this.setUiState('gameover');
+    this.setHudText('gameover-score', Math.floor(this.score).toLocaleString('tr-TR'));
+    this.setHudText('gameover-time', this.formatPlayTime(this.playTimeSec));
+    this.setHudText('gameover-km', (this.tripDistanceKm || 0).toFixed(2));
+    const record = Math.floor(this.score) > 0 && Math.floor(this.score) >= Math.floor(this.bestScore);
+    this.setHudText(
+      'gameover-best',
+      record ? '🏆 YENİ REKOR!' : `En iyi skor: ${Math.floor(this.bestScore).toLocaleString('tr-TR')}`
+    );
+    document.getElementById('gameover-overlay')?.classList.remove('hidden');
+  }
+
+  // Online: a new round, everyone side by side again on fresh road after a 3-2-1
+  startRound(info) {
+    this.burning = null;
+    this.carFire.reset();
+    document.getElementById('screen-vignette')?.classList.remove('burning');
+    this.hideRoundBanner();
+    this.combo = 1.0;
+    this.comboTimer = 0;
+    this.speedKmh = 0;
+    this.playerX = this.startX();
+    this.lateralVel = 0;
+    this.yawRate = 0;
+    this.headingAngle = 0;
+    this.trackSlideAngle = 0;
+    this.overtakeRun = null;
+    if (info.round > 1 || info.standings.some((s) => s.points > 0)) {
+      this.showMakasNotification(`🏁 TUR ${info.round} — İLK ${info.target} PUAN KAZANIR`, 0, 'gold');
+    }
+    // A player in the garage or the menu stays there (and falls behind); everyone else lines up
+    if (this.uiState === 'drive' || this.uiState === 'countdown' || this.uiState === 'pause') {
+      this.startCountdown();
+    }
+  }
+
+  // Online: the round (or the whole match) is over; the host starts the next one by itself
+  showRoundResult(info) {
+    const banner = document.getElementById('round-banner');
+    if (!banner) return;
+    const matchOver = info.phase === 'over';
+    const { winner, loser } = info;
+    let title;
+    let sub;
+    if (!winner) {
+      title = 'BERABERE — PUAN YOK';
+      sub = 'İkiniz de yandınız 🔥';
+    } else {
+      const winnerName = winner.isMe ? 'SEN' : winner.name.toUpperCase();
+      title = matchOver
+        ? `🏆 ${winner.isMe ? 'MAÇI KAZANDIN!' : `${winnerName} MAÇI KAZANDI`}`
+        : `${winner.isMe ? 'PUANI KAZANDIN' : `${winnerName} PUANI KAZANDI`} +1`;
+      if (info.reason === 'crash') {
+        sub = loser?.isMe ? 'Kaza yaptın ve yandın 🔥' : `${loser?.name ?? 'Rakip'} kaza yaptı ve yandı 🔥`;
+      } else {
+        sub = winner.isMe ? `Rakibine ${info.gapM} m fark attın 🚀` : `${winner.name} ${info.gapM} m fark attı 🚀`;
+      }
+    }
+    this.setHudText('round-banner-kicker', matchOver ? `MAÇ BİTTİ • ${info.target} PUAN` : `TUR ${info.round} BİTTİ`);
+    this.setHudText('round-banner-title', title);
+    this.setHudText('round-banner-sub', matchOver ? `${sub} — yeni maç birazdan başlıyor` : sub);
+
+    const list = document.getElementById('round-banner-scores');
+    list.replaceChildren(
+      ...info.standings.map((s) => {
+        const row = document.createElement('span');
+        row.className = 'round-score';
+        row.style.setProperty('--tag', s.tag);
+        const name = document.createElement('b');
+        name.textContent = s.isMe ? 'SEN' : s.name.toUpperCase();
+        const pts = document.createElement('i');
+        pts.textContent = String(s.points);
+        row.append(name, pts);
+        return row;
+      })
+    );
+    banner.classList.toggle('win', Boolean(winner?.isMe));
+    banner.classList.toggle('over', matchOver);
+    banner.classList.remove('hidden');
+    if (winner?.isMe) this.sound.playMakasWhoosh(4, true, 200, true);
+  }
+
+  hideRoundBanner() {
+    document.getElementById('round-banner')?.classList.add('hidden');
+  }
 
   updatePhysics(dt) {
-    // 1. Determine throttle & brake input
-    const throttle = this.keys.gas ? 1.0 : this.touchThrottle;
-    const brake = this.keys.brake ? 1.0 : this.touchBrake;
+    // 1. Determine throttle & brake input (a burning car no longer answers the controls)
+    const burning = Boolean(this.burning);
+    const throttle = burning ? 0 : this.keys.gas ? 1.0 : this.touchThrottle;
+    const brake = burning ? 1.0 : this.keys.brake ? 1.0 : this.touchBrake;
 
     // Determine steering input (-1 left, +1 right)
     let rawSteer = 0;
@@ -2403,6 +2522,7 @@ class OtobanMakasGame {
     if (Math.abs(this.touchSteerValue) > 0.02) {
       rawSteer = this.touchSteerValue;
     }
+    if (burning) rawSteer = 0;
 
     // Progressive Speed-Sensitive Power Steering (Audi Dynamic Steering):
     // - Counter-steering (reversing direction) is extra crisp so driver can catch slides
@@ -2710,10 +2830,7 @@ class OtobanMakasGame {
       }
     }
 
-    // Slow passive health recovery when driving cleanly
-    if (this.health < 100) {
-      this.health = Math.min(100, this.health + dt * 2.5);
-    }
+    this.updateBurning(dt);
 
     // 8. Update Multiplayer, World (synced with highway distance), Traffic, Cockpit & Sound
     this.multiplayer.update(
@@ -2728,6 +2845,7 @@ class OtobanMakasGame {
         horn: this.keys.horn,
         score: this.score,
         combo: this.combo,
+        burning: Boolean(this.burning),
       },
       this.world
     );
@@ -2913,6 +3031,13 @@ class OtobanMakasGame {
     this.mpRows ??= new Map();
     const players = this.multiplayer.connected ? this.multiplayer.getRemotePlayers() : [];
     const ids = new Set(players.map((p) => p.id));
+    const match = this.multiplayer.connected ? this.multiplayer.match : null;
+    this.setHudText(
+      'mp-match-line',
+      match
+        ? `TUR ${match.round} • SEN ${this.multiplayer.pointsOf(this.multiplayer.localId)} PUAN • İLK ${MATCH_TARGET_POINTS} KAZANIR`
+        : ''
+    );
 
     for (const [id, row] of this.mpRows) {
       if (!ids.has(id)) {
@@ -2929,34 +3054,32 @@ class OtobanMakasGame {
         el.style.setProperty('--tag', SLOT_STYLES[peer.slot % SLOT_STYLES.length].tag);
         const name = document.createElement('span');
         name.className = 'mp-peer-name';
+        const pts = document.createElement('span');
+        pts.className = 'mp-peer-pts';
         const dist = document.createElement('span');
         dist.className = 'mp-peer-dist';
         const stats = document.createElement('span');
         stats.className = 'mp-peer-stats';
-        el.append(name, dist, stats);
+        el.append(name, pts, dist, stats);
         list.appendChild(el);
-        row = { el, name, dist, stats, text: {} };
+        row = { el, name, pts, dist, stats, text: {} };
         this.mpRows.set(peer.id, row);
       }
 
       const distM = Math.round(Math.abs(peer.relZ));
       const texts = {
         name: peer.name.toUpperCase(),
-        dist: distM <= 4 ? '🔥 YAN YANA' : peer.relZ < 0 ? `▲ ${distM}m` : `▼ ${distM}m`,
+        pts: `★${this.multiplayer.pointsOf(peer.id)}`,
+        dist: peer.burning ? '🔥 YANDI' : distM <= 4 ? '🔥 YAN YANA' : peer.relZ < 0 ? `▲ ${distM}m` : `▼ ${distM}m`,
         stats: `${Math.round(peer.speedKmh)} KM/S • ${peer.combo.toFixed(1)}x • ${Math.floor(peer.score).toLocaleString('tr-TR')} P`,
       };
-      for (const key of ['name', 'dist', 'stats']) {
+      for (const key of ['name', 'pts', 'dist', 'stats']) {
         if (row.text[key] !== texts[key]) {
           row.text[key] = texts[key];
           row[key].textContent = texts[key];
         }
       }
     }
-  }
-
-  catchUpToFriend() {
-    const name = this.multiplayer.catchUpToPeer();
-    if (name) this.showMakasNotification(`🚀 ${name} YANINA YETİŞTİN!`, 0, 'normal');
   }
 
   // Writes to the DOM only when a value actually changed: the HUD is refreshed every frame,
@@ -3005,15 +3128,6 @@ class OtobanMakasGame {
       this.hudCache.comboHot = hot;
       document.getElementById('combo-card')?.classList.toggle('hot', hot);
     }
-
-    this.setHudStyle('hud-health-bar', 'width', `${Math.round(this.health)}%`);
-    this.setHudStyle(
-      'hud-health-bar',
-      'background',
-      this.health > 50
-        ? 'linear-gradient(90deg, #00ff88, #00d4ff)'
-        : 'linear-gradient(90deg, #ff2a4b, #ffae00)'
-    );
 
     this.setHudText('mini-speed', String(Math.round(this.speedKmh)));
     this.setHudText('mini-gear', `D${this.gear}`);
@@ -3131,6 +3245,7 @@ class OtobanMakasGame {
           horn: false,
           score: this.score,
           combo: this.combo,
+          burning: Boolean(this.burning),
         },
         null
       );
@@ -3151,6 +3266,7 @@ class OtobanMakasGame {
           horn: false,
           score: this.score,
           combo: this.combo,
+          burning: Boolean(this.burning),
         },
         this.world
       );
@@ -3169,6 +3285,7 @@ class OtobanMakasGame {
           horn: false,
           score: this.score,
           combo: this.combo,
+          burning: Boolean(this.burning),
         },
         this.world
       );

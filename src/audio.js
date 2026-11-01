@@ -632,6 +632,41 @@ export class SoundEngine {
     noise.start(now);
   }
 
+  // The engine bay catching fire: a low "whoomp" swelling into a crackling roar that dies away
+  playIgnition() {
+    if (!this.ctx || this.muted) return;
+    const now = this.ctx.currentTime;
+    const dur = 2.6;
+    const bufSize = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) {
+      // Random crackle pops on top of the roar
+      const pop = Math.random() < 0.0015 ? 6 : 1;
+      d[i] = (Math.random() * 2 - 1) * pop;
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(180, now);
+    filter.frequency.exponentialRampToValueAtTime(1400, now + 0.35);
+    filter.frequency.exponentialRampToValueAtTime(700, now + dur);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.06, now + 1.2);
+    gain.gain.exponentialRampToValueAtTime(0.002, now + dur);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+    noise.start(now);
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     if (this.ctx) {

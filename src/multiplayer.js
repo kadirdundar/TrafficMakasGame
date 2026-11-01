@@ -5,6 +5,7 @@ import { createLuxurySedan } from './vehicleModels.js';
 import { DEFAULT_CAR_ID, getCar, loadCarExterior } from './cars/index.js';
 import { DEFAULT_PLATE, PARTS, partOrNone } from './progression/config.js';
 import { cleanPlate } from './progression/plate.js';
+import { CarFire } from './carFire.js';
 
 const PEER_PREFIX = 'otoban-makas-v1-room-';
 
@@ -38,6 +39,17 @@ const HANDOVER_GRACE_MS = 6000;
 const MAX_EPOCH_SCAN = 5;
 const CONNECT_TIMEOUT_MS = 4000;
 
+// Online match: a round is won by whoever is still driving when a rival crashes (and burns), or by
+// pulling ROUND_GAP_M ahead of the next car. The first to MATCH_TARGET_POINTS wins the match.
+// The host referees; everyone else follows the match state it sends with every 'states' packet.
+export const MATCH_TARGET_POINTS = 5;
+export const ROUND_GAP_M = 200;
+const ROUND_BREAK_MS = 3800; // the round's result on screen before the next one starts
+const MATCH_OVER_MS = 8000; // the winner on screen before a new match starts
+const ROUND_GRACE_MS = 4000; // 3-2-1 and the first packets of the new round before anything counts
+const ROUND_START_AHEAD_M = 250; // each round starts on fresh road, past the leader
+const MATCH_PHASES = ['race', 'break', 'over'];
+
 // Per-slot paint & nameplate colour so every friend is recognisable (slot 0 = host)
 export const SLOT_STYLES = [
   { paint: 0xd6182c, tag: '#ff4d5e' }, // Tango Kırmızısı (Varsayılan)
@@ -60,6 +72,28 @@ const PEER_CONFIG = {
     ],
   },
 };
+
+// The match state from the host, field by field (null when there is none)
+function sanitizeMatch(m) {
+  if (!m || typeof m !== 'object') return null;
+  const scores = {};
+  if (m.scores && typeof m.scores === 'object') {
+    for (const [id, pts] of Object.entries(m.scores)) {
+      if (Number.isFinite(Number(pts))) scores[id] = Math.max(0, Math.floor(Number(pts)));
+    }
+  }
+  const idOrNull = (v) => (typeof v === 'string' ? v : null);
+  return {
+    seq: num(m.seq),
+    round: num(m.round),
+    phase: MATCH_PHASES.includes(m.phase) ? m.phase : 'race',
+    scores,
+    winnerId: idOrNull(m.winnerId),
+    loserId: idOrNull(m.loserId),
+    reason: m.reason === 'gap' || m.reason === 'crash' ? m.reason : null,
+    startDistM: num(m.startDistM),
+  };
+}
 
 const cleanName = (name, fallback) => String(name || '').trim().slice(0, 14) || fallback;
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
@@ -92,6 +126,9 @@ export class MultiplayerManager {
 
     // Other players in the room, keyed by id (host side: guests; guest side: host + other guests)
     this.players = new Map();
+
+    // Rounds and points of the online match (see MATCH_TARGET_POINTS); null outside a room
+    this.match = null;
 
     // Local & Remote Highway Progress (in meters from room sync)
     this.localWorldDistM = 0;
@@ -282,6 +319,9 @@ export class MultiplayerManager {
       braking: false,
       score: 0,
       combo: 1.0,
+      burning: false,
+      round: 0, // the match round its last state was sent in
+      fire: null, // CarFire on its bonnet while it burns
       relZ: 0,
       car,
       badge: car.badge,
@@ -300,6 +340,7 @@ export class MultiplayerManager {
     player.removed = true;
     this.players.delete(id);
     this.scene.remove(player.car.group);
+    player.fire?.dispose();
     player.badge.texture.dispose();
     player.badge.spriteMat.dispose();
     if (notify) this.callbacks.onPlayerLeft?.({ name: player.name });
@@ -413,6 +454,7 @@ export class MultiplayerManager {
     this.epoch = 0;
     this._migrating = false;
     this._welcomeReceived = false;
+    this.match = null;
     this.traffic.isRemoteControlled = false;
     if (!silent) this.emitStatus('Bağlantı kesildi.');
   }
@@ -652,6 +694,10 @@ export class MultiplayerManager {
       p.lastRecvTime = graceUntil;
     }
     this.connected = this.players.size > 0;
+    // The match goes on under this device's refereeing, on its own clock
+    this._phaseUntil = performance.now() + 2000;
+    this._raceGraceUntil = performance.now() + 2000;
+    if (!this.match) this.startMatch();
 
     try {
       guestPeer?.destroy();
@@ -724,6 +770,7 @@ export class MultiplayerManager {
           this.localWorldDistM = 0;
           this.traffic.resetTraffic();
         }
+        if (!this.match) this.startMatch();
         player = this.addRemotePlayer(data.from, data.name, slot, data.carModel || DEFAULT_CAR_ID, data.paintSlot);
       }
       if (conn) player.conn = conn;
@@ -735,6 +782,7 @@ export class MultiplayerManager {
         name: this.playerName,
         slot: player.slot,
         roster: this.roster(),
+        match: this.match,
         trafficSnapshot: this.traffic.exportSyncState(this.localWorldDistM),
       });
 
@@ -849,6 +897,8 @@ export class MultiplayerManager {
         this.localWorldDistM = num(data.hostDistM); // Start side-by-side with the host at the exact same meter
       }
       this.syncRoster(data.roster, { announce: false });
+      // Joining (or re-joining after a hand-over) mid-match: take the match as it stands
+      this.match = sanitizeMatch(data.match) ?? this.match;
       if (data.trafficSnapshot) {
         // The road layout first, so the cars land on the right road
         if (data.trafficSnapshot.roadMode) this.callbacks.onRoadModeSync?.(data.trafficSnapshot.roadMode);
@@ -895,6 +945,7 @@ export class MultiplayerManager {
       this.syncRoster(data.players, { announce: true });
       this.emitStatus(`🟢 Odada ${this.playerCount}/${MAX_PLAYERS} oyuncu — Oda: ${this.roomCode}`);
     } else if (data.type === 'states' && Array.isArray(data.players)) {
+      this.syncMatch(data.match);
       for (const s of data.players) {
         if (!s || s.id === this.localId) continue;
         const player = this.players.get(s.id);
@@ -1002,6 +1053,8 @@ export class MultiplayerManager {
     player.braking = Boolean(d.braking);
     player.score = num(d.score);
     player.combo = num(d.combo, 1.0);
+    player.burning = Boolean(d.burning);
+    player.round = num(d.round);
     if (d.horn && !player.horn) this.callbacks.onPeerHorn?.({ name: player.name });
     player.horn = Boolean(d.horn);
   }
@@ -1026,6 +1079,140 @@ export class MultiplayerManager {
     });
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Match: rounds and points
+  // ---------------------------------------------------------------------------------------------
+
+  // Host: a new match, its first round starting where everyone already is
+  startMatch() {
+    this.match = { seq: 0, round: 0, phase: 'race', scores: {}, winnerId: null, loserId: null, reason: null, startDistM: 0 };
+    this.startRound(this.localWorldDistM, { announce: false });
+  }
+
+  // Host: the next round, everyone side by side again at startDistM
+  startRound(startDistM, { announce = true } = {}) {
+    const m = this.match;
+    m.round += 1;
+    m.seq += 1;
+    m.phase = 'race';
+    m.winnerId = null;
+    m.loserId = null;
+    m.reason = null;
+    m.startDistM = Math.round(startDistM);
+    this._raceGraceUntil = performance.now() + ROUND_GRACE_MS;
+    this.placeAtRoundStart(m.startDistM);
+    if (!announce) return;
+    this.traffic.resetTraffic(); // fresh traffic around the new start line
+    this.trafficSyncAccum = 1.0;
+    this.callbacks.onRoundStart?.(this.matchInfo());
+  }
+
+  // Host: someone won the round (winnerId null: everyone crashed at once, nobody scores)
+  endRound(winnerId, loserId, reason) {
+    const m = this.match;
+    if (winnerId) m.scores[winnerId] = (m.scores[winnerId] ?? 0) + 1;
+    m.winnerId = winnerId;
+    m.loserId = loserId;
+    m.reason = reason;
+    m.seq += 1;
+    const champion = Boolean(winnerId) && m.scores[winnerId] >= MATCH_TARGET_POINTS;
+    m.phase = champion ? 'over' : 'break';
+    this._phaseUntil = performance.now() + (champion ? MATCH_OVER_MS : ROUND_BREAK_MS);
+    this.callbacks.onRoundEnd?.(this.matchInfo());
+  }
+
+  // Host, every frame: ends the round on a crash or a ROUND_GAP_M lead, and starts the next one
+  // (or a new match) once the result has been on screen long enough
+  refereeMatch(localState) {
+    const m = this.match;
+    if (!m) return;
+    const now = performance.now();
+    if (m.phase !== 'race') {
+      if (now < this._phaseUntil) return;
+      if (m.phase === 'over') {
+        m.scores = {};
+        m.round = 0;
+      }
+      let leadM = this.localWorldDistM;
+      for (const p of this.players.values()) leadM = Math.max(leadM, p.targetWorldDistM);
+      this.startRound(leadM + ROUND_START_AHEAD_M);
+      return;
+    }
+    if (now < this._raceGraceUntil) return;
+
+    // Only players already driving this round count (a state sent before the restart does not)
+    const field = [{ id: this.localId, distM: this.localWorldDistM, burning: Boolean(localState.burning) }];
+    for (const p of this.players.values()) {
+      if (p.round === m.round) field.push({ id: p.id, distM: p.targetWorldDistM, burning: p.burning });
+    }
+    if (field.length < 2) return;
+    field.sort((a, b) => b.distM - a.distM);
+
+    const crashed = field.find((f) => f.burning);
+    if (crashed) {
+      // The point goes to the leader among those still driving
+      this.endRound(field.find((f) => !f.burning)?.id ?? null, crashed.id, 'crash');
+    } else if (field[0].distM - field[1].distM >= ROUND_GAP_M) {
+      this.endRound(field[0].id, field[1].id, 'gap');
+    }
+  }
+
+  // Guest: the match state that came with the host's 'states' packet
+  syncMatch(raw) {
+    const m = sanitizeMatch(raw);
+    if (!m) return;
+    const prev = this.match;
+    this.match = m;
+    if (!prev || prev.seq === m.seq) return;
+    if (m.phase === 'race') {
+      this.placeAtRoundStart(m.startDistM);
+      this.callbacks.onRoundStart?.(this.matchInfo());
+    } else {
+      this.callbacks.onRoundEnd?.(this.matchInfo());
+    }
+  }
+
+  placeAtRoundStart(startDistM) {
+    this.localWorldDistM = startDistM;
+    for (const p of this.players.values()) {
+      p.worldDistM = startDistM;
+      p.targetWorldDistM = startDistM;
+      p.speedKmh = 0;
+    }
+  }
+
+  pointsOf(id) {
+    return this.match?.scores[id] ?? 0;
+  }
+
+  // The match as the screen shows it: names instead of ids, standings best first
+  matchInfo() {
+    const m = this.match;
+    if (!m) return null;
+    const who = (id) => {
+      if (!id) return null;
+      if (id === this.localId) return { name: this.playerName, isMe: true };
+      const p = this.players.get(id);
+      return { name: p?.name ?? 'RAKİP', isMe: false };
+    };
+    const standings = [
+      { id: this.localId, name: this.playerName, isMe: true, tag: SLOT_STYLES[this.localSlot % SLOT_STYLES.length].tag },
+      ...this.getRemotePlayers().map((p) => ({ id: p.id, name: p.name, isMe: false, tag: p.style.tag })),
+    ]
+      .map((s) => ({ ...s, points: this.pointsOf(s.id) }))
+      .sort((a, b) => b.points - a.points);
+    return {
+      round: m.round,
+      phase: m.phase,
+      reason: m.reason,
+      target: MATCH_TARGET_POINTS,
+      gapM: ROUND_GAP_M,
+      winner: who(m.winnerId),
+      loser: who(m.loserId),
+      standings,
+    };
+  }
+
   getTrafficContext() {
     return {
       connected: this.connected,
@@ -1033,19 +1220,6 @@ export class MultiplayerManager {
       localWorldDistM: this.localWorldDistM,
       peers: this.getRemotePlayers().map((p) => ({ x: p.x, relZ: p.relZ, speedKmh: p.speedKmh })),
     };
-  }
-
-  // Teleport right behind the nearest friend if separated by a big gap; returns their name
-  catchUpToPeer() {
-    if (!this.connected) return null;
-    let nearest = null;
-    for (const p of this.players.values()) {
-      if (!nearest || Math.abs(p.relZ) < Math.abs(nearest.relZ)) nearest = p;
-    }
-    if (!nearest || Math.abs(nearest.relZ) <= 12) return null;
-    this.localWorldDistM = nearest.targetWorldDistM - 10; // Place 10m behind friend
-    nearest.worldDistM = nearest.targetWorldDistM;
-    return nearest.name;
   }
 
   setLocalCarModel(carModel) {
@@ -1083,6 +1257,8 @@ export class MultiplayerManager {
       horn: localState.horn,
       score: Math.floor(localState.score),
       combo: Number(localState.combo.toFixed(1)),
+      burning: Boolean(localState.burning),
+      round: this.match?.round ?? 0,
     };
   }
 
@@ -1117,6 +1293,8 @@ export class MultiplayerManager {
 
     if (!this.connected) return;
 
+    if (this.role === 'host') this.refereeMatch(localState);
+
     // 1. Send state at ~25 Hz. A guest sends its own car to the host; the host relays everyone's
     //    latest state (its own + every guest's) to all guests in a single packet.
     this.sendAccum += dt;
@@ -1144,9 +1322,11 @@ export class MultiplayerManager {
             horn: p.horn,
             score: p.score,
             combo: p.combo,
+            burning: p.burning,
+            round: p.round,
           });
         }
-        this.broadcast({ type: 'states', players });
+        this.broadcast({ type: 'states', players, match: this.match });
       }
     }
 
@@ -1166,7 +1346,6 @@ export class MultiplayerManager {
     // 3. Dead-reckon & interpolate every remote car
     const night = Boolean(WEATHER_PRESETS[world?.weatherKey]?.streetlightsOn);
     const now = performance.now();
-    let packDistSum = this.localWorldDistM;
     for (const p of this.players.values()) {
       p.targetWorldDistM += ((p.speedKmh || 90) / 3.6) * dt;
       p.x = THREE.MathUtils.lerp(p.x, p.targetX, Math.min(1, dt * 14));
@@ -1175,15 +1354,6 @@ export class MultiplayerManager {
       } else {
         p.worldDistM = THREE.MathUtils.lerp(p.worldDistM, p.targetWorldDistM, Math.min(1, dt * 10));
       }
-      packDistSum += p.worldDistM;
-    }
-
-    // Soft rubber-banding toward the middle of the pack: anyone more than 165 m from it after a
-    // crash is gently pulled back, so all cars stay within visual highway range
-    const packCenterM = packDistSum / (this.players.size + 1);
-    const gapToPackM = packCenterM - this.localWorldDistM; // + means the pack is ahead
-    if (Math.abs(gapToPackM) > 165) {
-      this.localWorldDistM += (Math.abs(gapToPackM) - 165) * 0.35 * Math.sign(gapToPackM) * dt;
     }
 
     for (const p of this.players.values()) {
@@ -1206,6 +1376,18 @@ export class MultiplayerManager {
 
       // Brake lights & High-Beam Selektör visuals
       p.car.setLights({ night, braking: p.braking, highBeam: p.highBeam });
+
+      // A friend who crashed burns on the road for everyone to see
+      if (p.burning && !p.fire) {
+        p.fire = new CarFire({ width: 1.3 });
+        p.fire.group.position.set(0, 0.85, -1.45);
+        group.add(p.fire.group);
+      }
+      if (p.fire) {
+        if (p.burning && !p.fire.active) p.fire.ignite();
+        else if (!p.burning && p.fire.active) p.fire.extinguish();
+        p.fire.update(dt);
+      }
 
       // Refresh the overhead nameplate every ~150 ms (only while it can be seen)
       if (group.visible && now - p.lastBadgeUpdate > 150) {
