@@ -10,6 +10,17 @@ const MAX_RPM = 6500;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// iOS Safari ignores writes to HTMLAudioElement.volume, so the menu music and the radio could not
+// be turned down there. Routing the element through a GainNode makes its level settable everywhere.
+export function routeThroughGain(audio, ctx) {
+  const source = ctx.createMediaElementSource(audio);
+  const gain = ctx.createGain();
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  audio.volume = 1;
+  return gain;
+}
+
 export class SoundEngine {
   constructor() {
     this.ctx = null;
@@ -54,8 +65,9 @@ export class SoundEngine {
 
   init() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') {
-        this.ctx.resume();
+      // iOS leaves the context 'interrupted' after a call or the app switcher, not just 'suspended'
+      if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') {
+        this.ctx.resume().catch(() => {});
       }
       return;
     }
@@ -118,6 +130,7 @@ export class SoundEngine {
     this.hornOsc2.start();
 
     this.running = true;
+    this.onContextReady?.(this.ctx);
   }
 
   setupEngine() {

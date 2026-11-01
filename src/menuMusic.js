@@ -1,3 +1,5 @@
+import { routeThroughGain } from './audio.js';
+
 // MenuMusicPlayer — High-performance background music for the garage/home menu
 //
 // Streams royalty-free electronic synthwave theme ("Neon Laser Horizon" by Kevin MacLeod, CC BY 4.0)
@@ -18,6 +20,7 @@ export class MenuMusicPlayer {
     this.fadeInterval = null;
     this.shouldBePlaying = false;
     this.unlocked = false;
+    this.gain = null; // set once the element plays through the shared AudioContext
 
     const base = import.meta.env.BASE_URL || './';
     const cleanBase = base.endsWith('/') ? base : base + '/';
@@ -35,10 +38,17 @@ export class MenuMusicPlayer {
     return Math.max(0, Math.min(1, this.volume * this.masterVolume * 0.45));
   }
 
+  attachToContext(ctx) {
+    if (this.gain) return;
+    this.gain = routeThroughGain(this.audio, ctx);
+    this.level = undefined;
+    this.applyVolume(this.isFadeActive ? 0 : this.calculateTargetVolume());
+  }
+
   applyVolume(vol) {
-    if (this.audio) {
-      this.audio.volume = Math.max(0, Math.min(1, vol));
-    }
+    this.level = Math.max(0, Math.min(1, vol));
+    if (this.gain) this.gain.gain.value = this.level;
+    else this.audio.volume = this.level;
   }
 
   setVolume(v) {
@@ -121,7 +131,7 @@ export class MenuMusicPlayer {
       clearInterval(this.fadeInterval);
     }
     this.isFadeActive = true;
-    const startVol = this.audio.volume;
+    const startVol = this.level ?? this.calculateTargetVolume();
     const steps = 12;
     const stepTime = (durationSec * 1000) / steps;
     let step = 0;
@@ -165,13 +175,14 @@ export class MenuMusicPlayer {
           let step = 0;
           this.fadeInterval = setInterval(() => {
             step++;
-            const current = (targetVol * step) / steps;
-            this.applyVolume(Math.min(targetVol, current));
+            // Re-read the target each step so a slider moved mid-fade is not overwritten
+            const target = this.calculateTargetVolume();
+            this.applyVolume((target * step) / steps);
             if (step >= steps) {
               clearInterval(this.fadeInterval);
               this.fadeInterval = null;
               this.isFadeActive = false;
-              this.applyVolume(targetVol);
+              this.applyVolume(target);
             }
           }, stepTime);
         })

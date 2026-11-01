@@ -1,3 +1,5 @@
+import { routeThroughGain } from './audio.js';
+
 // Hüzün Radyosu — Lightweight Streaming Audio Player for Otoban Makas
 //
 // Streams MP3 files via HTML5 Audio element on a separate OS audio thread:
@@ -32,6 +34,8 @@ export class RadioPlayer {
     this.currentIndex = 0;
     this.isPlaying = false;
     this.volume = 0.35;
+    this.masterVolume = options.masterVolume ?? 1.0;
+    this.gain = null; // set once the element plays through the shared AudioContext
     this.stationName = 'HÜZÜN RADYOSU';
 
     this.onTrackChange = options.onTrackChange || null;
@@ -40,7 +44,7 @@ export class RadioPlayer {
     // HTML5 Audio runs streaming decoding on dedicated browser audio thread
     this.audio = new Audio();
     this.audio.preload = 'none';
-    this.audio.volume = this.volume;
+    this.applyVolume();
 
     this.audio.addEventListener('ended', () => {
       this.next();
@@ -119,9 +123,27 @@ export class RadioPlayer {
     return this.currentTrack;
   }
 
+  attachToContext(ctx) {
+    if (this.gain) return;
+    this.gain = routeThroughGain(this.audio, ctx);
+    this.applyVolume();
+  }
+
+  applyVolume() {
+    const level = Math.max(0, Math.min(1, this.volume * this.masterVolume));
+    if (this.gain) this.gain.gain.value = level;
+    else this.audio.volume = level;
+  }
+
   setVolume(vol) {
     this.volume = Math.max(0, Math.min(1, vol));
-    this.audio.volume = this.volume;
+    this.applyVolume();
+  }
+
+  // The radio follows the "Genel Ses" slider like every other sound
+  setMasterVolume(mv) {
+    this.masterVolume = Math.max(0, Math.min(1.5, Number(mv) || 0));
+    this.applyVolume();
   }
 
   setMuted(muted) {

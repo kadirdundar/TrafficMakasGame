@@ -135,6 +135,7 @@ class OtobanMakasGame {
     this.burning = null; // { t } seconds since the crash while the car burns
     this.traffic = new TrafficManager(this.scene);
     this.radio = new RadioPlayer({
+      masterVolume: this.sound.volumes.master,
       onTrackChange: (track) => {
         this.showMakasNotification(`📻 HÜZÜN RADYOSU: ${track.title}`, 0, 'gold');
         this.syncRadioUI();
@@ -376,6 +377,7 @@ class OtobanMakasGame {
     this.updateHUD();
     this.openMenu('home');
     this.menuMusic.play();
+    this.setupAudioUnlock();
     this.animate();
   }
 
@@ -951,6 +953,7 @@ class OtobanMakasGame {
         this.openPause();
         this.menuMusic?.pause();
       } else if (this.uiState === 'menu') {
+        this.sound.init();
         this.menuMusic?.play();
       }
     });
@@ -1776,6 +1779,19 @@ class OtobanMakasGame {
     this.touchBrake = 0;
   }
 
+  // The music and the radio play through the game's AudioContext (see routeThroughGain), so it is
+  // created on the first touch and resumed on later ones after iOS interrupts it in the background.
+  setupAudioUnlock() {
+    this.sound.onContextReady = (ctx) => {
+      this.menuMusic.attachToContext(ctx);
+      this.radio.attachToContext(ctx);
+    };
+    const unlock = () => this.sound.init();
+    for (const type of ['pointerdown', 'touchend', 'keydown']) {
+      window.addEventListener(type, unlock, { passive: true });
+    }
+  }
+
   setupAudioSettings() {
     const bindSlider = (id, valId, category, soundPreview) => {
       const slider = document.getElementById(id);
@@ -1793,6 +1809,7 @@ class OtobanMakasGame {
         this.sound.setVolume(category, val);
         if (category === 'master') {
           this.menuMusic?.setMasterVolume(val);
+          this.radio.setMasterVolume(val);
         }
         if (category === 'music') {
           this.menuMusic?.setVolume(val);
