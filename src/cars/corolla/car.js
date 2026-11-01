@@ -14,7 +14,7 @@ export default {
   aliases: ['toyota', 'corolla'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Everyday 1.6 sedan: slow to pull, soft but honest handling
-  price: 5000,
+  price: 4000,
   performance: { topSpeed: 200, power: 0.64, traction: 0.72, handling: 0.86, braking: 0.8, upgradeCost: 0.6 },
   credit: {
     title: '2014 Toyota Corolla E180 EU (with interior)',

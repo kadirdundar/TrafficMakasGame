@@ -12,7 +12,7 @@ import { DroneReplayManager } from './replay.js';
 import { CLASSIC_PHYSICS, carStats, longitudinalAccel, resolvePhysics } from './progression/performance.js';
 import { PlayerProfile } from './progression/profile.js';
 import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js';
-import { COINS_PER_KM, COINS_PER_POINT, neonColorHex } from './progression/config.js';
+import { COINS_PER_KM, COINS_PER_POINT, MATCH_WIN_COINS, neonColorHex } from './progression/config.js';
 import { createNeonGlow, createNeonSpill } from './cars/neon.js';
 import { GarageProgressUI } from './progression/garageUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
@@ -2500,6 +2500,11 @@ class OtobanMakasGame {
     }
     this.setHudText('round-banner-kicker', matchOver ? `MAÇ BİTTİ • ${info.target} PUAN` : `TUR ${info.round} BİTTİ`);
     this.setHudText('round-banner-title', title);
+    if (matchOver && winner?.isMe && this.newVersion) {
+      this.runCoins += MATCH_WIN_COINS;
+      this.profile.earn(MATCH_WIN_COINS);
+      sub = `${sub} • +${MATCH_WIN_COINS} PARA`;
+    }
     this.setHudText('round-banner-sub', matchOver ? `${sub} — yeni maç birazdan başlıyor` : sub);
 
     const list = document.getElementById('round-banner-scores');

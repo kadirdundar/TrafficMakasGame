@@ -14,7 +14,7 @@ export default {
   variant: 'G82 · VR46 Edition',
   aliases: ['bmw'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
-  price: 15000,
+  price: 25000,
   performance: { topSpeed: 290, power: 1.06, traction: 1.0, handling: 1.08, braking: 1.05, upgradeCost: 1.25 },
   credit: {
     title: '2025 BMW M4 CS VR46 Edition',

@@ -13,7 +13,7 @@ export default {
   variant: 'R190 · Roadster',
   aliases: ['amg', 'mercedes'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
-  price: 22000,
+  price: 42000,
   performance: { topSpeed: 300, power: 1.1, traction: 0.97, handling: 1.03, braking: 1.04, upgradeCost: 1.35 },
   credit: {
     title: 'Mercedes Amg GT roadster',

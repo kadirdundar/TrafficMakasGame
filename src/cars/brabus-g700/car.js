@@ -14,7 +14,7 @@ export default {
   aliases: ['brabus', 'g700', 'g63', 'g-class', 'gwagon', 'g-wagon', 'mercedes-brabus'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Brute force: strong pull off the line, but heavy, boxy and slow to turn
-  price: 18000,
+  price: 32000,
   performance: { topSpeed: 240, power: 1.2, traction: 0.92, handling: 0.82, braking: 0.86, upgradeCost: 1.3 },
   credit: {
     title: 'Mercedes Brabus G700 NS',

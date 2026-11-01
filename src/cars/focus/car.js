@@ -14,7 +14,7 @@ export default {
   aliases: ['ford'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Budget sedan: slow to 100 and an early top speed, but light and easy to place
-  price: 5000,
+  price: 4500,
   performance: { topSpeed: 205, power: 0.66, traction: 0.72, handling: 0.94, braking: 0.82, upgradeCost: 0.65 },
   credit: {
     title: 'Ford Focus Sedan',

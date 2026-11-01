@@ -14,7 +14,7 @@ export default {
   aliases: ['passat', 'b8'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Family sedan: gentle launch, soft brakes, lower top speed
-  price: 8000,
+  price: 6500,
   performance: { topSpeed: 220, power: 0.7, traction: 0.76, handling: 0.9, braking: 0.86, upgradeCost: 0.75 },
   credit: {
     title: 'Volkswagen Passat B8',

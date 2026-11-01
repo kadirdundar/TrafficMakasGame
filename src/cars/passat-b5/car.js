@@ -14,7 +14,7 @@ export default {
   aliases: ['b5'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // The cheapest car: a slow diesel with soft handling and modest brakes
-  price: 3000,
+  price: 2500,
   performance: { topSpeed: 200, power: 0.62, traction: 0.7, handling: 0.82, braking: 0.78, upgradeCost: 0.6 },
   credit: {
     title: 'Volkswagen Passat B5',

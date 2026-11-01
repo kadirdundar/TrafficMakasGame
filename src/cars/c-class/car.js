@@ -27,7 +27,7 @@ export default {
   aliases: ['c200', 'w206', 'mercedes-c'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Premium sedan between the Passat B8 and the M4: 204 hp, 0-100 in 7.3 s, 246 km/h
-  price: 12000,
+  price: 9000,
   performance: { topSpeed: 246, power: 0.78, traction: 0.8, handling: 0.92, braking: 0.9, upgradeCost: 0.9 },
   credit: {
     title: 'Mercedes- Benz W206 C220',
