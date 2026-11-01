@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-Ol3-duIz.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DKhop6iq.css">
+  <script type="module" crossorigin src="./assets/index-0Rc0E8OX.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CgfoIqlP.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -56,12 +56,6 @@
         <span class="stat-label">EN İYİ SKOR</span>
         <span id="hud-best" class="stat-value">0</span>
       </div>
-      <div class="stat-card health-card">
-        <span class="stat-label">ARAÇ DURUMU</span>
-        <div class="health-bar-wrap">
-          <div id="hud-health-bar" class="health-bar-fill"></div>
-        </div>
-      </div>
       <!-- Track Lap Timing Card (Visible in Track Mode) -->
       <div id="hud-track-card" class="stat-card track-card hidden">
         <span class="stat-label" id="hud-track-turn">İSTANBUL PARK</span>
@@ -73,8 +67,8 @@
       </div>
       <!-- Live Friends Card (Visible when connected): one row per friend, filled in by main.js -->
       <div id="mp-hud-card" class="stat-card mp-hud-card hidden">
+        <div id="mp-match-line" class="mp-match-line"></div>
         <div id="mp-peer-list" class="mp-peer-list"></div>
-        <button id="btn-mp-catchup" type="button" class="mp-catchup-btn" title="En yakın arkadaşının yanına yetiş (R)">🚀 Yakala</button>
       </div>
     </div>
 
@@ -138,7 +132,6 @@
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> veya <strong>Direksiyonu Sürükle</strong></span>
     <span><kbd>F</kbd> / <kbd>BOŞLUK</kbd> Selektör</span>
     <span><kbd>H</kbd> Korna</span>
-    <span><kbd>R</kbd> Arkadaşına Yetiş</span>
     <span><kbd>V</kbd> Silecek</span>
     <span><kbd>K</kbd> / <kbd>N</kbd> Radyo</span>
     <span><kbd>L</kbd> Ambiyans</span>
@@ -391,7 +384,7 @@
           <div class="mp-lobby-box">
             <div class="mp-lobby-header">
               <div>
-                <h3>Beraber Sürüş</h3>
+                <h3>Kafa Kafaya Yarış</h3>
                 <p id="mp-status-text" class="mp-status-text">Oda kurup 4 haneli kodu arkadaşlarına gönder, 4 kişiye kadar aynı trafikte beraber makas atın!</p>
               </div>
               <div id="mp-active-code-badge" class="mp-active-code-badge hidden">
@@ -399,6 +392,8 @@
                 <strong id="mp-room-code-val">----</strong>
               </div>
             </div>
+
+            <p class="mp-rules">🔥 Kaza yapıp yanan turu kaybeder, rakip <b>+1 puan</b> alır. 🚀 Rakibine <b>200 m</b> fark atan da turu kazanır. <b>İlk 5 puanı</b> alan maçı kazanır!</p>
 
             <div class="mp-input-group">
               <label for="mp-player-name">Oyuncu Adın</label>
@@ -530,6 +525,42 @@
         </span>
       </button>
     </div>
+  </div>
+
+  <!-- Result card after a crash: the car burned, the drive is over (main.js → openGameOver) -->
+  <div id="gameover-overlay" class="pause-overlay gameover-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+    <div class="pause-card gameover-card">
+      <header class="pause-head">
+        <span class="gameover-flame" aria-hidden="true">🔥</span>
+        <h2 id="gameover-title">YANDIN!</h2>
+        <p class="pause-stats">
+          <span>Skor <b id="gameover-score">0</b></span>
+          <span>Süre <b id="gameover-time">00:00</b></span>
+          <span><b id="gameover-km">0.00</b> km</span>
+        </p>
+        <p id="gameover-best" class="gameover-best"></p>
+      </header>
+      <button id="btn-gameover-retry" type="button" class="cta-btn start-btn pause-resume">
+        <span aria-hidden="true">↻</span>
+        <span class="start-text"><span>TEKRAR OYNA</span></span>
+      </button>
+      <div class="pause-grid">
+        <button id="btn-gameover-garage" type="button" class="pause-btn">
+          <span aria-hidden="true">⌂</span> Garaja Dön
+        </button>
+        <button id="btn-gameover-home" type="button" class="pause-btn">
+          <span aria-hidden="true">■</span> Ana Menü
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Online: who took the round (or the match) and the points so far (main.js → showRoundResult) -->
+  <div id="round-banner" class="round-banner hidden" aria-live="assertive">
+    <small id="round-banner-kicker" class="round-banner-kicker">TUR 1 BİTTİ</small>
+    <strong id="round-banner-title" class="round-banner-title"></strong>
+    <span id="round-banner-sub" class="round-banner-sub"></span>
+    <div id="round-banner-scores" class="round-banner-scores"></div>
   </div>
 
   <!-- 3-2-1 before the drive goes on after a pause -->
