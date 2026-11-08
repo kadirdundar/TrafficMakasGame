@@ -18,6 +18,7 @@ import { GarageProgressUI } from './progression/garageUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
 import { MenuMusicPlayer } from './menuMusic.js';
 import { PerfProbe } from './perfProbe.js';
+import { FramePacer } from './framePacer.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -100,6 +101,12 @@ const SPEED_LINES_SPAN = 90;
 const HIT_GRACE_SEC = 1.5;
 const REPAIR_KM = 2;
 
+// Battery saver (settings): ~60 FPS on 120/144 Hz screens (framePacer.js) and at most this
+// render scale. On unless the player turns it off.
+const BATTERY_SAVER_KEY = 'otoban_battery_saver';
+const BATTERY_SAVER_DEFAULT = true;
+const BATTERY_SAVER_PIXEL_RATIO = 1.5;
+
 class OtobanMakasGame {
   constructor() {
     this.container = document.getElementById('canvas-container');
@@ -118,16 +125,26 @@ class OtobanMakasGame {
       antialias: true,
       powerPreference: 'high-performance',
     });
-    // Adaptive render scale: starts at the device pixel ratio (max 2), steps down while the
-    // frame rate is too low and back up once there is headroom again (see adaptRenderScale)
-    this.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    // Battery saver (on unless turned off in settings): about 60 FPS on 120/144 Hz screens and
+    // a render scale of at most 1.5x (see setBatterySaver)
+    this.batterySaver = BATTERY_SAVER_DEFAULT;
+    try {
+      const saved = localStorage.getItem(BATTERY_SAVER_KEY);
+      if (saved !== null) this.batterySaver = saved === '1';
+    } catch (_) {}
+    this.framePacer = new FramePacer(this.batterySaver);
+    // Adaptive render scale: starts at the device pixel ratio (max 2, 1.5 with the battery saver),
+    // steps down while the frame rate is too low and back up once there is headroom again
+    // (see adaptRenderScale)
+    this.maxPixelRatio = this.pixelRatioCeiling();
     this.minPixelRatio = Math.min(1, this.maxPixelRatio);
     this.pixelRatio = this.maxPixelRatio;
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.info.autoReset = false; // count draw calls of both passes (mirror + main)
     // CSS keeps the canvas full-screen (style.css); only its drawing buffer follows the size
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // ACES with the weather's colour grade folded in (atmosphere.js): no post-processing pass
+    this.renderer.toneMapping = THREE.CustomToneMapping;
     this.renderer.toneMappingExposure = 1.35;
     this.container.appendChild(this.renderer.domElement);
 
@@ -141,7 +158,7 @@ class OtobanMakasGame {
     this.camera.layers.enable(MIRROR_SKIP_LAYER);
 
     // Subsystems
-    this.world = new HighwayWorld(this.scene);
+    this.world = new HighwayWorld(this.scene, this.renderer);
     this.cockpit = new CarCockpit(this.renderer);
     this.scene.add(this.cockpit.group);
     // Flames on our own bonnet after a crash, in front of the windscreen
@@ -265,6 +282,8 @@ class OtobanMakasGame {
           onReady: (ok) => document.getElementById('garage-loader')?.classList.add(ok ? 'done' : 'failed'),
         }
       );
+      // The garage has its own render loop: same battery saver, its own refresh count
+      this.showroom.framePacer = new FramePacer(this.batterySaver);
     } catch (err) {
       console.warn('Garaj başlatılamadı', err);
       this.showroom = null;
@@ -401,6 +420,30 @@ class OtobanMakasGame {
     this.menuMusic.play();
     this.setupAudioUnlock();
     this.animate();
+  }
+
+  // Highest render scale: the screen's pixel ratio, at most 2 (1.5 with the battery saver)
+  pixelRatioCeiling() {
+    return Math.min(window.devicePixelRatio || 1, this.batterySaver ? BATTERY_SAVER_PIXEL_RATIO : 2);
+  }
+
+  setBatterySaver(on) {
+    this.batterySaver = on;
+    this.framePacer.enabled = on;
+    if (this.showroom?.framePacer) this.showroom.framePacer.enabled = on;
+    try {
+      localStorage.setItem(BATTERY_SAVER_KEY, on ? '1' : '0');
+    } catch (_) {}
+    // The adaptive scale starts over from the new ceiling
+    this.maxPixelRatio = this.pixelRatioCeiling();
+    this.minPixelRatio = Math.min(1, this.maxPixelRatio);
+    this.perf.goodWindows = 0;
+    this.perf.lastRaise = -10;
+    if (this.pixelRatio !== this.maxPixelRatio) {
+      this.pixelRatio = this.maxPixelRatio;
+      this.renderer.setPixelRatio(this.pixelRatio);
+      this.perf.settle = 1;
+    }
   }
 
   applyCameraPreset(index) {
@@ -642,6 +685,11 @@ class OtobanMakasGame {
     document.getElementById('sound-switch')?.addEventListener('change', (e) => {
       if (e.target.checked === this.sound.muted) this.toggleSound();
     });
+    const batterySwitch = document.getElementById('battery-switch');
+    if (batterySwitch) {
+      batterySwitch.checked = this.batterySaver;
+      batterySwitch.addEventListener('change', (e) => this.setBatterySaver(e.target.checked));
+    }
     this.setupAudioSettings();
     const coachBtn = document.getElementById('btn-replay-coach');
     coachBtn?.addEventListener('click', () => {
@@ -3340,8 +3388,10 @@ class OtobanMakasGame {
     }
   }
 
-  animate() {
-    requestAnimationFrame(() => this.animate());
+  animate(timestamp = performance.now()) {
+    requestAnimationFrame((t) => this.animate(t));
+    // Battery saver on a high refresh rate screen: this refresh is not drawn
+    if (this.framePacer.skip(timestamp)) return;
 
     const now = performance.now();
     const frameSec = (now - this.lastTime) / 1000;

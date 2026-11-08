@@ -302,8 +302,9 @@ export class A8Showroom {
     if (!active) return;
     this.lastFrame = performance.now();
     this.resize();
-    const loop = () => {
+    const loop = (timestamp = performance.now()) => {
       this.raf = requestAnimationFrame(loop);
+      if (this.framePacer?.skip(timestamp)) return; // battery saver on a 120 Hz screen
       this.frame();
     };
     loop();
