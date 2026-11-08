@@ -10,13 +10,17 @@ const MAX_RPM = 6500;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// Low-pass corner of the muffle filter: open (inaudible) and closed in ("underwater")
+const OPEN_HZ = 20000;
+const MUFFLED_HZ = 650;
+
 // iOS Safari ignores writes to HTMLAudioElement.volume, so the menu music and the radio could not
 // be turned down there. Routing the element through a GainNode makes its level settable everywhere.
-export function routeThroughGain(audio, ctx) {
+export function routeThroughGain(audio, ctx, destination = ctx.destination) {
   const source = ctx.createMediaElementSource(audio);
   const gain = ctx.createGain();
   source.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(destination);
   audio.volume = 1;
   return gain;
 }
@@ -43,6 +47,8 @@ export class SoundEngine {
 
     this.tunnelGain = null;
     this.tunnelDelay = null;
+    this.muffle = null;
+    this.muffledHold = false; // paused: stays muffled until setMuffled(false)
     this.acousticZone = 'highway';
 
     // Kullanıcıya özel ses seviyeleri (0.0 - 1.5 arası, varsayılan 1.0; localStorage üzerinde saklanır)
@@ -88,7 +94,16 @@ export class SoundEngine {
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.muted ? 0.0 : this.volumes.master;
     this.master.connect(this.masterGain);
-    this.masterGain.connect(this.ctx.destination);
+
+    // Muffle: a low-pass that is wide open while driving and closes in for an "underwater" sound
+    // after a crash and while the drive is paused (see muffleHit, setMuffled). The radio plays
+    // through it too.
+    this.muffle = this.ctx.createBiquadFilter();
+    this.muffle.type = 'lowpass';
+    this.muffle.frequency.value = this.muffledHold ? MUFFLED_HZ : OPEN_HZ;
+    this.muffle.Q.value = 0.9;
+    this.masterGain.connect(this.muffle);
+    this.muffle.connect(this.ctx.destination);
 
     // One looping noise source feeds rain, tyres, road, wind and the turbo
     const bufferSize = this.ctx.sampleRate * 2;
@@ -678,6 +693,32 @@ export class SoundEngine {
     filter.connect(gain);
     gain.connect(this.master);
     noise.start(now);
+  }
+
+  // A knock: the impact itself is heard in full, then everything closes in for a moment and
+  // opens up again. `heavy` (burning, head-on) holds it longer.
+  muffleHit(heavy = false) {
+    if (!this.ctx || !this.muffle) return;
+    const f = this.muffle.frequency;
+    const now = this.ctx.currentTime;
+    f.cancelScheduledValues(now);
+    f.setValueAtTime(f.value, now);
+    f.exponentialRampToValueAtTime(heavy ? 420 : 900, now + 0.09);
+    if (this.muffledHold) return;
+    f.setValueAtTime(heavy ? 420 : 900, now + (heavy ? 0.55 : 0.25));
+    f.exponentialRampToValueAtTime(OPEN_HZ, now + (heavy ? 1.6 : 0.9));
+  }
+
+  // Pause and the result card: muffled until the drive goes on
+  setMuffled(on) {
+    if (on === this.muffledHold) return;
+    this.muffledHold = on;
+    if (!this.ctx || !this.muffle) return;
+    const f = this.muffle.frequency;
+    const now = this.ctx.currentTime;
+    f.cancelScheduledValues(now);
+    f.setValueAtTime(f.value, now);
+    f.exponentialRampToValueAtTime(on ? MUFFLED_HZ : OPEN_HZ, now + (on ? 0.25 : 0.4));
   }
 
   toggleMute() {

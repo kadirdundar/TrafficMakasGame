@@ -88,6 +88,15 @@ const BURN_BEFORE_RESULT_SEC = 2.2;
 // knock shields the car for HIT_GRACE_SEC, so one pile-up costs one hit, and REPAIR_KM of clean
 // driving mends one.
 const MAX_HITS = 3;
+
+// Head turn into bends: radians of yaw per unit of road curvature ahead, and the most it turns
+// (~7°, reached in İstanbul Park's hairpins; motorway bends turn it a degree or two)
+const HEAD_TURN_PER_CURVATURE = 9;
+const HEAD_TURN_MAX = 0.12;
+
+// Speed lines fade in from SPEED_LINES_FROM km/h and are at full strength SPEED_LINES_SPAN later
+const SPEED_LINES_FROM = 180;
+const SPEED_LINES_SPAN = 90;
 const HIT_GRACE_SEC = 1.5;
 const REPAIR_KM = 2;
 
@@ -144,6 +153,8 @@ class OtobanMakasGame {
     this.graceSec = 0; // time left in which another knock costs nothing
     this.repairKm = 0; // clean driving since the last hit or repair
     this.damageHudKey = '';
+    this.headTurn = 0; // yaw the driver's head has turned into the bend ahead
+    this.speedLinesLevel = -1;
     this.traffic = new TrafficManager(this.scene);
     this.radio = new RadioPlayer({
       masterVolume: this.sound.volumes.master,
@@ -1578,6 +1589,7 @@ class OtobanMakasGame {
     this.uiState = state;
     this.paused = state !== 'drive';
     document.body.dataset.ui = state;
+    this.sound.setMuffled(state === 'pause' || state === 'gameover');
   }
 
   // The menu around the turntable car. A drive in progress waits underneath (the home screen
@@ -1795,7 +1807,7 @@ class OtobanMakasGame {
   setupAudioUnlock() {
     this.sound.onContextReady = (ctx) => {
       this.menuMusic.attachToContext(ctx);
-      this.radio.attachToContext(ctx);
+      this.radio.attachToContext(ctx, this.sound.muffle);
     };
     const unlock = () => this.sound.init();
     for (const type of ['pointerdown', 'touchend', 'keydown']) {
@@ -2424,6 +2436,7 @@ class OtobanMakasGame {
     this.rollVel += (Math.random() - 0.5) * 0.6;
     this.pitchVel -= 0.25;
     this.sound.playCrash();
+    this.sound.muffleHit(headOn || this.damage >= MAX_HITS);
     this.triggerScreenFlash('crash-flash');
 
     if (this.damage >= MAX_HITS) {
@@ -2464,6 +2477,19 @@ class OtobanMakasGame {
     } else {
       this.updateDamageHUD();
     }
+  }
+
+  // Streaks at the screen edges above SPEED_LINES_FROM; the CSS animates them, this only sets
+  // their strength (in 5 % steps, so the style is written a few times per speed change)
+  updateSpeedLines() {
+    const t = THREE.MathUtils.clamp((this.speedKmh - SPEED_LINES_FROM) / SPEED_LINES_SPAN, 0, 1);
+    const level = Math.round(t * 20) / 20;
+    if (level === this.speedLinesLevel) return;
+    this.speedLinesLevel = level;
+    const el = document.getElementById('speed-lines');
+    if (!el) return;
+    el.style.opacity = String(level * 0.6);
+    el.classList.toggle('on', level > 0);
   }
 
   resetDamage() {
@@ -2895,8 +2921,15 @@ class OtobanMakasGame {
     // Pushed back into the seat under acceleration, thrown forward under braking (+Z is backward)
     this.camera.position.z = preset.offset.z + this.accelFeel * 0.06;
 
+    // The driver looks into the bend coming up: the road's curvature a speed-dependent distance
+    // ahead turns the head a few degrees (+ curvature = right bend, + yaw = look left)
+    const lookAheadM = 20 + speedMs * 1.1;
+    const bendAhead = this.world.evalRoadDeriv2((this.world.worldDistM || 0) + lookAheadM);
+    const lookTarget = THREE.MathUtils.clamp(-bendAhead * HEAD_TURN_PER_CURVATURE, -HEAD_TURN_MAX, HEAD_TURN_MAX);
+    this.headTurn = THREE.MathUtils.lerp(this.headTurn, lookTarget, Math.min(1, dt * 2.5));
+
     // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean
-    this.camera.rotation.y = -this.headingAngle * 0.52;
+    this.camera.rotation.y = -this.headingAngle * 0.52 + this.headTurn;
     this.camera.rotation.z = this.bodyRoll * 0.75;
     this.camera.rotation.x = this.bodyPitch * 0.65;
 
@@ -2906,6 +2939,7 @@ class OtobanMakasGame {
     const accelFovKick = this.accelFeel * 5;
     this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost + accelFovKick, dt * 6);
     this.camera.updateProjectionMatrix();
+    this.updateSpeedLines();
 
     // 7. Continuous High-Speed Scoring, Odometer & Combo Decay
     const frameDistanceKm = (speedMs * dt) / 1000;

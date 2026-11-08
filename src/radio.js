@@ -123,9 +123,10 @@ export class RadioPlayer {
     return this.currentTrack;
   }
 
-  attachToContext(ctx) {
+  // `destination`: the game's muffle filter, so the radio closes in with the pause card too
+  attachToContext(ctx, destination) {
     if (this.gain) return;
-    this.gain = routeThroughGain(this.audio, ctx);
+    this.gain = routeThroughGain(this.audio, ctx, destination);
     this.applyVolume();
   }
 
