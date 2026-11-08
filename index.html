@@ -25,6 +25,8 @@
 
   <!-- Flash / Damage / Near-Miss Screen Vignette -->
   <div id="screen-vignette" class="vignette"></div>
+  <!-- Windscreen cracks, one set per hit taken (main.js: updateDamageVisuals) -->
+  <div id="screen-cracks" class="screen-cracks" data-level="0" aria-hidden="true"></div>
 
   <!-- Top HUD Bar -->
   <header id="hud-top" class="hud-top">
@@ -32,6 +34,11 @@
       <div class="stat-card score-card">
         <span class="stat-label">SKOR</span>
         <span id="hud-score" class="stat-value">0</span>
+      </div>
+      <!-- Hits the car can still take: 3 knocks (a head-on counts double) and it burns -->
+      <div id="hud-damage-card" class="stat-card damage-card" title="Araç dayanıklılığı: 3 darbede araç yanar, temiz sürüş tamir eder">
+        <span class="stat-label">ARAÇ</span>
+        <div class="damage-pips"><i></i><i></i><i></i></div>
       </div>
       <div class="stat-card time-card" id="time-card" title="Oyuna Başlama / Sürüş Süresi">
         <span class="stat-label">SÜRÜŞ SÜRESİ</span>
@@ -392,7 +399,7 @@
               </div>
             </div>
 
-            <p class="mp-rules">🔥 Kaza yapıp yanan turu kaybeder, rakip <b>+1 puan</b> alır. 🚀 Rakibine <b>200 m</b> fark atan da turu kazanır. <b>İlk 5 puanı</b> alan maçı kazanır!</p>
+            <p class="mp-rules">🔥 Araba 3 darbede yanar (kafa kafaya 2 sayılır); yanan turu kaybeder, rakip <b>+1 puan</b> alır. 🚀 Rakibine <b>200 m</b> fark atan da turu kazanır. <b>İlk 5 puanı</b> alan maçı kazanır!</p>
 
             <div class="mp-input-group">
               <label for="mp-player-name">Oyuncu Adın</label>

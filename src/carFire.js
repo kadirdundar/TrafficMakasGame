@@ -1,11 +1,15 @@
 import * as THREE from 'three';
 
-// A burning engine bay: flames licking up from the bonnet and black smoke rising above them.
-// Plain sprites (one material each, so every particle fades on its own) with no light source:
-// a new light would make every material in the scene recompile its shader mid-drive.
+// A burning engine bay: flames licking up from the bonnet and black smoke rising above them, or,
+// one hit before that, just grey smoke (smoulder). Plain sprites (one material each, so every
+// particle fades on its own) with no light source: a new light would make every material in the
+// scene recompile its shader mid-drive. Counts and sizes are kept low because the sprites sit
+// right in front of the camera, and big overlapping ones cost a phone's GPU a lot of fill.
 
-const FLAME_COUNT = 26;
-const SMOKE_COUNT = 18;
+const FLAME_COUNT = 20;
+const SMOKE_COUNT = 12;
+const SMOKE_BLACK = new THREE.Color(0x111113);
+const SMOKE_GREY = new THREE.Color(0xc2c4ca);
 
 // Soft round puff for smoke, a tighter core for the flame tongues
 const textures = {};
@@ -42,6 +46,7 @@ export class CarFire {
     this.width = width;
     this.scale = scale;
     this.active = false;
+    this.flames = true; // false while it only smoulders
     this.intensity = 0; // 0..1, ramps up when lit and down when put out
     this.particles = [];
 
@@ -52,7 +57,7 @@ export class CarFire {
         transparent: true,
         depthWrite: false,
         blending: flame ? THREE.AdditiveBlending : THREE.NormalBlending,
-        color: flame ? FLAME_HOT.clone() : new THREE.Color(0x111113),
+        color: flame ? FLAME_HOT.clone() : SMOKE_BLACK.clone(),
         opacity: 0,
         fog: !flame,
       });
@@ -66,10 +71,22 @@ export class CarFire {
   }
 
   ignite() {
+    this.start(true);
+  }
+
+  // Grey smoke from the bonnet only: the car is one hit from burning
+  smoulder() {
+    this.start(false);
+  }
+
+  start(flames) {
     this.active = true;
+    this.flames = flames;
     this.group.visible = true;
-    // Stagger the first particles so the fire builds up instead of popping in as one puff
     for (const p of this.particles) {
+      if (!p.flame) p.mat.color.copy(flames ? SMOKE_BLACK : SMOKE_GREY);
+      // Stagger the first particles so the fire builds up instead of popping in as one puff
+      if (p.flame && !flames) continue;
       this.respawn(p);
       p.age = -Math.random() * (p.flame ? 0.5 : 1.2);
     }
@@ -98,11 +115,16 @@ export class CarFire {
       p.life = 0.45 + Math.random() * 0.45;
       p.vy = (1.6 + Math.random() * 1.4) * s;
       p.size = (0.4 + Math.random() * 0.35) * s;
-    } else {
+    } else if (this.flames) {
       p.life = 1.6 + Math.random() * 1.0;
       p.vy = (1.1 + Math.random() * 0.7) * s;
       p.size = (0.7 + Math.random() * 0.5) * s;
       p.sprite.position.y += 0.5 * s;
+    } else {
+      // Smouldering: slow wisps that hang low over the bonnet, where the driver sees them
+      p.life = 1.4 + Math.random() * 0.8;
+      p.vy = (0.25 + Math.random() * 0.3) * s;
+      p.size = (0.55 + Math.random() * 0.4) * s;
     }
     p.vx = (Math.random() - 0.5) * 0.5 * s;
     p.vz = (0.2 + Math.random() * 0.5) * s; // drift back over the windscreen
@@ -117,6 +139,10 @@ export class CarFire {
     }
 
     for (const p of this.particles) {
+      if (p.flame && !this.flames) {
+        p.sprite.visible = false;
+        continue;
+      }
       p.age += dt;
       if (p.age < 0) {
         p.sprite.visible = false;
@@ -144,9 +170,10 @@ export class CarFire {
         p.sprite.scale.set(size, size * 1.5, 1);
         p.mat.opacity = (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85) * 0.75 * this.intensity;
       } else {
-        const size = p.size * (1 + t * 3);
+        const size = p.size * (1 + t * 2);
         p.sprite.scale.set(size, size, 1);
-        p.mat.opacity = (t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8) * 0.8 * this.intensity;
+        const peak = this.flames ? 0.8 : 0.7; // thin enough to see the road through
+        p.mat.opacity = (t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8) * peak * this.intensity;
       }
     }
   }

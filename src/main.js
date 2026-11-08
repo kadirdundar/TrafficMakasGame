@@ -84,6 +84,13 @@ const COUNTDOWN_STEP_MS = 650;
 // After a crash the car burns this long before the result card (single player) comes up
 const BURN_BEFORE_RESULT_SEC = 2.2;
 
+// Damage: the car takes MAX_HITS knocks (a head-on counts double) and burns on the last one. A
+// knock shields the car for HIT_GRACE_SEC, so one pile-up costs one hit, and REPAIR_KM of clean
+// driving mends one.
+const MAX_HITS = 3;
+const HIT_GRACE_SEC = 1.5;
+const REPAIR_KM = 2;
+
 class OtobanMakasGame {
   constructor() {
     this.container = document.getElementById('canvas-container');
@@ -133,6 +140,10 @@ class OtobanMakasGame {
     this.carFire.group.position.set(0, 0.8, -3.0);
     this.cockpit.group.add(this.carFire.group);
     this.burning = null; // { t } seconds since the crash while the car burns
+    this.damage = 0; // hits taken, MAX_HITS sets the car on fire
+    this.graceSec = 0; // time left in which another knock costs nothing
+    this.repairKm = 0; // clean driving since the last hit or repair
+    this.damageHudKey = '';
     this.traffic = new TrafficManager(this.scene);
     this.radio = new RadioPlayer({
       masterVolume: this.sound.volumes.master,
@@ -2031,9 +2042,7 @@ class OtobanMakasGame {
     this.coinCarry = 0;
     this.overtakeRun = null;
     this.shakeIntensity = 0;
-    this.burning = null;
-    this.carFire.reset();
-    document.getElementById('screen-vignette')?.classList.remove('burning');
+    this.resetDamage();
     document.getElementById('gameover-overlay')?.classList.add('hidden');
     this.startTimeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     this.speedKmh = 0;
@@ -2403,25 +2412,94 @@ class OtobanMakasGame {
     });
   }
 
-  // Any crash sets the car on fire. Alone that ends the drive (see updateBurning); online the
-  // host sees it in our state and gives the round to the rival.
+  // A knock costs one hit (a head-on two); the last one sets the car on fire. Alone that ends the
+  // drive (see updateBurning); online the host sees it in our state and gives the round away.
   handleCollision(message = '💥 KAZA YAPTIN!', headOn = false) {
-    if (this.burning) return;
-    this.burning = { t: 0 };
+    if (this.burning || this.graceSec > 0) return;
+    this.damage = Math.min(MAX_HITS, this.damage + (headOn ? 2 : 1));
+    this.graceSec = HIT_GRACE_SEC;
+    this.repairKm = 0;
     this.combo = 1.0;
     this.comboTimer = 0;
-    this.speedKmh *= headOn ? 0.25 : 0.5;
-    this.shakeIntensity = 1.0;
     this.rollVel += (Math.random() - 0.5) * 0.6;
     this.pitchVel -= 0.25;
-
     this.sound.playCrash();
-    this.sound.playIgnition();
-    this.carFire.ignite();
     this.triggerScreenFlash('crash-flash');
-    document.getElementById('screen-vignette')?.classList.add('burning');
-    this.showMakasNotification(`${message} 🔥 YANDIN!`, 0, 'danger');
-    this.saveRecords();
+
+    if (this.damage >= MAX_HITS) {
+      this.burning = { t: 0 };
+      this.speedKmh *= headOn ? 0.25 : 0.5;
+      this.shakeIntensity = 1.0;
+      this.sound.playIgnition();
+      this.carFire.ignite();
+      document.getElementById('screen-vignette')?.classList.add('burning');
+      this.showMakasNotification(`${message} 🔥 YANDIN!`, 0, 'danger');
+      this.saveRecords();
+    } else {
+      this.speedKmh *= headOn ? 0.35 : 0.6;
+      this.shakeIntensity = 0.8;
+      const left = MAX_HITS - this.damage;
+      // One hit from burning: the bonnet starts to smoke
+      if (left === 1) this.carFire.smoulder();
+      this.showMakasNotification(
+        left === 1 ? `${message} ⚠️ SON CAN! BİR DAHA ÇARPARSAN YANARSIN` : `${message} • ${left} CAN KALDI`,
+        0,
+        'danger'
+      );
+    }
+    this.updateDamageVisuals();
+  }
+
+  // Clean driving mends one hit per REPAIR_KM; the shield after a knock runs down
+  updateRepair(dt, distanceKm) {
+    this.graceSec = Math.max(0, this.graceSec - dt);
+    if (this.burning || this.damage === 0) return;
+    this.repairKm += distanceKm;
+    if (this.repairKm >= REPAIR_KM) {
+      this.repairKm = 0;
+      this.damage -= 1;
+      if (MAX_HITS - this.damage > 1) this.carFire.extinguish();
+      this.showMakasNotification('🔧 ARAÇ TOPARLANDI • +1 CAN', 0, 'gold');
+      this.updateDamageVisuals();
+    } else {
+      this.updateDamageHUD();
+    }
+  }
+
+  resetDamage() {
+    this.burning = null;
+    this.damage = 0;
+    this.graceSec = 0;
+    this.repairKm = 0;
+    this.carFire.reset();
+    document.getElementById('screen-vignette')?.classList.remove('burning');
+    this.updateDamageVisuals();
+  }
+
+  // Cracks in the windscreen, one set per hit (CSS only, so a knock compiles nothing on the GPU)
+  updateDamageVisuals() {
+    const cracks = document.getElementById('screen-cracks');
+    if (cracks) cracks.dataset.level = String(Math.min(this.damage, MAX_HITS - 1));
+    this.updateDamageHUD();
+  }
+
+  // One pip per hit the car can take; the next one to come back fills up as the car is driven
+  // clean. Written only when something visible changes.
+  updateDamageHUD() {
+    const fill = this.damage > 0 && !this.burning ? Math.floor((this.repairKm / REPAIR_KM) * 20) / 20 : 0;
+    const key = `${this.damage}|${fill}`;
+    if (key === this.damageHudKey) return;
+    this.damageHudKey = key;
+    const card = document.getElementById('hud-damage-card');
+    if (!card) return;
+    const left = MAX_HITS - this.damage;
+    card.classList.toggle('critical', left === 1);
+    card.classList.toggle('dead', left <= 0);
+    card.querySelectorAll('.damage-pips i').forEach((pip, i) => {
+      const lost = i >= left;
+      pip.classList.toggle('lost', lost);
+      pip.style.setProperty('--fill', lost && i === left ? String(fill) : '0');
+    });
   }
 
   // The burning car rolls to a stop; alone, the result card follows
@@ -2454,9 +2532,7 @@ class OtobanMakasGame {
 
   // Online: a new round, everyone side by side again on fresh road after a 3-2-1
   startRound(info) {
-    this.burning = null;
-    this.carFire.reset();
-    document.getElementById('screen-vignette')?.classList.remove('burning');
+    this.resetDamage();
     this.hideRoundBanner();
     this.combo = 1.0;
     this.comboTimer = 0;
@@ -2493,7 +2569,7 @@ class OtobanMakasGame {
         ? `🏆 ${winner.isMe ? 'MAÇI KAZANDIN!' : `${winnerName} MAÇI KAZANDI`}`
         : `${winner.isMe ? 'PUANI KAZANDIN' : `${winnerName} PUANI KAZANDI`} +1`;
       if (info.reason === 'crash') {
-        sub = loser?.isMe ? 'Kaza yaptın ve yandın 🔥' : `${loser?.name ?? 'Rakip'} kaza yaptı ve yandı 🔥`;
+        sub = loser?.isMe ? 'Araban 3. darbede yandı 🔥' : `${loser?.name ?? 'Rakip'} 3. darbede yandı 🔥`;
       } else {
         sub = winner.isMe ? `Rakibine ${info.gapM} m fark attın 🚀` : `${winner.name} ${info.gapM} m fark attı 🚀`;
       }
@@ -2842,6 +2918,7 @@ class OtobanMakasGame {
       this.noteScore();
     }
     this.earnCoins(frameDistanceKm);
+    this.updateRepair(dt, frameDistanceKm);
     this.coach.update(dt, { speedKmh: this.speedKmh, playerX: this.playerX });
 
     if (this.combo > 1.0) {
