@@ -45,28 +45,6 @@ sonuç bu tabloya eklenir; böylece bir değişikliğin işe yarayıp yaramadı�
   gece halesi tek mesh; plaka 70 m, jant/krom 140 m ötesinde çizilmiyor → araç başına 5-7.
 - Kalan büyük kalem: yol kenarı segmentleri (~18 × 5 çizim) ve kokpit (~23).
 
-### Gökyüzü, pus, pencereler + pil tasarrufu (2026-11-08)
-
-mrdoob'un "slop-newyork" demosundaki (three.js WebGPU) görünümden alınanlar; ek geçiş, gölge
-haritası veya render target olmadan WebGL'de:
-
-| Değişiklik | Kare başına maliyet |
-| --- | --- |
-| Gökyüzü kubbesi (`atmosphere.js`): renk geçişi, güneş/ay, yıldızlar | +1 çizim (ayna dahil +2). Renk köşe noktası başına hesaplanıyor; opaklardan sonra çizildiği için sadece görünen gökyüzü pikseli boyanıyor |
-| Ufuk pusu + 215-345 m arası uzak solma (sis chunk'ı) | Sadece ~30 m ötesindeki pikseller pus rengini hesaplıyor; kabin ve yakın yol atlıyor |
-| Yansımalar = havanın gökyüzü (64 px küp + PMREM) | Hava değişince bir kez. Eski canvas ortam haritası da PMREM'e çevriliyordu: her karede fark yok |
-| Renk düzenleme (beyaz dengesi, kontrast, doygunluk) | Tone mapping'in içinde: ek geçiş yok |
-| Bina pencereleri (`buildingFacade.js`) | Bina shader'ında, doku ve ek çizim yok |
-| Trafik altına temas gölgesi | Siyah trim geometrisine eklendi: ek çizim yok |
-| Kısa + uzun far tek SpotLight | Her ışıklı piksel bir ışık daha az hesaplıyor (selektör kapalıyken de ödeniyordu) |
-| **Pil tasarrufu** (Ayarlar, varsayılan açık) | 120 Hz → 60 FPS, 144 Hz → 72 FPS (`framePacer.js`); çözünürlük en fazla 1.5x (2x yerine piksel sayısı %44 az) |
-
-Bilgisayarda yazılımsal çizimle (SwiftShader, 960×540, 1x, otoban, eski/yeni sırayla 3'er tur)
-aynı çözünürlükte yeni sürüm kare başına ~%6-8 daha yavaş. Bu yöntem GPU'nun hesap işini
-olduğundan ağır gösterir; telefonda gerçek farkı yukarıdaki protokolle ölçmek gerekiyor
-(pil tasarrufu açık ve kapalı ayrı ayrı). Pil tasarrufunun kazancı (yarı kare sayısı ve/veya
-%44 az piksel) bu farktan çok büyük.
-
 ## Ham sonuçlar
 
 <!-- Her satır: cihaz modeli + commit + kopyalanan JSON -->

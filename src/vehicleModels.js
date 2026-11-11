@@ -878,11 +878,6 @@ function getStyleGeometry(spec, style, blackRoof, rimDesign) {
   if (geometryCache.has(key)) return geometryCache.get(key);
   const S = STYLE_DEFS[style];
   const P = S.truck ? buildTruck(spec, rimDesign) : buildCar(spec, S, blackRoof, rimDesign);
-  // Contact shadow: a dark patch on the road under the body, merged into the black trim so it
-  // costs no draw call. Grounds the car the way a shadow would, by day and in our headlights.
-  P.trim.push(
-    new THREE.PlaneGeometry(spec.width * 0.94, spec.length * 0.93).rotateX(-Math.PI / 2).translate(0, 0.05, 0)
-  );
   const out = {};
   for (const k of Object.keys(P)) {
     out[k] = merge(P[k], k === 'plate' || k.startsWith('glow') || k.startsWith('halo') || k === 'flare');

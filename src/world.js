@@ -1,7 +1,5 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { Atmosphere } from './atmosphere.js';
-import { addFacadeCoords, createFacadeMaterial } from './buildingFacade.js';
 
 // Objects on this layer are drawn by the main camera but skipped by the rear-view mirror
 export const MIRROR_SKIP_LAYER = 1;
@@ -11,6 +9,8 @@ export const WEATHER_PRESETS = {
     key: 'night',
     label: 'Gece',
     icon: '🌙',
+    skyColor: 0x0d1528,
+    fogColor: 0x131e36,
     fogDensity: 0.0022,
     ambientIntensity: 1.25,
     ambientColor: 0x9bb4e8,
@@ -26,6 +26,8 @@ export const WEATHER_PRESETS = {
     key: 'rain',
     label: 'Yağmur',
     icon: '🌧️',
+    skyColor: 0x0b1220,
+    fogColor: 0x121c30,
     fogDensity: 0.0032,
     ambientIntensity: 1.05,
     ambientColor: 0x8aa4d6,
@@ -41,6 +43,8 @@ export const WEATHER_PRESETS = {
     key: 'sunset',
     label: 'Gün Batımı',
     icon: '🌇',
+    skyColor: 0x2c1630,
+    fogColor: 0x662c40,
     fogDensity: 0.0025,
     ambientIntensity: 1.25,
     ambientColor: 0xffa07a,
@@ -56,6 +60,8 @@ export const WEATHER_PRESETS = {
     key: 'day',
     label: 'Gündüz',
     icon: '☀️',
+    skyColor: 0x4a89dc,
+    fogColor: 0x8bb8f0,
     fogDensity: 0.0018,
     ambientIntensity: 1.5,
     ambientColor: 0xffffff,
@@ -615,10 +621,8 @@ function createTrackRunoffTexture() {
 const _reusableProfile = { c: 0, d1: 0, d2: 0 };
 
 export class HighwayWorld {
-  // renderer: bakes the sky into the environment map (reflections); optional
-  constructor(scene, renderer = null) {
+  constructor(scene) {
     this.scene = scene;
-    this.atmosphere = new Atmosphere(scene, renderer);
     this.weatherKey = 'night';
     this.roadMode = 'highway';
     this.roadHalfWidth = ROAD_HALF_WIDTH;
@@ -917,19 +921,48 @@ export class HighwayWorld {
     this.dirLight.position.set(-20, 55, -40);
     this.scene.add(this.dirLight);
 
-    // Reflections (scene.environment) are the weather's sky, baked by Atmosphere.apply
+    // Generate a realistic studio/highway reflection environment map for metallic car paint, chrome & piano black
+    const envCanvas = document.createElement('canvas');
+    envCanvas.width = 512;
+    envCanvas.height = 256;
+    const ectx = envCanvas.getContext('2d');
+    const grad = ectx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0.0, '#1e3a5f');
+    grad.addColorStop(0.45, '#6488b8');
+    grad.addColorStop(0.5, '#cbd5e1');
+    grad.addColorStop(0.55, '#1e293b');
+    grad.addColorStop(1.0, '#0f172a');
+    ectx.fillStyle = grad;
+    ectx.fillRect(0, 0, 512, 256);
 
-    // Player headlights: one SpotLight for the low beam and the high beam (selektör). Every lit
-    // pixel on screen evaluates every light, so a second light for the high beam cost the whole
-    // frame even while it was off; the selektör now reshapes this one (see update).
-    this.lowBeamIntensity = 14.0;
-    this.lowBeamLight = new THREE.SpotLight(0xf4f9ff, this.lowBeamIntensity, 165, Math.PI / 2.8, 0.35, 0.85);
+    // Add bright highway light streaks for specular highlights on car bodies and chrome
+    ectx.fillStyle = '#ffffff';
+    for (let i = 0; i < 8; i++) {
+      ectx.fillRect(30 + i * 60, 85, 28, 10);
+    }
+    const envTex = new THREE.CanvasTexture(envCanvas);
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    envTex.colorSpace = THREE.SRGBColorSpace;
+    this.scene.environment = envTex;
+    this.scene.environmentIntensity = 0.85;
+
+    // Player Low-Beam Headlight (Wider, brighter & longer throw for night highway visibility)
+    this.lowBeamLight = new THREE.SpotLight(0xf4f9ff, 14.0, 165, Math.PI / 2.8, 0.35, 0.85);
     this.lowBeamLight.position.set(0, 0.9, -1.7);
     this.lowBeamTarget = new THREE.Object3D();
     this.lowBeamTarget.position.set(0, 0.0, -65);
     this.headlightGroup.add(this.lowBeamLight);
     this.headlightGroup.add(this.lowBeamTarget);
     this.lowBeamLight.target = this.lowBeamTarget;
+
+    // Player High-Beam (Selektör) SpotLight
+    this.highBeamLight = new THREE.SpotLight(0xd8ecff, 0, 230, Math.PI / 2.5, 0.22, 0.7);
+    this.highBeamLight.position.set(0, 0.95, -1.7);
+    this.highBeamTarget = new THREE.Object3D();
+    this.highBeamTarget.position.set(0, 0.5, -140);
+    this.headlightGroup.add(this.highBeamLight);
+    this.headlightGroup.add(this.highBeamTarget);
+    this.highBeamLight.target = this.highBeamTarget;
   }
 
   drawTrackMarkings(ctx) {
@@ -1331,9 +1364,11 @@ export class HighwayWorld {
       ['FSM KÖPRÜSÜ  •  LEVENT', 'HIZ SINIRI 120 KM/S  •  RADAR KONTROL'],
     ];
 
-    // Every building shares one material; its windows are drawn by the shader (buildingFacade.js)
-    this.facade = createFacadeMaterial();
-    const buildingMat = this.facade.material;
+    // Every building shares one material (they were identical per-building copies)
+    const buildingMat = new THREE.MeshStandardMaterial({
+      color: 0x0d1320,
+      roughness: 0.85,
+    });
 
     // Shared tunnel materials
     const tunnelTileTex = createTunnelTileTexture();
@@ -1576,7 +1611,7 @@ export class HighwayWorld {
         const bWidth = 8 + (i % 5) * 2;
         buildingParts.push(
           placed(
-            addFacadeCoords(new THREE.BoxGeometry(bWidth, bHeight, 10), bWidth, bHeight, 10, i * 2 + (side > 0 ? 1 : 0)),
+            new THREE.BoxGeometry(bWidth, bHeight, 10),
             side * (26 + (i % 4) * 7),
             bHeight / 2 - 0.5,
             0
@@ -2123,9 +2158,8 @@ export class HighwayWorld {
     const preset = WEATHER_PRESETS[key] || WEATHER_PRESETS.night;
     this.weatherKey = preset.key;
 
-    // Sky dome, haze towards the horizon, reflections and colour grade
-    const look = this.atmosphere.apply(preset.key);
-    this.scene.fog = new THREE.FogExp2(look.horizon, preset.fogDensity);
+    this.scene.background = new THREE.Color(preset.skyColor);
+    this.scene.fog = new THREE.FogExp2(preset.fogColor, preset.fogDensity);
 
     this.ambientLight.color.setHex(preset.ambientColor);
     this.ambientLight.intensity = preset.ambientIntensity;
@@ -2145,8 +2179,6 @@ export class HighwayWorld {
       this.roadMat.needsUpdate = true;
     }
 
-    this.facade?.apply(preset.key);
-
     this.lampFixtures.forEach((mat) => {
       mat.color.setHex(preset.streetlightsOn ? 0xffdf99 : 0x64748b);
     });
@@ -2156,7 +2188,7 @@ export class HighwayWorld {
     }
 
     // Adjust player low-beams based on day/night
-    this.lowBeamIntensity = preset.streetlightsOn ? 14.0 : 2.5;
+    this.lowBeamLight.intensity = preset.streetlightsOn ? 14.0 : 2.5;
 
     this.updateGroundAndTrackColors();
 
@@ -2364,20 +2396,11 @@ export class HighwayWorld {
 
     // Update Headlight & Selektör position to follow player car X + Audi Matrix Adaptive Cornering light swivel
     this.headlightGroup.position.x = playerX;
-    // High beam: the same light aimed further, wider and brighter, with a longer reach. Its
-    // brightness along the road matches the old low + high beam pair within a few percent.
-    const beam = this.lowBeamLight;
-    const aimZ = highBeamActive ? -115 : -55;
-    this.lowBeamTarget.position.set(
-      this.getCurveOffsetAtZ(aimZ) * 0.7,
-      (highBeamActive ? 0.5 : 0) + (isTrack ? this.getElevationOffsetAtZ(aimZ) * 0.6 : 0),
-      highBeamActive ? -140 : -65
-    );
-    beam.intensity = this.lowBeamIntensity + (highBeamActive ? 26.0 : 0);
-    beam.distance = highBeamActive ? 230 : 165;
-    beam.angle = highBeamActive ? Math.PI / 2.5 : Math.PI / 2.8;
-    beam.penumbra = highBeamActive ? 0.25 : 0.35;
-    beam.decay = highBeamActive ? 0.72 : 0.85;
+    this.lowBeamTarget.position.x = this.getCurveOffsetAtZ(-55) * 0.7;
+    this.lowBeamTarget.position.y = isTrack ? this.getElevationOffsetAtZ(-55) * 0.6 : 0.0;
+    this.highBeamTarget.position.x = this.getCurveOffsetAtZ(-115) * 0.7;
+    this.highBeamTarget.position.y = isTrack ? 0.5 + this.getElevationOffsetAtZ(-115) * 0.6 : 0.5;
+    this.highBeamLight.intensity = highBeamActive ? 28.0 : 0.0;
 
     // Update falling rain streaks if Rainy weather is active
     if (this.rainSystem && this.rainSystem.visible) {
