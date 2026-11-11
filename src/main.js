@@ -2452,8 +2452,6 @@ class OtobanMakasGame {
       this.speedKmh *= headOn ? 0.35 : 0.6;
       this.shakeIntensity = 0.8;
       const left = MAX_HITS - this.damage;
-      // One hit from burning: the bonnet starts to smoke
-      if (left === 1) this.carFire.smoulder();
       this.showMakasNotification(
         left === 1 ? `${message} ⚠️ SON CAN! BİR DAHA ÇARPARSAN YANARSIN` : `${message} • ${left} CAN KALDI`,
         0,
@@ -2471,7 +2469,6 @@ class OtobanMakasGame {
     if (this.repairKm >= REPAIR_KM) {
       this.repairKm = 0;
       this.damage -= 1;
-      if (MAX_HITS - this.damage > 1) this.carFire.extinguish();
       this.showMakasNotification('🔧 ARAÇ TOPARLANDI • +1 CAN', 0, 'gold');
       this.updateDamageVisuals();
     } else {
@@ -2502,10 +2499,7 @@ class OtobanMakasGame {
     this.updateDamageVisuals();
   }
 
-  // Cracks in the windscreen, one set per hit (CSS only, so a knock compiles nothing on the GPU)
   updateDamageVisuals() {
-    const cracks = document.getElementById('screen-cracks');
-    if (cracks) cracks.dataset.level = String(Math.min(this.damage, MAX_HITS - 1));
     this.updateDamageHUD();
   }
 

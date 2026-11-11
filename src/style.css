@@ -127,43 +127,6 @@
     }
   }
 
-  /* Windscreen cracks: one set after the first hit, a second after the next. Off to the sides,
-     so the road ahead stays clear. */
-  .screen-cracks {
-    position: fixed;
-    inset: 0;
-    z-index: 3;
-    pointer-events: none;
-  }
-
-  .screen-cracks::before,
-  .screen-cracks::after {
-    content: '';
-    position: absolute;
-    inline-size: min(40vw, 380px);
-    aspect-ratio: 4 / 3;
-    background: no-repeat center / contain;
-    opacity: 0;
-    transition: opacity 0.12s ease-out;
-  }
-
-  .screen-cracks::before {
-    inset-block-start: 7%;
-    inset-inline-start: 2%;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><g fill='none' stroke-linecap='round' stroke-linejoin='round'><path stroke='rgba(0,0,0,0.35)' stroke-width='3' d='M120 110 L60 50 L10 15 M120 110 L70 160 L25 195 L0 240 M120 110 L215 72 L290 45 L390 12 M120 110 L180 185 L225 255 L245 300 M120 110 L148 30 L160 0 M120 110 L20 120 M98 98 L132 92 L143 121 L114 133 Z'/><path stroke='rgba(255,255,255,0.75)' stroke-width='1.3' d='M120 110 L60 50 L10 15 M120 110 L70 160 L25 195 L0 240 M120 110 L215 72 L290 45 L390 12 M120 110 L180 185 L225 255 L245 300 M120 110 L148 30 L160 0 M120 110 L20 120 M98 98 L132 92 L143 121 L114 133 Z M60 50 L40 62 M215 72 L230 95 M70 160 L95 172 M180 185 L160 205'/></g></svg>");
-  }
-
-  .screen-cracks::after {
-    inset-block-start: 9%;
-    inset-inline-end: 2%;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><g fill='none' stroke-linecap='round' stroke-linejoin='round'><path stroke='rgba(0,0,0,0.35)' stroke-width='3' d='M280 120 L340 60 L400 30 M280 120 L330 175 L380 210 L400 260 M280 120 L190 80 L120 40 L0 20 M280 120 L230 190 L200 260 L185 300 M280 120 L260 30 L255 0 M280 120 L400 135 M262 108 L296 104 L301 132 L270 138 Z'/><path stroke='rgba(255,255,255,0.75)' stroke-width='1.3' d='M280 120 L340 60 L400 30 M280 120 L330 175 L380 210 L400 260 M280 120 L190 80 L120 40 L0 20 M280 120 L230 190 L200 260 L185 300 M280 120 L260 30 L255 0 M280 120 L400 135 M262 108 L296 104 L301 132 L270 138 Z M190 80 L205 55 M330 175 L310 192 M230 190 L250 205'/></g></svg>");
-  }
-
-  .screen-cracks:is([data-level='1'], [data-level='2'])::before,
-  .screen-cracks[data-level='2']::after {
-    opacity: 0.8;
-  }
-
   /* Speed lines: thin streaks fanning out from the vanishing point, masked out of the middle so
      the road ahead stays clean. Only transform and opacity animate, which the compositor does
      without repainting; the animation runs only while the lines are on. */
