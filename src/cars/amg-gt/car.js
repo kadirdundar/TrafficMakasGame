@@ -15,6 +15,9 @@ export default {
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   price: 42000,
   performance: { topSpeed: 300, power: 1.1, traction: 0.97, handling: 1.03, braking: 1.04, upgradeCost: 1.35 },
+  // 4.0 V8 biturbo up front, 7-speed dual-clutch transaxle at the rear axle
+  drivetrain: { gears: [3.4, 2.19, 1.63, 1.29, 1.03, 0.84, 0.72], finalDrive: 3.67, wheelCircumference: 2.12, idleRpm: 800, redline: 7000, cruiseShiftRpm: 2300, shiftSec: 0.25, cylinders: 8, insulation: 0.35, turbo: 1.8 },
+  chassis: { layout: 'rwd', mass: 1650, roll: 0.5, pitch: 0.55 },
   credit: {
     title: 'Mercedes Amg GT roadster',
     url: 'https://sketchfab.com/3d-models/mercedes-amg-gt-roadster-30255e1d942a455e970e7c776998f695',
@@ -31,11 +34,6 @@ export default {
     plate: { replace: 'plate' },
     url: `${BASE}models/amg-gt.glb`,
     length: 4.54,
-    envMapIntensity: 0.25,
-    metalness: 0.18,
-    roughness: 0.68,
-    clearcoat: 0.04,
-    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
     // Material names set by convert.mjs → exterior.renameMaterials

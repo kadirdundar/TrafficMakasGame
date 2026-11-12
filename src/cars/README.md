@@ -46,6 +46,8 @@ Claude Code içinde `/arac-ekle` komutu bu adımları sırayla yürütür.
 | `aliases` | Eski veya gevşek adlar (ör. `['bmw']`). Eski sürümden gelen kayıtları bu araca yönlendirir. |
 | `price` | Yeni sürümde garaj fiyatı (para). `0` = başlangıç aracı, herkeste vardır. Yazılmazsa `DEFAULT_CAR_PRICE` (`src/progression/config.js`). |
 | `performance` | Yeni sürümde aracın değerleri (aşağıda). Yazılmazsa klasik oyunun değerleri. |
+| `drivetrain` | Şanzıman, motor ve kabin sesi (aşağıda). Yazılmazsa Audi A8'inki. |
+| `chassis` | Çekiş tipi, kütle ve gövde davranışı (aşağıda). Yazılmazsa Audi A8'inki. |
 | `credit` | Model künyesi: `title`, `url`, `author`, `license`, `licenseUrl`, `note`. CC BY modellerde zorunludur. |
 | `exterior` | Dış model (aşağıda). |
 | `cockpit` | Kokpit (aşağıda). |
@@ -70,6 +72,30 @@ kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Giriş sevi
 200 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s), C 200 (12.000, 246 km/s). Yükseltmeler, spoylerler, jant renkleri,
 kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 
+Fren: `braking: 1` kuru yolda 1,15 g'dir (hava direnci buna eklenir, yani araç yüksek hızdan
+daha sert yavaşlar). Yağmurda fren tutuşu %80'e iner, pistte lastikler 1,6 g tutar. Tam frende
+ABS devreye girer (hafif titreşim) ve direksiyon etkisi yarıya iner.
+
+### `drivetrain` ve `chassis`
+
+Aracın nasıl vites attığını, nasıl ses verdiğini ve gövdesinin nasıl davrandığını belirler
+(`src/progression/drivetrain.js`; varsayılanlar orada). Hız ve ivme `performance`'tan gelir;
+vites oranları devir göstergesini ve motor sesini sürer, ivmeyi değiştirmez.
+
+| Alan | Anlamı |
+| --- | --- |
+| `drivetrain.gears` | Vites oranları, birinciden başlayarak. Uzunluğu vites sayısıdır. |
+| `drivetrain.finalDrive`, `wheelCircumference` | Diferansiyel oranı ve çeken tekerleğin yuvarlanma çevresi (m). Üçü birlikte her viteste hız başına devri verir; en üst viteste son hızda (yükseltmelerle +30 km/s) devir `redline`'ı geçmemeli. |
+| `drivetrain.idleRpm`, `redline` | Rölanti ve devir sınırı. Tam gazda vites sınırın %93'ünde atılır; gösterge sınırın 250 d/d altında kırmızıya döner. |
+| `drivetrain.cruiseShiftRpm` | Gaz bırakılmışken vites büyütme devri (sakin seyir). |
+| `drivetrain.shiftSec` | Vites değişim süresi: çift kavrama ~0.25, tork konvertörlü ~0.4, düz vites ≥ 0.5 (motor sesi debriyajda belirgin düşer). |
+| `drivetrain.cylinders` | Silindir sayısı: ateşleme frekansını, yani sesin perdesini belirler. |
+| `drivetrain.insulation` | Kabin yalıtımı: 1 çift camlı limuzin (A8), 0'a doğru egzoz sesi içeri girer (spor araç ~0.35-0.45, eski sedan ~0.5-0.6). |
+| `drivetrain.turbo` | Turbo sesinin gücü; atmosferik motorda 0. |
+| `chassis.layout` | `'fwd'`, `'rwd'` ya da `'awd'`. Önden çekiş tam gazda (≈130 km/s altı) dışa açar, arkadan itiş burnu içeri çevirir; dört çeker yağmurda kalkış çekişini en az kaybeder. |
+| `chassis.mass` | Kütle (kg): çarpışmada ne kadar savrulduğunu ve ne kadar hız kaybettiğini belirler (trafik kütleleri `drivetrain.js` → `TRAFFIC_MASS`). |
+| `chassis.roll`, `chassis.pitch` | Virajda yatma ve gaz/frende dalma, A8'e göre çarpan (G 700 1.9 / 1.6, 911 0.5 / 0.55). Büyük değer aynı zamanda daha yavaş oturan bir gövde demektir. |
+
 ### `exterior`
 
 | Alan | Anlamı |
@@ -77,12 +103,12 @@ kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 | `url` | GLB yolu (`${import.meta.env.BASE_URL}models/...`). |
 | `length` | Gerçek araç boyu (m). Model bu boya ölçeklenir, tekerlekler y = 0'a oturur. |
 | `paintMaterial` | Oyuncu rengiyle boyanan malzemenin adı (varsayılan `paint`). |
-| `envMapIntensity` | Boya yansıma gücü (varsayılan 1.2). |
-| `keepFinish` | İsteğe bağlı. Yükleyici boya dışındaki malzemeleri mat yapar (metalness ≤ 0.3, roughness ≥ 0.62); burada adı geçen malzemeler (ör. `['chrome', 'trim', 'rim', 'glass']`) `convert.mjs` → `materials` değerlerini korur. Yansıma gücü `keepFinishEnv` (varsayılan 0.6). |
+| `metalness`, `roughness`, `clearcoat`, `clearcoatRoughness`, `envMapIntensity` | İsteğe bağlı. Fabrika boyası; yazılmazsa düz renk üstüne parlak vernik (0.15 / 0.48 / 0.8 / 0.1 / 0.8). Garajdaki metalik, mat ve sedef kaplamalar bunun üstüne uygulanır (`src/cars/finish.js`). Mat fabrika boyası isteyen araç (G 700) değerleri kendisi yazar. |
+| `keepFinish` | İsteğe bağlı. Yükleyici boya dışındaki malzemeleri adına göre sınırlar (`src/cars/loadExterior.js` → `SURFACE_FINISH`): `glass`/`lens` ve `chrome`/`mirror` parlak kalır, `rim`/`wheel`/`silver` ve `gloss`/`shiny` yarı parlak, adı tanınmayan her şey mat plastik sayılır (metalness ≤ 0.3, roughness ≥ 0.62; kaynak modellerde plastikler çoğu zaman ayna krom gibi gelir). Burada adı geçen malzemeler (ör. `['chrome', 'trim', 'rim', 'glass']`) `convert.mjs` → `materials` değerlerini aynen korur. Yansıma gücü `keepFinishEnv` (varsayılan 0.6). |
 | `head`, `tail` | Far/stop parlaklıkları: `{ day, night, highBeam }`, `{ day, night, brake }`. |
 | `lamps` | Malzeme adına göre lamba kuralları; ilk eşleşen kazanır. `match` (RegExp), `role` (`head`/`tail`), isteğe bağlı `emissive`, `color`, `removeMap`, `emissiveFromMap`, `intensity`, `box` (halenin konumu bu lambaların sınır kutusundan alınır). |
 | `spoiler` | İsteğe bağlı. Spoyler yeri modelden kendiliğinden ölçülür (bagaj kapağının ya da SUV'da tavanın arka kenarı, `src/cars/spoiler.js`). Yanlış yere oturursa `{ z, y, width }` (model metresi) ile elle verilir. Kontrol: `/tools/model-preview/car.html?car=<id>&spoiler=wing&az=0.8&pol=1.25&dist=5&t=0,0.9,1.4` (`lip`, `ducktail`, `wing`). |
-| `rims` | İsteğe bağlı. Jant boyama (`src/cars/rims.js`): `materials` jant malzemeleri (varsayılan adında `rim`/`wheel` geçenler), `tyres` lastik malzemeleri (tekerlek yerini bulmak için), `reach` jantın tekerlek yarıçapındaki payı (varsayılan 0.9; lastikle aynı malzemedeyse ~0.72), `outer` (m) sadece dış yüzü boyar (kaliperle aynı malzemedeki kollar için). Kontrol: `car.html?car=<id>&rim=0xc9a227`. |
+| `rims` | İsteğe bağlı. Jant boyama (`src/cars/rims.js`): `materials` jant malzemeleri (varsayılan adında `rim`/`wheel` geçenler), `tyres` lastik malzemeleri (tekerlek yerini bulmak için), `reach` jantın tekerlek yarıçapındaki payı (varsayılan 0.9; lastikle aynı malzemedeyse ~0.72), `outer` (m) sadece dış yüzü boyar (kaliperle aynı malzemedeki kollar için). Boyanan bu parçalar araç giderken döner (drone tekrarı, online arkadaşlar); `spin: false` döndürmez. Kontrol: `car.html?car=<id>&rim=0xc9a227`, dönüş için `&spin=0.003` (kare başına metre). |
 | `plate` | İsteğe bağlı. Plaka yeri (`src/cars/plate.js`): `{ front: { y }, rear: { y } }` plakanın yerden yüksekliği (m, varsayılan ön 0.36 / arka 0.55); derinlik tampondan kendiliğinden ölçülür. `front: false` ön plakasız araç. Modelin kendi plakası varsa `{ replace: '<malzeme>' }`: o gizlenir, oyuncunun plakası aynı yere ve eğime oturur. Kontrol: `car.html?car=<id>&plate=34 ABC 123&az=0&pol=1.45&dist=4.5`. |
 | `carbon` | İsteğe bağlı. Karbon kaput ve ayna kapağı (`src/cars/carbon.js`) modelden kendiliğinden bulunur: kaput ön camın önündeki yukarı bakan boya (kendi parçasıysa tamamı), ayna kapakları yanlarda ayna yerindeki küçük parçalar. Yanlış çıkarsa `{ hood: { rearZ, halfWidth, minY, materials } \| false, mirrors: false }`: `materials` kendi malzemesi olan kaput (M4). Kontrol: `car.html?car=<id>&carbon=hood,mirrors&az=-2.6&pol=0.9&dist=6`. |
 | `tint` | İsteğe bağlı. Cam filmi (`src/cars/tint.js`): varsayılan adında `glass`/`window` geçen malzemeler; farklıysa `{ materials: [...] }`. Kontrol: `car.html?car=<id>&tint=0.85`. |
@@ -107,6 +133,31 @@ kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 | `atlasPatches`, `satinPieces` | Okunamayan küçük detayların keskin yeniden çizimi ve metal parçalar (`src/cockpitDecals.js`). Markaya özel çizimler aracın klasöründe durur (ör. `m4/painters.js`). |
 
 Değerleri tahmin etme; modelden ölç (tarif §5–§6).
+
+## Trafikteki araç modelleri
+
+Trafikteki sedanlar ve spor araçların bir kısmı garaj modellerinin hafif kopyalarıdır
+(`public/models/traffic/<id>.glb`, ~11.500 üçgen). `tools/convert-traffic.mjs` garaj modelini
+(`public/models/<id>.glb`) okur ve oyunun çizdiği altı parçaya ayırır: `body` (boya; trafik her
+araca kendi rengini verir), `glass` (koyu cam), `trim` (mat her şey, lastikler dahil), `rim`
+(metal her şey: jant, krom, ayna camı), `head` ve `tail` (lambalar). Dışarıdan görünmeyen
+yüzeyler (kabin, motor bölmesi), far camları, amblem ve modelin kendi plakası atılır; tekerlek,
+lamba ve plaka yerleri ölçülüp dosyaya yazılır. Oyunda bu araçlar çizim araçlarla aynı kodla ve
+aynı sayıda çizim çağrısıyla çizilir (`src/vehicleModels.js` → `createModelGeometry`).
+
+```bash
+npm run car:traffic              # tools/convert-traffic.mjs → CARS içindeki bütün araçlar
+npm run car:traffic -- corolla   # tek araç (araç başına birkaç dakika: görünürlük ışınları)
+```
+
+- Yeni bir aracı trafiğe eklemek: `tools/convert-traffic.mjs` → `CARS` (kaynak, `length`, plaka
+  yüksekliği, gerekiyorsa malzeme kuralları) ve `src/trafficModels.js` → `MODELS_BY_TYPE`
+  (hangi araç tipinin hangi sırasında çıkacağı; `null` çizim araçta bırakır).
+- Garaj modeli yeniden çevrildiyse (`car:convert`) trafik kopyası da yeniden üretilmelidir.
+- Kontrol: `/tools/model-preview/traffic.html?cars=corolla,sedan&night=1&brake=1&blink=1&spin=1`
+  (model adları ve `sedan`, `suv`, `van`... çizim tipleri yan yana).
+- Araç tipinin çarpışma kutusu değişmez (`src/traffic.js` → `VEHICLE_TYPES`); model gerçek boyuyla
+  çizilir, aradaki fark birkaç santimdir.
 
 ## `convert.mjs` alanları
 

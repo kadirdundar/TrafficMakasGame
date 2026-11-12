@@ -10,7 +10,8 @@
     "deploy": "vite build && gh-pages -d dist",
     "car:new": "node tools/new-car.mjs",
     "car:inspect": "node tools/inspect-glb.mjs",
-    "car:convert": "node tools/convert-car.mjs"
+    "car:convert": "node tools/convert-car.mjs",
+    "car:traffic": "node tools/convert-traffic.mjs"
   },
   "dependencies": {
     "peerjs": "^1.5.5",

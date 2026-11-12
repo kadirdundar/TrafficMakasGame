@@ -178,6 +178,102 @@ export function getZoneAt(trackDistM, roadMode = 'highway') {
   return 'highway';
 }
 
+// Reflection environment (equirectangular, top of the canvas is straight up): a sky gradient from
+// the preset's own sky and fog colours, a soft bright band at the horizon, the dark road below,
+// and the light sources of that weather as soft blobs: rows of street lamps at night, the low
+// sun at dusk, the high sun by day. Soft shapes on purpose: hard-edged ones show up as stripes
+// sliding over every bonnet.
+const TUNNEL_ENVIRONMENT = {
+  key: 'tunnel',
+  skyColor: 0x1b1d20,
+  fogColor: 0x3a3d40,
+  horizon: 0x4a4c4e,
+  ground: 0x17181a,
+  ceilingLamps: true,
+};
+
+function createEnvironmentTexture(preset) {
+  const W = 512;
+  const H = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const css = (hex, k = 1) => {
+    const c = new THREE.Color(hex);
+    const ch = (v) => Math.round(Math.min(1, v * k) * 255);
+    return `rgb(${ch(c.r)},${ch(c.g)},${ch(c.b)})`;
+  };
+  const day = !preset.streetlightsOn && preset.key !== 'tunnel';
+  const dusk = preset.key === 'sunset';
+  const horizon = preset.horizon ?? preset.fogColor;
+  const ground = preset.ground ?? (day ? 0x3c3f44 : 0x0c0f14);
+
+  // Sky above the horizon (y = H / 2), road and verges below it
+  const sky = ctx.createLinearGradient(0, 0, 0, H / 2);
+  sky.addColorStop(0, css(preset.skyColor, day ? 0.9 : 0.7));
+  sky.addColorStop(0.6, css(preset.skyColor, day ? 1.25 : 1.3));
+  sky.addColorStop(1, css(horizon, day ? 1.5 : dusk ? 1.9 : 1.7));
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H / 2);
+  const below = ctx.createLinearGradient(0, H / 2, 0, H);
+  below.addColorStop(0, css(horizon, day ? 0.9 : 0.8));
+  below.addColorStop(0.12, css(ground, 1.6));
+  below.addColorStop(1, css(ground));
+  ctx.fillStyle = below;
+  ctx.fillRect(0, H / 2, W, H / 2);
+
+  // Soft light: a radial blob at (u, v) of the map, drawn twice across the seam at u = 0 / 1
+  const blob = (u, v, radius, rgb, alpha, squash = 1) => {
+    for (const shift of [-W, 0, W]) {
+      const x = u * W + shift;
+      if (x < -radius || x > W + radius) continue;
+      ctx.save();
+      ctx.translate(x, v * H);
+      ctx.scale(1, squash);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+      g.addColorStop(0, `rgba(${rgb},${alpha})`);
+      g.addColorStop(0.35, `rgba(${rgb},${alpha * 0.45})`);
+      g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+      ctx.restore();
+    }
+  };
+
+  if (preset.ceilingLamps) {
+    // Tunnel: the lamps along the roof, all the way round overhead
+    for (let u = 0.03; u < 1; u += 0.0625) blob(u, 0.2, 13, '255,236,200', 0.95, 0.6);
+  } else if (dusk) {
+    // The sun just above the horizon, straight ahead (u = 0.25 is -Z), and its glow along it
+    blob(0.25, 0.47, 120, '255,150,90', 0.75, 0.35);
+    blob(0.25, 0.455, 22, '255,225,190', 1);
+  } else if (day) {
+    blob(0.18, 0.2, 26, '255,252,240', 1);
+    blob(0.18, 0.2, 90, '255,250,235', 0.35);
+  }
+  if (preset.streetlightsOn) {
+    // Street lamps on both verges, receding ahead and behind: bigger and higher when close
+    for (const side of [0, 0.5]) {
+      for (let i = 0; i < 7; i++) {
+        const near = 1 - i / 7;
+        for (const dir of [-1, 1]) {
+          const u = side + 0.25 + dir * (0.045 + (1 - near) * 0.17);
+          blob(u, 0.5 - 0.06 - near * near * 0.26, 3 + near * 9, '255,224,170', 0.5 + near * 0.5);
+        }
+      }
+    }
+    // The glow of the city on the horizon
+    blob(0.25, 0.49, 150, '255,190,130', dusk ? 0.12 : 0.22, 0.12);
+    blob(0.75, 0.49, 150, '255,190,130', dusk ? 0.1 : 0.18, 0.12);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function createTunnelSignTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
@@ -921,29 +1017,15 @@ export class HighwayWorld {
     this.dirLight.position.set(-20, 55, -40);
     this.scene.add(this.dirLight);
 
-    // Generate a realistic studio/highway reflection environment map for metallic car paint, chrome & piano black
-    const envCanvas = document.createElement('canvas');
-    envCanvas.width = 512;
-    envCanvas.height = 256;
-    const ectx = envCanvas.getContext('2d');
-    const grad = ectx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.0, '#1e3a5f');
-    grad.addColorStop(0.45, '#6488b8');
-    grad.addColorStop(0.5, '#cbd5e1');
-    grad.addColorStop(0.55, '#1e293b');
-    grad.addColorStop(1.0, '#0f172a');
-    ectx.fillStyle = grad;
-    ectx.fillRect(0, 0, 512, 256);
-
-    // Add bright highway light streaks for specular highlights on car bodies and chrome
-    ectx.fillStyle = '#ffffff';
-    for (let i = 0; i < 8; i++) {
-      ectx.fillRect(30 + i * 60, 85, 28, 10);
+    // What car paint, glass and chrome reflect: one environment per weather (and one for the
+    // tunnel), painted to match that weather's sky, horizon and road (see createEnvironmentTexture)
+    this.environments = {};
+    for (const preset of Object.values(WEATHER_PRESETS)) {
+      this.environments[preset.key] = createEnvironmentTexture(preset);
     }
-    const envTex = new THREE.CanvasTexture(envCanvas);
-    envTex.mapping = THREE.EquirectangularReflectionMapping;
-    envTex.colorSpace = THREE.SRGBColorSpace;
-    this.scene.environment = envTex;
+    this.environments.tunnel = createEnvironmentTexture(TUNNEL_ENVIRONMENT);
+    this.environmentKey = 'night';
+    this.scene.environment = this.environments.night;
     this.scene.environmentIntensity = 0.85;
 
     // Player Low-Beam Headlight (Wider, brighter & longer throw for night highway visibility)
@@ -2160,6 +2242,7 @@ export class HighwayWorld {
 
     this.scene.background = new THREE.Color(preset.skyColor);
     this.scene.fog = new THREE.FogExp2(preset.fogColor, preset.fogDensity);
+    this.setEnvironment(preset.key);
 
     this.ambientLight.color.setHex(preset.ambientColor);
     this.ambientLight.intensity = preset.ambientIntensity;
@@ -2193,6 +2276,13 @@ export class HighwayWorld {
     this.updateGroundAndTrackColors();
 
     return preset;
+  }
+
+  // Reflections follow the weather, and the tunnel while the player is inside it
+  setEnvironment(key) {
+    if (key === this.environmentKey || !this.environments[key]) return;
+    this.environmentKey = key;
+    this.scene.environment = this.environments[key];
   }
 
   cycleWeather() {
@@ -2370,6 +2460,7 @@ export class HighwayWorld {
     this.currentZone = playerZone;
 
     const preset = WEATHER_PRESETS[this.weatherKey] || WEATHER_PRESETS.night;
+    this.setEnvironment(playerZone === 'tunnel' ? 'tunnel' : preset.key);
 
     if (playerZone === 'tunnel') {
       if (this.groundMesh) this.groundMesh.visible = false;

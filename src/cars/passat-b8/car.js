@@ -16,6 +16,9 @@ export default {
   // Family sedan: gentle launch, soft brakes, lower top speed
   price: 6500,
   performance: { topSpeed: 220, power: 0.7, traction: 0.76, handling: 0.9, braking: 0.86, upgradeCost: 0.75 },
+  // 1.5 TSI, 7-speed DSG (its two final drives folded into the ratios), front-wheel drive
+  drivetrain: { gears: [3.77, 2.27, 1.53, 1.12, 0.86, 0.69, 0.58], finalDrive: 4.44, wheelCircumference: 2.0, idleRpm: 750, redline: 6200, cruiseShiftRpm: 2000, shiftSec: 0.3, cylinders: 4, insulation: 0.75, turbo: 1.2 },
+  chassis: { layout: 'fwd', mass: 1500, roll: 1.05, pitch: 1.05 },
   credit: {
     title: 'Volkswagen Passat B8',
     url: 'https://sketchfab.com/3d-models/volkswagen-passat-b8-98c3a29331834026838439c38e5a97e4',
@@ -30,7 +33,6 @@ export default {
     plate: { front: { y: 0.42 }, rear: { y: 0.72 } },
     url: `${BASE}models/passat-b8.glb`,
     length: 4.77,
-    envMapIntensity: 1.2,
     // The chrome strip on the boot lid's edge reads as the edge and sinks the spoilers into it
     spoiler: { z: 2.25 },
     rims: { materials: ['rim'], tyres: ['tire'] },

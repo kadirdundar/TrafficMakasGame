@@ -16,6 +16,9 @@ export default {
   // Budget sedan: slow to 100 and an early top speed, but light and easy to place
   price: 4500,
   performance: { topSpeed: 205, power: 0.66, traction: 0.72, handling: 0.94, braking: 0.82, upgradeCost: 0.65 },
+  // 2.0 naturally aspirated four-cylinder, 5-speed manual, front-wheel drive
+  drivetrain: { gears: [3.67, 2.14, 1.45, 1.03, 0.77], finalDrive: 4.06, wheelCircumference: 1.93, idleRpm: 800, redline: 6500, cruiseShiftRpm: 2500, shiftSec: 0.55, cylinders: 4, insulation: 0.55, turbo: 0 },
+  chassis: { layout: 'fwd', mass: 1350, roll: 1.1, pitch: 1.1 },
   credit: {
     title: 'Ford Focus Sedan',
     url: 'https://sketchfab.com/3d-models/ford-focus-sedan-9bc5e9e5edd5487f97d8501a22c3c8b5',
@@ -30,11 +33,6 @@ export default {
     plate: { front: { y: 0.37 }, rear: { y: 0.815 } },
     url: `${BASE}models/focus.glb`,
     length: 4.48,
-    envMapIntensity: 0.25,
-    metalness: 0.18,
-    roughness: 0.68,
-    clearcoat: 0.04,
-    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     // The whole lamp cluster lights up (no separate brake section): a softer brake keeps it red
     tail: { day: 0.35, night: 1.1, brake: 2.0 },

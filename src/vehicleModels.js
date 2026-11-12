@@ -8,6 +8,8 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 // style share those geometries and almost all materials. Lamps of different colours are one
 // vertex-coloured mesh (and so are the night glows), and the plate and chrome/rims are dropped
 // far away, so a car costs 5-7 draw calls (+1 for the glows at night) instead of ~40 boxes.
+// Traffic cars converted from the real car models (src/trafficModels.js) come through the same
+// factory with their own geometry, so they cost the same.
 
 // ---------------------------------------------------------------------------------------------
 // Paints (hex is what multiplayer syncs; the finish is looked up from the hex on both peers)
@@ -150,7 +152,13 @@ function shared() {
       new THREE.MeshStandardMaterial({ color: 0xc9d0d9, roughness: 0.26, metalness: 1.0 }), // Silver
       new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.32, metalness: 0.85 }), // Graphite
       new THREE.MeshStandardMaterial({ color: 0x9a8258, roughness: 0.34, metalness: 1.0 }), // Satin Bronze
-    ],
+    ].map((mat) => addWheelSpin(mat)),
+    // Converted car models: trim / tyres and chrome / rims keep the colours of the model's own
+    // materials as vertex colours, one matte and one metal material for all of them
+    modelTrim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.08 }),
+    modelMetal: addWheelSpin(
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.24, metalness: 0.92 })
+    ),
     cargo: [
       new THREE.MeshStandardMaterial({ color: 0xf1f4f7, roughness: 0.5, metalness: 0.1 }),
       new THREE.MeshStandardMaterial({ color: 0xc3c9d1, roughness: 0.35, metalness: 0.6 }),
@@ -194,6 +202,78 @@ export function setVehicleLightsNightMode(night) {
   m.head.color.setHex(c.head);
   m.tail.color.setHex(c.tail);
   m.tailBrake.color.setHex(c.brake);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Turning wheels
+// ---------------------------------------------------------------------------------------------
+// Wheels are part of a car's merged geometry, so they turn in the vertex shader: every vertex of
+// a wheel carries its hub in the `spin` attribute (y, z of the axle in the mesh's space, then 1,
+// or -1 where the mesh's X axis points the other way) and is rotated around it by the uniform;
+// all other vertices carry (0, 0, 0). No extra draw calls.
+// Every traffic car shares one angle: at motorway speed a wheel turns several times a frame, so
+// what the eye sees is the capped step below, the same for all of them.
+const TRAFFIC_WHEEL_SPIN = { value: 0 };
+const MAX_SPIN_STEP = 0.26; // rad a frame: under half the gap between the spokes of any rim
+
+export function advanceTrafficWheelSpin(dt) {
+  TRAFFIC_WHEEL_SPIN.value = (TRAFFIC_WHEEL_SPIN.value - Math.min(dt * 16, MAX_SPIN_STEP)) % (Math.PI * 2);
+}
+
+// Makes `mat` turn the wheel vertices of its geometry by `uniform.value` (rad, negative rolls
+// forward). The geometry needs the `spin` attribute (see wheelSpinAttribute).
+export function addWheelSpin(mat, uniform = TRAFFIC_WHEEL_SPIN) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uWheelSpin = uniform;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 spin;\nuniform float uWheelSpin;')
+      .replace(
+        '#include <beginnormal_vertex>',
+        `#include <beginnormal_vertex>
+        float spinC = cos(uWheelSpin * spin.z);
+        float spinS = sin(uWheelSpin * spin.z);
+        if (spin.z != 0.0) objectNormal.yz = vec2(spinC * objectNormal.y - spinS * objectNormal.z, spinS * objectNormal.y + spinC * objectNormal.z);`
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        if (spin.z != 0.0) {
+          vec2 fromHub = transformed.yz - spin.xy;
+          transformed.yz = spin.xy + vec2(spinC * fromHub.x - spinS * fromHub.y, spinS * fromHub.x + spinC * fromHub.y);
+        }`
+      );
+  };
+  mat.customProgramCacheKey = () => 'wheelSpin';
+  return mat;
+}
+
+// `spin` attribute for a geometry: `hubOf(x, y, z)` returns [hubY, hubZ] for a vertex that
+// belongs to a wheel and null for the rest
+export function wheelSpinAttribute(geo, hubOf) {
+  const pos = geo.attributes.position;
+  const spin = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const hub = hubOf(pos.getX(i), pos.getY(i), pos.getZ(i));
+    if (!hub) continue;
+    spin[i * 3] = hub[0];
+    spin[i * 3 + 1] = hub[1];
+    spin[i * 3 + 2] = 1;
+  }
+  geo.setAttribute('spin', new THREE.BufferAttribute(spin, 3));
+  return geo;
+}
+
+// rollWheels(distM) for one car with its own spin uniform: turns the wheels by the distance the
+// car has covered since the last call (either way, so a replay can run backwards), at most
+// MAX_SPIN_STEP a call so the spokes never appear to stand still or run backwards at speed
+export function createWheelRoller(uniform, radius) {
+  let last = null;
+  return (distM) => {
+    const moved = last === null ? 0 : distM - last;
+    last = distM;
+    const step = THREE.MathUtils.clamp(moved / radius, -MAX_SPIN_STEP, MAX_SPIN_STEP);
+    uniform.value = (uniform.value - step) % (Math.PI * 2);
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -366,13 +446,17 @@ function addWheels(parts, wheels, r, tw, designKey) {
     parts.trim.push(cyl(r, tw, x, r, z, 'x', 18));
     // Slightly rounded sidewall shoulder
     parts.trim.push(cyl(r * 0.93, tw + 0.025, x, r, z, 'x', 18));
+    const hub = () => [r, z];
     parts.rim.push(
-      rimDisc(rimR, designKey)
-        .clone()
-        .rotateY((sx * Math.PI) / 2)
-        .translate(x + sx * (tw / 2 + 0.016), r, z)
+      wheelSpinAttribute(
+        rimDisc(rimR, designKey)
+          .clone()
+          .rotateY((sx * Math.PI) / 2)
+          .translate(x + sx * (tw / 2 + 0.016), r, z),
+        hub
+      )
     );
-    parts.rim.push(cyl(r * 0.11, 0.03, x + sx * (tw / 2 + 0.012), r, z, 'x', 10));
+    parts.rim.push(wheelSpinAttribute(cyl(r * 0.11, 0.03, x + sx * (tw / 2 + 0.012), r, z, 'x', 10), hub));
   }
 }
 
@@ -437,7 +521,23 @@ function newParts() {
   return {
     body: [], glass: [], trim: [], rim: [], cargo: [], head: [], tail: [],
     blinkL: [], blinkR: [], haloL: [], haloR: [], plate: [], glowF: [], glowR: [], flare: [],
+    poolF: [], poolR: [],
   };
+}
+
+// Light the lamps throw on the road at night: a soft patch ahead of the headlights and a faint
+// red one behind the tail lamps. They are flat quads just above the asphalt, merged into the
+// car's glow mesh (so they cost no draw call) and drawn with the same soft-glow texture.
+function roadPool(w, len, zCentre) {
+  const g = new THREE.PlaneGeometry(w, len);
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, 0.035, zCentre);
+  return g;
+}
+
+function addRoadPools(P, frontZ, rearZ, width) {
+  P.poolF.push(roadPool(width * 2.3, 17, frontZ - 6.5));
+  P.poolR.push(roadPool(width * 1.5, 4.4, rearZ + 1.3));
 }
 
 function buildCar(spec, S, blackRoof, rimDesign) {
@@ -748,6 +848,7 @@ function buildCar(spec, S, blackRoof, rimDesign) {
     }
   }
 
+  addRoadPools(P, f, b, W);
   return P;
 }
 
@@ -868,6 +969,7 @@ function buildTruck(spec, rimDesign) {
   });
   P.plate.push(quad(0.52, 0.12, 0, 0.72, b + 0.005));
 
+  addRoadPools(P, f, b, W);
   return P;
 }
 
@@ -878,21 +980,91 @@ function getStyleGeometry(spec, style, blackRoof, rimDesign) {
   if (geometryCache.has(key)) return geometryCache.get(key);
   const S = STYLE_DEFS[style];
   const P = S.truck ? buildTruck(spec, rimDesign) : buildCar(spec, S, blackRoof, rimDesign);
+  // Chrome and exhaust tips share the rim mesh: they get an empty `spin` so they stay put
+  for (const g of P.rim) if (!g.attributes.spin) wheelSpinAttribute(g, () => null);
+  const out = finishLights(mergeParts(P));
+  geometryCache.set(key, out);
+  return out;
+}
+
+// Each list of parts merged into one geometry (textured quads keep their UVs)
+function mergeParts(P) {
   const out = {};
   for (const k of Object.keys(P)) {
-    out[k] = merge(P[k], k === 'plate' || k.startsWith('glow') || k.startsWith('halo') || k === 'flare');
+    out[k] = merge(P[k], k === 'plate' || k.startsWith('glow') || k.startsWith('halo') || k === 'flare' || k.startsWith('pool'));
   }
-  // One copy of the lamps per light state, [night][braking], and of the glows per [braking]:
-  // a car switches lights by swapping geometry, all cars sharing one material. A glow's opacity
-  // is folded into its colour (the same thing under additive blending).
+  return out;
+}
+
+// Geometry of a converted car model for createTrafficVehicle, in the layout getStyleGeometry
+// returns. `parts` are the model's own meshes (body, glass, trim, rim, head, tail; see
+// tools/convert-traffic.mjs) and `info` what was measured on it: wheels, lamp and plate anchors.
+// Everything the model does not bring is added here the way the procedural cars have it:
+// blinkers, night glows, number plates and the light on the road.
+export function createModelGeometry(parts, info) {
+  const P = newParts();
+  const front = -info.length / 2;
+  const rear = info.length / 2;
+  [-1, 1].forEach((sx) => {
+    const [hx, hy, hz] = info.head.centre;
+    const [tx, ty, tz] = info.tail.centre;
+    P.glowF.push(quad(1.1, 0.55, sx * hx, hy, hz - 0.07, true));
+    P.glowR.push(quad(0.85, 0.46, sx * tx, ty, tz + 0.06));
+    const [fx, fy, fz] = info.head.outer;
+    const [rx, ry, rz] = info.tail.outer;
+    const blink = sx < 0 ? P.blinkL : P.blinkR;
+    const halo = sx < 0 ? P.haloL : P.haloR;
+    blink.push(box(0.16, 0.05, 0.05, sx * fx, fy, fz + 0.01));
+    blink.push(box(0.16, 0.05, 0.05, sx * rx, ry, rz - 0.01));
+    halo.push(...blinkerHalo(1.2, 0.7, sx * fx, fy, fz - 0.08, true));
+    halo.push(...blinkerHalo(1.4, 0.8, sx * rx, ry, rz + 0.07));
+  });
+  P.plate.push(quad(0.52, 0.12, 0, info.plateFront[0], info.plateFront[1] - 0.012, true));
+  P.plate.push(quad(0.52, 0.12, 0, info.plateRear[0], info.plateRear[1] + 0.012));
+  addRoadPools(P, front, rear, info.width);
+
+  const out = mergeParts(P);
+  out.id = info.id;
+  out.body = parts.body;
+  out.glass = parts.glass;
+  out.trim = parts.trim;
+  // Rims, hubs and brake discs turn: every metal vertex inside a wheel
+  out.rim = wheelSpinAttribute(parts.rim, (x, y, z) => {
+    const w = info.wheels.find((wh) => x >= wh.x0 && x <= wh.x1 && Math.hypot(y - wh.y, z - wh.z) < wh.r);
+    return w ? [w.y, w.z] : null;
+  });
+  // Lamps are lit by vertex colour (finishLights): only their shape is taken from the model
+  const lamp = (g) => {
+    const flat = g.index ? g.toNonIndexed() : g.clone();
+    for (const name of Object.keys(flat.attributes)) {
+      if (name !== 'position' && name !== 'normal') flat.deleteAttribute(name);
+    }
+    return flat;
+  };
+  out.head = lamp(parts.head);
+  out.tail = lamp(parts.tail);
+  return finishLights(out);
+}
+
+// One copy of the lamps per light state, [night][braking], and of the glows per [braking]:
+// a car switches lights by swapping geometry, all cars sharing one material. A glow's opacity
+// is folded into its colour (the same thing under additive blending). `out` holds the merged
+// head / tail lamps, front / rear glows and road pools.
+export function finishLights(out) {
   out.lamps = [LIGHT_COLORS.day, LIGHT_COLORS.night].map((c) =>
     [c.tail, c.brake].map((tail) => painted([[out.head, c.head], [out.tail, tail]]))
   );
   out.glows = [
-    [0xff2032, 0.7],
-    [0xff3043, 1.0],
-  ].map(([rear, k]) => painted([[out.glowF, 0xe4eeff, 0.95], [out.glowR, rear, k]]));
-  geometryCache.set(key, out);
+    [0xff2032, 0.7, 0.09],
+    [0xff3043, 1.0, 0.26],
+  ].map(([rear, k, pool]) =>
+    painted([
+      [out.glowF, 0xe4eeff, 0.95],
+      [out.glowR, rear, k],
+      [out.poolF, 0xfff0d2, 0.24],
+      [out.poolR, rear, pool],
+    ])
+  );
   return out;
 }
 
@@ -929,29 +1101,38 @@ function createPaintMaterial(paintHex) {
 const PLATE_DETAIL_M = 70;
 const RIM_DETAIL_M = 140;
 
-export function createTrafficVehicle(spec, index, variant, paintHex) {
+// `model` is the geometry of a converted car model (src/trafficModels.js), in the same layout as
+// getStyleGeometry returns; without it the car is one of the procedural body styles.
+export function createTrafficVehicle(spec, index, variant, paintHex, model = null) {
   const m = shared();
   const styles = STYLE_VARIANTS[spec.type] || ['sedan'];
-  const style = styles[variant % styles.length];
-  const S = STYLE_DEFS[style];
+  const style = model ? model.id : styles[variant % styles.length];
+  const S = model ? {} : STYLE_DEFS[style];
   const blackRoof = Boolean(S.twoTone) && index % 3 === 1;
   const rimDesign = S.truck ? 'multi' : RIM_DESIGN_KEYS[(index + variant) % RIM_DESIGN_KEYS.length];
-  const geo = getStyleGeometry(spec, style, blackRoof, rimDesign);
+  const geo = model || getStyleGeometry(spec, style, blackRoof, rimDesign);
 
   const bodyMat = createPaintMaterial(paintHex);
 
+  // `group` is placed on the road and turned by the traffic; `body` inside it rolls, pitches and
+  // bobs on its suspension. The glows and road pools stay level with the road.
   const group = new THREE.Group();
-  const add = (g, mat) => {
+  const body = new THREE.Group();
+  group.add(body);
+  const add = (g, mat, parent = body) => {
     if (!g) return null;
     const mesh = new THREE.Mesh(g, mat);
-    group.add(mesh);
+    parent.add(mesh);
     return mesh;
   };
 
   add(geo.body, bodyMat);
   add(geo.glass, m.glass);
-  add(geo.trim, m.trim);
-  const rimMesh = add(geo.rim, S.truck ? m.rims[0] : m.rims[(index * 7 + variant) % m.rims.length]);
+  add(geo.trim, model ? m.modelTrim : m.trim);
+  const rimMesh = add(
+    geo.rim,
+    model ? m.modelMetal : S.truck ? m.rims[0] : m.rims[(index * 7 + variant) % m.rims.length]
+  );
   add(geo.cargo, m.cargo[index % m.cargo.length]);
   const plateMesh = add(geo.plate, m.plates[index % m.plates.length]);
   const lamps = add(geo.lamps[0][0], m.lamps);
@@ -959,7 +1140,7 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
   const rightBlinker = add(geo.blinkR, m.amber);
   addBlinkerHalo(leftBlinker, geo.haloL);
   addBlinkerHalo(rightBlinker, geo.haloR);
-  const glows = add(geo.glows[0], m.glows);
+  const glows = add(geo.glows[0], m.glows, group);
   leftBlinker.visible = false;
   rightBlinker.visible = false;
   if (glows) {
@@ -976,6 +1157,7 @@ export function createTrafficVehicle(spec, index, variant, paintHex) {
   };
   return {
     group,
+    body,
     style,
     bodyMat,
     leftBlinker,
@@ -1018,7 +1200,11 @@ export function createLuxurySedan({ paintHex = 0xd6182c, metalness = 0.82, rough
     clearcoatRoughness: 0.05,
     envMapIntensity: 1.2,
   });
-  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe6ebf1, roughness: 0.12, metalness: 1.0 });
+  const wheelSpin = { value: 0 };
+  const chromeMat = addWheelSpin(
+    new THREE.MeshStandardMaterial({ color: 0xe6ebf1, roughness: 0.12, metalness: 1.0 }),
+    wheelSpin
+  );
   const headMat = m.head.clone();
   const tailMat = m.tail.clone();
   const glowFrontMat = m.glowFront.clone();
@@ -1052,6 +1238,7 @@ export function createLuxurySedan({ paintHex = 0xd6182c, metalness = 0.82, rough
   return {
     group,
     bodyMat,
+    rollWheels: createWheelRoller(wheelSpin, 0.36),
     setLights({ night = false, braking = false, highBeam = false }) {
       const key = `${night ? 1 : 0}${braking ? 1 : 0}${highBeam ? 1 : 0}`;
       if (key === lastKey) return;

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { LANE_CENTERS, WEATHER_PRESETS } from './world.js';
+import { TRAFFIC_MASS } from './progression/drivetrain.js';
 import {
+  advanceTrafficWheelSpin,
   createTrafficVehicle,
   applyPaint,
   paintForIndex,
@@ -30,6 +32,24 @@ const VEHICLE_TYPES = [
   { type: 'van', width: 2.05, height: 2.08, length: 5.1, baseSpeedKmh: 88 },
   { type: 'truck', width: 2.38, height: 3.15, length: 8.6, baseSpeedKmh: 76 },
 ];
+// Their mass is in src/progression/drivetrain.js → TRAFFIC_MASS
+
+// How a body moves on its suspension (see animateBody). `roll` / `pitch` are the lean in rad
+// per m/s² of sideways / forward acceleration, capped at maxRoll / maxPitch: tall, softly sprung
+// vans and SUVs lean the most, sports cars hardly at all. `bob` is the ride height ripple in m.
+const BODY_MOTION = {
+  sedan: { roll: 0.0046, maxRoll: 0.04, pitch: 0.0034, maxPitch: 0.02, bob: 0.006 },
+  sport: { roll: 0.0028, maxRoll: 0.024, pitch: 0.0022, maxPitch: 0.013, bob: 0.004 },
+  suv: { roll: 0.0062, maxRoll: 0.055, pitch: 0.0042, maxPitch: 0.025, bob: 0.008 },
+  van: { roll: 0.0068, maxRoll: 0.06, pitch: 0.0044, maxPitch: 0.026, bob: 0.009 },
+  truck: { roll: 0.0036, maxRoll: 0.034, pitch: 0.0026, maxPitch: 0.016, bob: 0.011 },
+};
+// Sideways speed of a lane change (m/s) and the nose angle it is driven at
+const LANE_CHANGE_SPEED = 3.4;
+const LANE_CHANGE_YAW = 0.065;
+// After a knock: hazard lights, brake lights and no lane changes for this long
+const HAZARD_SEC = 6;
+const SHAKEN_SEC = 1.6;
 
 export class TrafficManager {
   constructor(scene) {
@@ -44,6 +64,8 @@ export class TrafficManager {
     // Track recent makas timestamp to detect "ÇİFT MAKAS / İĞNE DELİĞİ" (threading the needle between 2 cars)
     this.lastMakasTime = 0;
     this.lastMakasCarId = -1;
+    // Mass of the local player's car (kg), set by the game: how hard it shoves a car it hits
+    this.playerMass = 1800;
 
     this.initPool(24);
   }
@@ -112,6 +134,22 @@ export class TrafficManager {
         overtaken: false,
         dir: 1, // 1 drives our way, -1 comes the other way (two-way road)
         active: true,
+        // Body on its suspension and the wobble after a knock (see animateBody / shake)
+        motion: BODY_MOTION[spec.type],
+        bobPhase: i * 2.399,
+        sideVel: 0,
+        lastSpeedKmh: spec.baseSpeedKmh,
+        forwardAccel: 0,
+        roll: 0,
+        rollVel: 0,
+        pitch: 0,
+        pitchVel: 0,
+        knockYaw: 0,
+        knockYawVel: 0,
+        knockX: 0,
+        knockXVel: 0,
+        hazardUntil: 0,
+        shakenUntil: 0,
       };
 
       car.mesh.position.set(car.x, 0, car.z);
@@ -120,6 +158,94 @@ export class TrafficManager {
     }
 
     this.resetTraffic();
+    this.useCarModels();
+  }
+
+  // Cars converted from the real car models (src/trafficModels.js) take the place of the
+  // procedural ones of their type once they have loaded; until then, and if loading fails, the
+  // procedural cars drive on. The loader is a chunk of its own, so the game starts without it.
+  useCarModels() {
+    import('./trafficModels.js')
+      .then(async ({ loadTrafficModels, trafficModelFor }) => {
+        await loadTrafficModels();
+        this.vehicles.forEach((car, i) => {
+          const variant = Math.floor(i / VEHICLE_TYPES.length);
+          const model = trafficModelFor(car.spec.type, variant);
+          if (!model) return;
+          const built = createTrafficVehicle(car.spec, i, variant, car.bodyMat.color.getHex(), model);
+          built.group.position.copy(car.mesh.position);
+          built.group.rotation.copy(car.mesh.rotation);
+          built.group.visible = car.mesh.visible;
+          this.scene.remove(car.mesh);
+          this.scene.add(built.group);
+          car.mesh = built.group;
+          car.bodyMat = built.bodyMat;
+          car.visual = built;
+          car.leftBlinker = built.leftBlinker;
+          car.rightBlinker = built.rightBlinker;
+          if (this.nightLights !== null) built.setNight(this.nightLights);
+        });
+        this.onModelsReady?.();
+      })
+      .catch((err) => console.warn('Trafik araç modelleri yüklenemedi, çizim araçlar kullanılıyor:', err));
+  }
+
+  // A knocked car fishtails and is shoved sideways for a moment (both spring back), leans, brakes
+  // and drives on with its hazard lights flashing. `side` is the side it was hit towards
+  // (+1 right, -1 left, in road terms).
+  shake(car, side, nowSec, strength = 1) {
+    const dir = side || (Math.random() < 0.5 ? -1 : 1);
+    car.knockYawVel += dir * 1.7 * strength;
+    car.knockXVel += dir * 2.4 * strength;
+    car.rollVel += dir * car.dir * 0.55 * strength;
+    car.pitchVel -= 0.2 * strength;
+    car.hazardUntil = nowSec + HAZARD_SEC;
+    car.shakenUntil = nowSec + SHAKEN_SEC;
+    car.holdLaneUntil = Math.max(car.holdLaneUntil, nowSec + HAZARD_SEC);
+    car.pendingLane = -1;
+    if (car.blinkerDir !== 0 && car.lane === car.targetLane) car.blinkerDir = 0;
+  }
+
+  // Suspension: the body leans out of a lane change, dips its nose under braking, squats when it
+  // pulls away and ripples a little over the road. Driven by the car's own motion this frame, so
+  // it looks the same on the host and on guests.
+  animateBody(car, dt, sideSpeed, nowSec) {
+    if (!(dt > 0)) return;
+    const m = car.motion;
+    // Sideways and forward acceleration, from smoothed speeds (the lane change itself starts
+    // and stops at once)
+    const prevSideVel = car.sideVel;
+    car.sideVel += (sideSpeed - car.sideVel) * Math.min(1, dt * 5);
+    const sideAccel = (car.sideVel - prevSideVel) / dt;
+    const rawForward = THREE.MathUtils.clamp((car.speedKmh - car.lastSpeedKmh) / 3.6 / dt, -9, 5);
+    car.lastSpeedKmh = car.speedKmh;
+    car.forwardAccel += (rawForward - car.forwardAccel) * Math.min(1, dt * 6);
+
+    // Accelerating to the right leans the body left (+roll lifts the right side); cars coming
+    // the other way are turned around, so their lean is mirrored
+    const targetRoll = THREE.MathUtils.clamp(sideAccel * m.roll, -m.maxRoll, m.maxRoll) * car.dir;
+    car.rollVel += ((targetRoll - car.roll) * 90 - car.rollVel * 11) * dt;
+    car.roll += car.rollVel * dt;
+    const targetPitch = THREE.MathUtils.clamp(car.forwardAccel * m.pitch, -m.maxPitch, m.maxPitch * 0.6);
+    car.pitchVel += ((targetPitch - car.pitch) * 80 - car.pitchVel * 12) * dt;
+    car.pitch += car.pitchVel * dt;
+
+    // After a knock: the tail swings out and comes back, the car is shoved aside and recovers
+    car.knockYawVel += (-car.knockYaw * 24 - car.knockYawVel * 4.5) * dt;
+    car.knockYaw += car.knockYawVel * dt;
+    car.knockXVel += (-car.knockX * 30 - car.knockXVel * 7) * dt;
+    car.knockX += car.knockXVel * dt;
+    if (Math.abs(car.knockYaw) < 0.0005 && Math.abs(car.knockYawVel) < 0.005) car.knockYaw = car.knockYawVel = 0;
+    if (Math.abs(car.knockX) < 0.001 && Math.abs(car.knockXVel) < 0.01) car.knockX = car.knockXVel = 0;
+
+    const ripple = Math.min(1, car.speedKmh / 110);
+    const t = nowSec + car.bobPhase;
+    const heave = (Math.sin(t * 7.3) * 0.6 + Math.sin(t * 11.9) * 0.4) * m.bob * ripple;
+    const body = car.visual.body;
+    body.rotation.x = car.pitch + Math.sin(t * 5.3) * 0.0016 * ripple;
+    body.rotation.z = car.roll;
+    // The body turns about the road under its centre: lifted so the low side stays on it
+    body.position.y = Math.abs(car.roll) * car.spec.width * 0.25 + Math.abs(car.pitch) * car.spec.length * 0.2 + heave;
   }
 
   resetTraffic() {
@@ -273,6 +399,13 @@ export class TrafficManager {
     car.laneOffset = 0;
     car.laneOffsetTarget = 0;
     car.givesRoom = false;
+    car.sideVel = 0;
+    car.lastSpeedKmh = car.speedKmh;
+    car.forwardAccel = 0;
+    car.roll = car.rollVel = car.pitch = car.pitchVel = 0;
+    car.knockYaw = car.knockYawVel = car.knockX = car.knockXVel = 0;
+    car.hazardUntil = 0;
+    car.shakenUntil = 0;
 
     // Fresh random paint color for variety
     applyPaint(car.bodyMat, pickRandomPaint());
@@ -507,7 +640,9 @@ export class TrafficManager {
     // Slide it to where the guest shoved it instead of jumping there
     car.pushRemainingZ = hostWorldDistM - newCarWorldDistM - car.z;
     car.speedKmh = newSpeedKmh;
-    car.noCollideUntil = performance.now() / 1000 + 1.2;
+    const nowSec = performance.now() / 1000;
+    car.noCollideUntil = nowSec + 1.2;
+    this.shake(car, 0, nowSec);
   }
 
   update(dt, playerSpeedKmh, playerX, callbacks, world = null, mpContext = null) {
@@ -525,6 +660,7 @@ export class TrafficManager {
 
     const nowSec = performance.now() / 1000;
     const blinkState = Math.floor(nowSec * 3.5) % 2 === 0;
+    advanceTrafficWheelSpin(dt);
     const isConnected = Boolean(mpContext?.connected);
     const activeTargetCount = isConnected
       ? Math.min(this.vehicles.length, this.maxVehicles + 4)
@@ -700,23 +836,27 @@ export class TrafficManager {
       car.laneOffset += Math.sign(offsetStep) * Math.min(Math.abs(offsetStep), dt * offsetRate);
       const targetX = LANE_CENTERS[car.targetLane] + car.laneOffset;
       const dx = targetX - car.x;
-      let laneChangeYaw = 0;
+      const xBefore = car.x;
       if (Math.abs(dx) > 0.04) {
-        const moveStep = Math.sign(dx) * Math.min(Math.abs(dx), dt * 3.4);
-        car.x += moveStep;
-        laneChangeYaw = -Math.sign(dx) * (car.lane === car.targetLane ? 0.015 : 0.065);
+        car.x += Math.sign(dx) * Math.min(Math.abs(dx), dt * LANE_CHANGE_SPEED);
       } else {
         car.x = targetX;
         car.lane = car.targetLane;
       }
+      // The nose follows the (smoothed) sideways speed, so the car turns into a lane change and
+      // straightens out of it instead of snapping to an angle
+      this.animateBody(car, dt, (car.x - xBefore) / dt, nowSec);
+      const laneChangeYaw = -car.dir * car.sideVel * (LANE_CHANGE_YAW / LANE_CHANGE_SPEED);
 
       if (car.changingLaneTimer > 0) {
         car.changingLaneTimer -= dt;
         if (car.changingLaneTimer <= 0) car.blinkerDir = 0;
       }
 
-      car.leftBlinker.visible = car.blinkerDir === -1 && blinkState;
-      car.rightBlinker.visible = car.blinkerDir === 1 && blinkState;
+      const hazard = nowSec < car.hazardUntil;
+      car.leftBlinker.visible = (hazard || car.blinkerDir === -1) && blinkState;
+      car.rightBlinker.visible = (hazard || car.blinkerDir === 1) && blinkState;
+      if (nowSec < car.shakenUntil) car.visual.setBraking(true);
 
       const halfL = car.spec.length / 2 + 1.85; // Player car half-length ~ 1.85m
       const halfW = car.spec.width / 2 + 0.86; // Player car half-width ~ 0.86m
@@ -742,8 +882,8 @@ export class TrafficManager {
       const curveX = world ? world.getCurveOffsetAtZ(car.z) : 0;
       const curveY = world?.getElevationOffsetAtZ ? world.getElevationOffsetAtZ(car.z) : 0;
       const curveYaw = world ? world.getCurveYawAtZ(car.z) : 0;
-      car.mesh.position.set(car.x + curveX, curveY, car.z);
-      car.mesh.rotation.y = laneChangeYaw + curveYaw + (car.dir < 0 ? Math.PI : 0);
+      car.mesh.position.set(car.x + curveX + car.knockX, curveY, car.z);
+      car.mesh.rotation.y = laneChangeYaw + curveYaw + car.knockYaw + (car.dir < 0 ? Math.PI : 0);
       car.visual.setDistance(Math.abs(car.z));
 
       // 4. COLLISION & MAKAS (NEAR-MISS) DETECTION around Z = 0
@@ -762,19 +902,23 @@ export class TrafficManager {
       ) {
         // Collision! The hit car is shoved ahead over a few frames (not teleported), can't count as
         // a new crash right away, and on a guest keeps its local position until the host has it too.
-        // A head-on one is moved past behind us instead.
+        // A head-on one is moved past behind us instead, where it spins to a crawl with its
+        // hazards on and is taken off the road once it is out of sight like any car left behind.
         car.noCollideUntil = nowSec + 1.2;
+        car.preHitSpeedKmh = car.speedKmh; // the game works the player's own knock out from it
+        const side = Math.sign(car.x - playerX);
         if (car.dir < 0) {
           car.pushRemainingZ = halfL + 1.5 - car.z;
-          // The host takes a head-on wreck off the road and sends the car in again far ahead
-          if (!this.isRemoteControlled) {
-            callbacks?.onCollision?.(car);
-            this.respawnVehicle(car, null, frontMostZ);
-            continue;
-          }
+          car.speedKmh = 18;
+          car.targetSpeedKmh = 18;
+          this.shake(car, side, nowSec, 1.8);
         } else {
           car.pushRemainingZ = -halfL - 1.2 - car.z;
-          car.speedKmh = Math.max(50, playerSpeedKmh * 0.7);
+          // Shunted up to the speed the two cars share after the knock: a truck hardly gains any
+          const mass = TRAFFIC_MASS[car.spec.type] ?? 1500;
+          const common = (this.playerMass * playerSpeedKmh + mass * car.speedKmh) / (this.playerMass + mass);
+          car.speedKmh = Math.max(50, car.speedKmh, common);
+          this.shake(car, side, nowSec, Math.min(1.6, (2 * this.playerMass) / (this.playerMass + mass)));
         }
         if (this.isRemoteControlled) car.localOverrideUntil = nowSec + 0.8;
         callbacks?.onCollision?.(car);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addWheelSpin, createWheelRoller } from '../vehicleModels.js';
 
 // Rim colour for any car's exterior model (garage, online friends, drone replay). Rims rarely
 // have a material of their own: the A8's share 'chrome' with the window trim, the M4's tyres and
@@ -7,6 +8,9 @@ import * as THREE from 'three';
 // with a copy of the material, which is then repainted: a solid metallic colour in place of the
 // model's texture (factory black rims would stay black under a tint), all restored for 'factory'.
 // Colours and prices live in src/progression/config.js → RIM_COLORS.
+//
+// The same split-off rims are what turns when the car drives (drone replay, online friends): see
+// spinRims.
 
 const DEFAULT_RIMS = { materials: [/rim|wheel|jant/i], tyres: [/tire|tyre|lastik/i] };
 
@@ -90,15 +94,45 @@ function splitRims(mesh, wheels, reach, outer) {
   return rimMesh;
 }
 
+// Makes a split-off rim mesh turn around its wheel's axle (see addWheelSpin in vehicleModels.js):
+// each vertex gets the hub of the wheel it is in, in the mesh's own space. Returns false, leaving
+// the mesh alone, when the mesh is turned so that the axle is not along its X axis.
+function spinRims(mesh, wheels, uniform) {
+  mesh.updateWorldMatrix(true, false);
+  const toLocal = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+  const axle = new THREE.Vector3(1, 0, 0).transformDirection(toLocal);
+  if (Math.abs(axle.x) < 0.999) return false;
+  const pos = mesh.geometry.attributes.position;
+  const spin = new Float32Array(pos.count * 3);
+  const v = new THREE.Vector3();
+  const hub = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+    const w = wheels.find((wh) => v.x >= wh.x0 && v.x <= wh.x1 && Math.hypot(v.y - wh.y, v.z - wh.z) < wh.r * 1.02);
+    if (!w) continue;
+    hub.set(v.x, w.y, w.z).applyMatrix4(toLocal);
+    spin[i * 3] = hub.y;
+    spin[i * 3 + 1] = hub.z;
+    spin[i * 3 + 2] = Math.sign(axle.x);
+  }
+  mesh.geometry.setAttribute('spin', new THREE.BufferAttribute(spin, 3));
+  addWheelSpin(mesh.material, uniform);
+  return true;
+}
+
 // Prepares the model's rims once (at load) and returns setColor(hex | null); null is the factory
-// finish. `cfg` is car.js → exterior.rims ({ materials, tyres, reach, outer }) or the defaults.
+// finish. `cfg` is car.js → exterior.rims ({ materials, tyres, reach, outer, spin }) or the
+// defaults. setColor.rollWheels(distM) turns the rims by the distance driven; `spin: false`
+// keeps them still (for a model whose spokes cannot be told from its brakes).
 export function createRimPaint(model, cfg = {}) {
   const materials = cfg.materials ?? DEFAULT_RIMS.materials;
   const tyres = cfg.tyres ?? DEFAULT_RIMS.tyres;
   model.updateWorldMatrix(true, true);
+  const noRims = () => {};
+  noRims.rollWheels = () => {};
 
   const rimMeshes = collectTriangles(model, materials).filter((m) => m.geometry?.attributes.position);
-  if (!rimMeshes.length) return () => {};
+  if (!rimMeshes.length) return noRims;
 
   // Wheels from the tyres when the model has them as a material, else from the rims themselves
   const tyreMeshes = collectTriangles(model, tyres).filter((m) => m.geometry?.attributes.position);
@@ -107,10 +141,12 @@ export function createRimPaint(model, cfg = {}) {
   const reach = cfg.reach ?? 0.9; // inside the tyre's inner edge: arch trim and tyre stay out
 
   const painted = [];
+  const wheelSpin = { value: 0 };
   for (const mesh of rimMeshes) {
     const rims = splitRims(mesh, wheels, reach, cfg.outer);
     if (!rims) continue;
     mesh.parent.add(rims);
+    if (cfg.spin !== false) spinRims(rims, wheels, wheelSpin);
     const mat = rims.material;
     painted.push({
       mat,
@@ -120,7 +156,7 @@ export function createRimPaint(model, cfg = {}) {
 
   // Called every frame by the drone replay: only a change touches the materials
   let current = null;
-  return (hex) => {
+  const setColor = (hex) => {
     const isFactory = hex === null || hex === undefined;
     const key = isFactory ? 'factory' : hex;
     if (key === current) return;
@@ -133,4 +169,6 @@ export function createRimPaint(model, cfg = {}) {
       mat.needsUpdate = true;
     }
   };
+  setColor.rollWheels = createWheelRoller(wheelSpin, wheels[0]?.r || 0.34);
+  return setColor;
 }

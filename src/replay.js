@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createLuxurySedan } from './vehicleModels.js';
+import { advanceTrafficWheelSpin, createLuxurySedan } from './vehicleModels.js';
 import { getCar, loadCarExterior } from './cars/index.js';
 import { SLOT_STYLES } from './multiplayer.js';
 
@@ -780,6 +780,9 @@ export class DroneReplayManager {
     const playerCurveYaw = this.world.getCurveYawAtZ(0);
     this.playerCarGroup.position.set(px + playerCurveX, 0, 0);
     this.playerCarGroup.rotation.set(bodyPitch, -headingAngle + playerCurveYaw, bodyRoll);
+    // Wheels turn with the replay: the cars' own by the distance covered, the traffic's while it plays
+    this.playerActiveModel?.rollWheels?.(worldDistM);
+    if (this.playing && !snapCamera) advanceTrafficWheelSpin(dt);
 
     const night = Boolean(this.world.weatherKey !== 'day');
     this.playerActiveModel?.setLights?.({
@@ -858,6 +861,7 @@ export class DroneReplayManager {
       rp.group.visible = true;
       rp.group.position.set(peerX + cX, cY, peerZ);
       rp.group.rotation.set(cPitch, -peerHeading + cYaw, peerRoll);
+      rp.activeModel?.rollWheels?.(worldDistM - peerZ);
       rp.activeModel?.setLights?.({
         night,
         braking: p0.braking,

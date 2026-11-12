@@ -16,6 +16,9 @@ export default {
   // Brute force: strong pull off the line, but heavy, boxy and slow to turn
   price: 32000,
   performance: { topSpeed: 240, power: 1.2, traction: 0.92, handling: 0.82, braking: 0.86, upgradeCost: 1.3 },
+  // 4.0 V8 biturbo, 9-speed automatic, three locking differentials, side exhausts
+  drivetrain: { gears: [5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], finalDrive: 3.27, wheelCircumference: 2.5, redline: 6300, cylinders: 8, insulation: 0.55, turbo: 1.5 },
+  chassis: { layout: 'awd', mass: 2600, roll: 1.9, pitch: 1.6 },
   credit: {
     title: 'Mercedes Brabus G700 NS',
     url: 'https://sketchfab.com/3d-models/mercedes-brabus-g700-ns-ae10963953e34eda977d3114efdeea45',

@@ -35,6 +35,23 @@ sonuç bu tabloya eklenir; böylece bir değişikliğin işe yarayıp yaramadı�
 | 2026-10-31 | Mac (M5), headless Chrome | — | 602a431 + ölçüm paneli | 59.5 | 56.8 | 17.4 / 204 | 4 | 281 / 305 | Önce. Takılmalar: ilk araç aynaya girince shader derleme |
 | 2026-10-31 | Mac (M5), headless Chrome | — | shader ön derleme + trafik çizim azaltma | 60 | 57.1 | 17.1 / 17.7 | 0 | 228 / 255 | Sonra (2 tur, ikisi de aynı). JS iş süresi 1.9 → 1.4 ms |
 
+| 2026-11-12 | Mac, uygulama içi tarayıcı (1280×620) | — | 2ee7286 | 60 | ? | 17.9 / 22.7 | 0 | 228 / 260 | Önce. Üçgen ort / maks 133 bin / 145 bin. Ölçüm paneli değil, 30 sn elle örnekleme (aşağıda) |
+| 2026-11-12 | Mac, uygulama içi tarayıcı (1280×620) | — | 2ee7286 + araç görünümü (commit yok) | 60 | ? | 18.0 / 22.6 | 0 | 230 / 267 | Sonra: trafikte gerçek modeller, dönen jant, yatma, yol ışığı. Üçgen ort / maks 177 bin / 203 bin |
+
+### Araç görünümü değişikliğinden çıkanlar (2026-11-12)
+
+Ölçüm paneliyle değil, geliştirme modundaki `window.__game` üzerinden alındı: Otoban · Gece ·
+yoğun trafik · A8, 190-200 km/s sabit, çarpışmalar yok sayılarak 30 sn boyunca her karede
+`renderer.info` okundu. Aynı senaryo eski ve yeni kodda birer kez koşuldu; trafik dizilimi
+rastgele olduğu için birkaç çizimlik fark gürültüdür.
+
+- Çizim çağrısı değişmedi (228 → 230): dönüştürülmüş modeller çizim araçlarla aynı parça düzenini
+  kullanıyor, jantlar vertex shader'da dönüyor, yol ışığı gece halesi mesh'ine eklendi.
+- Üçgen ~%33 arttı (133 bin → 177 bin): 24 araçlık havuzun 8'i (sedanların tamamı, spor araçların
+  üçü) artık ~11.500 üçgenlik model. Mac'te kare süresine yansımadı; telefonda ölçülmedi.
+- Telefonda sorun çıkarsa ilk bakılacak yer: `tools/convert-traffic.mjs` → `BUDGET` (parça başına
+  üçgen) ya da `src/trafficModels.js` → `MODELS_BY_TYPE` (hangi araçların model kullandığı).
+
 ### Bilgisayardaki ölçümden çıkanlar (2026-10-31)
 
 - İşlemci yükü küçük: bir kare ~1.5 ms JS (yol bükülmesi 0.06 ms). Yolu shader'a taşımaya gerek yok.

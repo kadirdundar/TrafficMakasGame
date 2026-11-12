@@ -10,6 +10,7 @@ import { RadioPlayer } from './radio.js';
 import { CAR_LIST, CARS, getCar } from './cars/index.js';
 import { DroneReplayManager } from './replay.js';
 import { CLASSIC_PHYSICS, carStats, longitudinalAccel, resolvePhysics } from './progression/performance.js';
+import { TRAFFIC_MASS, nextGear, resolveChassis, resolveDrivetrain, rpmInGear } from './progression/drivetrain.js';
 import { PlayerProfile } from './progression/profile.js';
 import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js';
 import { COINS_PER_KM, COINS_PER_POINT, MATCH_WIN_COINS, neonColorHex } from './progression/config.js';
@@ -24,11 +25,20 @@ const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
 // İstanbul Park track grid starting positions per room slot
 const TRACK_START_X = [-2.4, 2.4, -4.6, 4.6];
 
-// Audi A8 drivetrain: ZF 8HP gear ratios, final drive and 20" wheel rolling circumference
-const A8_GEAR_RATIOS = [0, 5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64];
-const A8_FINAL_DRIVE = 2.85;
-const A8_WHEEL_CIRCUMFERENCE_M = 2.23;
-const A8_IDLE_RPM = 700;
+// Tyres on a wet road: what is left of the braking grip, and of the traction of a car driven
+// through two wheels or all four
+const WET_BRAKE_GRIP = 0.8;
+const WET_TRACTION = { fwd: 0.78, rwd: 0.78, awd: 0.93 };
+// Hard on the brakes the tyres have less left for turning: the share of the steering that
+// remains at full pedal (ABS keeps the car steerable, it does not keep it agile)
+const STEER_UNDER_BRAKING = 0.5;
+// The ABS works from this much pedal, above walking pace
+const ABS_PEDAL = 0.85;
+// Road surface: expansion joints on the bridge and seams in the asphalt elsewhere (m apart),
+// and the wheelbase the rear axle follows the front one over them with
+const BRIDGE_JOINT_M = 30;
+const ROAD_SEAM_M = 420;
+const WHEELBASE_M = 2.9;
 // İstanbul Park tyre grip: the most lateral acceleration (in g) the tyres hold before the car
 // washes out of a corner, for a car with handling 1. Peak T1 (R≈80 m) is then ~130 km/h,
 // the T11 kink (R≈160 m) ~185 km/h, so the big corners need real braking.
@@ -243,6 +253,9 @@ class OtobanMakasGame {
     this.newVersion = isNewVersionEnabled();
     this.profile = new PlayerProfile();
     this.carPhysics = CLASSIC_PHYSICS;
+    this.roadPhysics = { ...CLASSIC_PHYSICS }; // carPhysics on today's road (see updatePhysics)
+    this.drivetrain = resolveDrivetrain(null);
+    this.chassis = resolveChassis(null);
     this.coinScoreMark = 0; // score already paid out (see earnCoins)
     this.coinCarry = 0; // fraction of a coin not paid out yet
     this.runCoins = 0; // coins earned in the current drive
@@ -316,6 +329,12 @@ class OtobanMakasGame {
     this.rpm = 2200;
     this.gear = 3;
     this.lastShiftAt = 0;
+    this.knockVel = 0; // m/s sideways, from a knock by another car; dies away on its own
+    this.steerLossSec = 0; // the wheel is jolted out of the driver's hands for this long
+    this.roadJoint = -1; // last expansion joint / seam driven over
+    this.roadZone = null;
+    this.rearAxleIn = 0; // s until the rear axle crosses the joint the front one just hit
+    this.rearAxleBump = 0;
     this.lateralG = 0;
     this.longitudinalG = 0;
     this.accelFeel = 0; // felt acceleration that pushes the driver into the seat (see updatePhysics)
@@ -1352,6 +1371,12 @@ class OtobanMakasGame {
     this.carPhysics = this.newVersion
       ? resolvePhysics(carStats(car, this.profile.levels(car.id), parts))
       : CLASSIC_PHYSICS;
+    // Gearbox, engine sound and body of this car (src/progression/drivetrain.js)
+    this.drivetrain = resolveDrivetrain(car);
+    this.chassis = resolveChassis(car);
+    this.gear = Math.min(this.gear, this.drivetrain.gears.length);
+    this.sound.setEngineProfile(this.drivetrain);
+    this.traffic.playerMass = this.chassis.mass;
     // Spoiler and rims show on the garage car, to online friends and in the drone replay
     this.showroom?.setParts(parts);
     this.multiplayer?.setLocalParts(parts);
@@ -1659,6 +1684,12 @@ class OtobanMakasGame {
   // its paint and plate shaders compile. compile() also covers hidden objects (blinkers, night
   // glows, tunnel and track scenery); shaders already built are only looked up.
   warmShaders() {
+    // The tunnel's reflections are prepared too (each environment is filtered the first time it
+    // is drawn with), so driving into the first tunnel does not stall a frame
+    const environment = this.scene.environment;
+    this.scene.environment = this.world.environments.tunnel;
+    this.renderer.compile(this.scene, this.camera);
+    this.scene.environment = environment;
     this.cockpit.compileRearMirror(this.scene);
     this.renderer.compile(this.scene, this.camera);
   }
@@ -2060,6 +2091,11 @@ class OtobanMakasGame {
     this.speedKmh = 0;
     this.playerX = this.startX();
     this.lateralVel = 0;
+    this.knockVel = 0;
+    this.steerLossSec = 0;
+    this.rearAxleIn = 0;
+    this.roadJoint = -1;
+    this.roadZone = null;
     this.yawRate = 0;
     this.headingAngle = 0;
     this.trackSlideAngle = 0;
@@ -2426,22 +2462,86 @@ class OtobanMakasGame {
 
   // A knock costs one hit (a head-on two); the last one sets the car on fire. Alone that ends the
   // drive (see updateBurning); online the host sees it in our state and gives the round away.
-  handleCollision(message = '💥 KAZA YAPTIN!', headOn = false) {
+  // What the road does to the car on a straight: a fine tremor that grows with speed (returned
+  // as a height offset for the driver's eye, in m), and a thump from each axle over the bridge's
+  // expansion joints, the lip at either end of the tunnel and the odd seam in the asphalt.
+  updateRoadFeel(dt, speedMs) {
+    const speedKmh = this.speedKmh;
+    const zone = this.world.currentZone;
+    const dist = this.world.worldDistM || 0;
+    const onBridge = zone === 'bridge';
+    const joint = Math.floor(dist / (onBridge ? BRIDGE_JOINT_M : ROAD_SEAM_M)) + (onBridge ? 1e6 : 0);
+    let bump = 0;
+    if (this.roadZone !== null && zone !== this.roadZone && (zone === 'tunnel' || this.roadZone === 'tunnel')) bump = 1.3;
+    else if (this.roadJoint >= 0 && joint !== this.roadJoint) bump = onBridge ? 1 : 0.55;
+    this.roadZone = zone;
+    this.roadJoint = joint;
+
+    if (this.rearAxleIn > 0) {
+      this.rearAxleIn -= dt;
+      if (this.rearAxleIn <= 0) this.axleBump(this.rearAxleBump * 0.8, 1);
+    }
+    if (bump && speedKmh > 30 && this.traffic.roadMode !== 'track') {
+      this.axleBump(bump, -1);
+      this.rearAxleBump = bump;
+      this.rearAxleIn = WHEELBASE_M / speedMs;
+    }
+
+    const speedShare = Math.min(1, speedKmh / 220);
+    const t = performance.now() / 1000;
+    const tremor = Math.sin(t * 67) * (0.55 + 0.45 * Math.sin(t * 9.1)) + 0.5 * Math.sin(t * 113 + 1.7);
+    return tremor * 0.0008 * speedShare * speedShare * (onBridge ? 1.6 : 1);
+  }
+
+  // One axle over a joint: the nose (-1) or the tail (+1) is kicked up, the cabin jolts and thuds
+  axleBump(strength, end) {
+    const speedShare = Math.min(1, this.speedKmh / 140);
+    this.pitchVel += end * -0.07 * strength * this.chassis.pitch;
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.13 * strength * (0.5 + 0.5 * speedShare));
+    this.sound.playRoadThump(strength * (0.5 + 0.5 * speedShare));
+  }
+
+  // `car` is the traffic car that was hit (none for a barrier): the knock then depends on where
+  // it landed and on how heavy the two cars are.
+  handleCollision(message = '💥 KAZA YAPTIN!', headOn = false, car = null) {
     if (this.burning || this.graceSec > 0) return;
     this.damage = Math.min(MAX_HITS, this.damage + (headOn ? 2 : 1));
     this.graceSec = HIT_GRACE_SEC;
     this.repairKm = 0;
     this.combo = 1.0;
     this.comboTimer = 0;
-    this.rollVel += (Math.random() - 0.5) * 0.6;
     this.pitchVel -= 0.25;
+    // Speed left after the knock: with a car, the two meet at their common speed (a truck
+    // barely notices, a small car is carried along) and bounce a little apart again
+    let speedKept = headOn ? 0.35 : 0.6;
+    if (car) {
+      const mass = this.chassis.mass;
+      const otherMass = TRAFFIC_MASS[car.spec.type] ?? 1500;
+      const blow = Math.min(1.8, (2 * otherMass) / (mass + otherMass)) * (headOn ? 1.5 : 1);
+      // 0 for a square hit, 1 for one that only just clipped a corner
+      const offset = this.playerX - car.x;
+      const side = Math.sign(offset) || (Math.random() < 0.5 ? -1 : 1);
+      const glancing = Math.min(1, Math.abs(offset) / (car.spec.width / 2 + 0.86));
+      // Thrown aside, away from the other car, the nose and body with it, and the wheel is
+      // knocked out of the driver's hands for a moment
+      this.knockVel = side * (1.1 + 3.0 * glancing) * blow;
+      this.headingAngle += side * 0.045 * glancing * blow;
+      this.rollVel -= side * 0.4 * blow;
+      this.steerLossSec = Math.min(0.7, (0.22 + 0.33 * glancing) * blow);
+      const otherSpeed = car.dir * (car.preHitSpeedKmh ?? car.speedKmh);
+      const common = (mass * this.speedKmh + otherMass * otherSpeed) / (mass + otherMass);
+      const after = common + (this.speedKmh - common) * 0.25;
+      speedKept = THREE.MathUtils.clamp(after / Math.max(1, this.speedKmh), 0.15, 0.9);
+    } else {
+      this.rollVel += (Math.random() - 0.5) * 0.6;
+    }
     this.sound.playCrash();
     this.sound.muffleHit(headOn || this.damage >= MAX_HITS);
     this.triggerScreenFlash('crash-flash');
 
     if (this.damage >= MAX_HITS) {
       this.burning = { t: 0 };
-      this.speedKmh *= headOn ? 0.25 : 0.5;
+      this.speedKmh *= speedKept * 0.8;
       this.shakeIntensity = 1.0;
       this.sound.playIgnition();
       this.carFire.ignite();
@@ -2449,7 +2549,7 @@ class OtobanMakasGame {
       this.showMakasNotification(`${message} 🔥 YANDIN!`, 0, 'danger');
       this.saveRecords();
     } else {
-      this.speedKmh *= headOn ? 0.35 : 0.6;
+      this.speedKmh *= speedKept;
       this.shakeIntensity = 0.8;
       const left = MAX_HITS - this.damage;
       this.showMakasNotification(
@@ -2641,6 +2741,11 @@ class OtobanMakasGame {
       rawSteer = this.touchSteerValue;
     }
     if (burning) rawSteer = 0;
+    // Right after a knock the wheel is not fully in the driver's hands
+    if (this.steerLossSec > 0) {
+      this.steerLossSec -= dt;
+      rawSteer *= 0.3;
+    }
 
     // Progressive Speed-Sensitive Power Steering (Audi Dynamic Steering):
     // - Counter-steering (reversing direction) is extra crisp so driver can catch slides
@@ -2662,8 +2767,25 @@ class OtobanMakasGame {
     // 2. Longitudinal Speed (KM/H)
     // Engine, drag, brakes and the limiter come from the car's physics (classic: 260 km/h for
     // every car, see src/progression/performance.js); the car can roll to a full stop
-    const phys = this.carPhysics;
+    // On a wet road the tyres brake and pull away less well (all-wheel drive loses the least);
+    // the track's surface and tyres hold as much under braking as they do in its corners
+    const isTrackRoad = this.traffic.roadMode === 'track';
+    const isWet = this.world.weatherKey === 'rain';
+    const brakeGrip = (isTrackRoad ? TRACK_GRIP_G / 1.15 : 1) * (isWet ? WET_BRAKE_GRIP : 1);
+    const phys = Object.assign(this.roadPhysics, this.carPhysics);
+    phys.brakeDecel *= brakeGrip;
+    if (isWet) phys.tractionLimit *= WET_TRACTION[this.chassis.layout] ?? WET_TRACTION.awd;
     let accelKmhPerSec = longitudinalAccel(phys, this.speedKmh, throttle, brake);
+
+    // ABS: flat on the pedal the wheels are held at the edge of locking, which pulses through
+    // the car (more on a wet road, where they let go sooner)
+    const absActive = brake >= ABS_PEDAL && this.speedKmh > 12 && !burning;
+    if (absActive) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.075);
+      this.shakeIntensity = Math.max(this.shakeIntensity, (isWet ? 0.11 : 0.07) * pulse * Math.min(1, this.speedKmh / 80));
+    }
+    // What the tyres spend on braking is not there for turning
+    const steerShare = 1 - (1 - STEER_UNDER_BRAKING) * brake * brake;
 
     // Slight cornering scrub when carving aggressively at high G
     const corneringDrag = Math.abs(this.lateralG) * 4.2;
@@ -2677,29 +2799,13 @@ class OtobanMakasGame {
       Math.min(1, dt * 12)
     );
 
-    // 3. Audi A8 8-speed tiptronic (ZF 8HP) & RPM from the real drivetrain ratios.
-    //    Shift points follow the pedal: off the gas it short-shifts and cruises quietly
-    //    (~1,700 rpm at 120 km/h in 8th); holding the gas kicks down and revs to ~6,000.
-    const wheelRpm = (this.speedKmh / 3.6 / A8_WHEEL_CIRCUMFERENCE_M) * 60;
-    const rpmInGear = (g) => wheelRpm * A8_GEAR_RATIOS[g] * A8_FINAL_DRIVE;
-    const upshiftRpm = 2100 + throttle * 3900;
-    const downshiftRpm = 1150 + throttle * 2200;
+    // 3. Gearbox & RPM from the car's own ratios (car.js → drivetrain). Shift points follow the
+    //    pedal: off the gas it changes up early and cruises quietly (the A8 turns ~1,700 rpm at
+    //    120 km/h in 8th); holding the gas kicks down and revs each gear out to the redline.
+    const drivetrain = this.drivetrain;
     const shiftClockSec = performance.now() / 1000;
-
-    if (shiftClockSec - this.lastShiftAt > 0.4) {
-      let targetGear = this.gear;
-      if (targetGear < 8 && rpmInGear(targetGear) > upshiftRpm) {
-        targetGear += 1;
-      } else {
-        // Kickdown may skip gears, as long as the lower gear is not past its own shift point
-        while (
-          targetGear > 1 &&
-          rpmInGear(targetGear) < downshiftRpm &&
-          rpmInGear(targetGear - 1) < upshiftRpm - 300
-        ) {
-          targetGear -= 1;
-        }
-      }
+    if (shiftClockSec - this.lastShiftAt > drivetrain.shiftSec) {
+      const targetGear = nextGear(drivetrain, this.speedKmh, this.gear, throttle);
       if (targetGear !== this.gear) {
         this.sound.triggerGearShift(targetGear > this.gear);
         this.gear = targetGear;
@@ -2707,7 +2813,11 @@ class OtobanMakasGame {
       }
     }
 
-    const targetRpm = Math.max(A8_IDLE_RPM, rpmInGear(this.gear));
+    const targetRpm = THREE.MathUtils.clamp(
+      rpmInGear(drivetrain, this.speedKmh, this.gear),
+      drivetrain.idleRpm,
+      drivetrain.redline
+    );
     this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 10));
 
     // 4. Realistic Lateral Vehicle Dynamics (Smooth Yaw, Tire Grip & Rock-Solid Straight-Line Stability)
@@ -2715,8 +2825,14 @@ class OtobanMakasGame {
     const wetFactor = this.world.weatherKey === 'rain' ? 0.85 : 1.0;
 
     // Target chassis heading angle (narrows at high speed for stability)
+    // How hard the driven wheels are working: full throttle while the car is still limited by
+    // traction rather than power (to ~130 km/h, further on a wet road), nothing at speed
+    const powerLoad = throttle * THREE.MathUtils.clamp((isWet ? 1.6 : 1.3) - this.speedKmh / 130, 0, 1);
+    const layout = this.chassis.layout;
+
     const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 260 km/h
-    const targetHeading = this.steerInput * maxHeadingAngle;
+    // Rear-wheel drive under power pushes its tail out: the nose turns in further than asked
+    const targetHeading = this.steerInput * maxHeadingAngle * (layout === 'rwd' ? 1 + 0.35 * powerLoad : 1);
 
     // Critically damped yaw response (no oscillation/fishtailing when driving straight)
     const headingRate = isCentering ? 11.5 + speedRatio * 3.5 : (8.2 + speedRatio * 2.0) * wetFactor;
@@ -2759,7 +2875,9 @@ class OtobanMakasGame {
 
     // The car's handling (classic: 1) scales how far it moves sideways for a given steer, and
     // part of it how quickly the tyres take that up
-    steerPower *= phys.handling;
+    steerPower *= phys.handling * steerShare;
+    // Front-wheel drive under power runs wide: the wheels that steer are busy pulling
+    if (layout === 'fwd') steerPower *= 1 - 0.22 * powerLoad;
     const isOffTrack =
       this.traffic.roadMode === 'track' && Math.abs(this.playerX) > this.world.roadHalfWidth - 0.85;
     const offTrackGripPenalty = isOffTrack ? 0.65 : 1.0;
@@ -2776,7 +2894,7 @@ class OtobanMakasGame {
     let trackSlipG = 0;
     if (this.traffic.roadMode === 'track' && speedMs > 1) {
       const gripAccel =
-        TRACK_GRIP_G * GRAVITY * (0.75 + 0.25 * phys.handling) * wetFactor * offTrackGripPenalty;
+        TRACK_GRIP_G * GRAVITY * (0.75 + 0.25 * phys.handling) * wetFactor * offTrackGripPenalty * steerShare;
       const neededAccel = speedMs * speedMs * Math.abs(curveKappa);
       const outward = -Math.sign(curveKappa) || Math.sign(this.trackSlideAngle);
       if (neededAccel > gripAccel) {
@@ -2797,7 +2915,7 @@ class OtobanMakasGame {
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
       ? 12.5 * wetFactor
-      : (9.2 - speedRatio * 1.4) * wetFactor * tireResponse;
+      : (9.2 - speedRatio * 1.4) * wetFactor * tireResponse * steerShare;
     this.lateralVel = THREE.MathUtils.lerp(
       this.lateralVel,
       desiredLatVel,
@@ -2806,7 +2924,10 @@ class OtobanMakasGame {
     if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralVel) < 0.01) {
       this.lateralVel = 0;
     }
-    this.playerX += this.lateralVel * dt;
+    // A knock from another car slides this one sideways for a moment on top of its own steering
+    this.playerX += (this.lateralVel + this.knockVel) * dt;
+    this.knockVel *= Math.exp(-dt * 3.5);
+    if (Math.abs(this.knockVel) < 0.02) this.knockVel = 0;
 
     // Smooth lateral G-force (includes steady cornering load inside highway curves, 0 on straightaways)
     const latAccelG = (this.lateralVel - prevLatVel) / (Math.max(0.001, dt) * 24.0);
@@ -2873,9 +2994,12 @@ class OtobanMakasGame {
     }
 
     // 5. Critically Damped Suspension Dynamics (Smooth Weight Transfer, Zero Straight-Line Bounce)
-    const targetRoll = THREE.MathUtils.clamp(-this.lateralG * 0.028, -0.042, 0.042);
-    const rollSpring = 110.0;
-    const rollDamping = 24.0; // Critically damped (> 2*sqrt(110)) so it never oscillates when straight
+    //    How far the body leans and dives is the car's own (car.js → chassis): a tall, softly
+    //    sprung car leans further and takes longer over it, a sports car hardly moves.
+    const { roll: rollGain, pitch: pitchGain } = this.chassis;
+    const targetRoll = THREE.MathUtils.clamp(-this.lateralG * 0.028 * rollGain, -0.042 * rollGain, 0.042 * rollGain);
+    const rollSpring = 110.0 / Math.pow(rollGain, 0.6);
+    const rollDamping = 2.29 * Math.sqrt(rollSpring); // Critically damped so it never oscillates when straight
     const rollAccel = (targetRoll - this.bodyRoll) * rollSpring - this.rollVel * rollDamping;
     this.rollVel += rollAccel * dt;
     this.bodyRoll += this.rollVel * dt;
@@ -2893,9 +3017,9 @@ class OtobanMakasGame {
     const feltTarget = THREE.MathUtils.clamp(activeLongG * (1 + this.speedKmh / 120), -0.6, 0.6);
     this.accelFeel += (feltTarget - this.accelFeel) * Math.min(1, dt * (feltTarget > this.accelFeel ? 3 : 5));
 
-    const targetPitch = THREE.MathUtils.clamp(this.accelFeel * 0.011, -0.022, 0.018);
-    const pitchSpring = 95.0;
-    const pitchDamping = 22.0; // Critically damped
+    const targetPitch = THREE.MathUtils.clamp(this.accelFeel * 0.011 * pitchGain, -0.022 * pitchGain, 0.018 * pitchGain);
+    const pitchSpring = 95.0 / Math.pow(pitchGain, 0.6);
+    const pitchDamping = 2.26 * Math.sqrt(pitchSpring); // Critically damped
     const pitchAccel = (targetPitch - this.bodyPitch) * pitchSpring - this.pitchVel * pitchDamping;
     this.pitchVel += pitchAccel * dt;
     this.bodyPitch += this.pitchVel * dt;
@@ -2910,8 +3034,9 @@ class OtobanMakasGame {
     const shakeY = (Math.random() - 0.5) * 0.024 * this.shakeIntensity;
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 2.8);
 
+    const roadBuzz = this.updateRoadFeel(dt, speedMs);
     this.camera.position.x = preset.offset.x - this.lateralG * 0.022 + shakeX;
-    this.camera.position.y = preset.offset.y + shakeY;
+    this.camera.position.y = preset.offset.y + shakeY + roadBuzz;
     // Pushed back into the seat under acceleration, thrown forward under braking (+Z is backward)
     this.camera.position.z = preset.offset.z + this.accelFeel * 0.06;
 
@@ -3011,8 +3136,8 @@ class OtobanMakasGame {
         onMakas: (data) => this.handleMakas(data),
         onCollision: (car) => {
           this.multiplayer.notifyLocalCarHit(car);
-          if (car.dir < 0) this.handleCollision('💥 KAFA KAFAYA ÇARPIŞTIN!', true);
-          else this.handleCollision();
+          if (car.dir < 0) this.handleCollision('💥 KAFA KAFAYA ÇARPIŞTIN!', true, car);
+          else this.handleCollision(undefined, false, car);
         },
       },
       this.world,
@@ -3098,6 +3223,7 @@ class OtobanMakasGame {
       {
         speedKmh: this.speedKmh,
         rpm: this.rpm,
+        redline: this.drivetrain.redline,
         gear: this.gear,
         steerInput: this.steerInput,
         throttle,
@@ -3126,7 +3252,11 @@ class OtobanMakasGame {
       this.roadNeon.forEach((glow) => glow.setNight(night));
     }
 
-    const squealG = Math.max(Math.abs(this.lateralG), this.trackSlipG ? 0.6 + this.trackSlipG : 0);
+    const squealG = Math.max(
+      Math.abs(this.lateralG),
+      this.trackSlipG ? 0.6 + this.trackSlipG : 0,
+      absActive && this.speedKmh > 50 ? 0.5 : 0 // tyres chattering on the ABS
+    );
     this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, squealG);
     this.updateHUD();
 
@@ -3471,5 +3601,6 @@ class OtobanMakasGame {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  new OtobanMakasGame();
+  const game = new OtobanMakasGame();
+  if (import.meta.env.DEV) window.__game = game; // for the dev console and automated checks
 });

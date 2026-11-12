@@ -1,12 +1,12 @@
 // Procedural Web Audio Synthesizer for Engine, Turbo, Horn, Makas Whoosh & Rain
 //
-// The engine is an Audi A8 4.0 TFSI V8 (twin-turbo, cross-plane crank) as heard from inside its
-// insulated cabin: a firing-order tone that follows the real RPM, the V8's uneven "burble",
-// a little growl under load, and road & wind noise that take over at motorway speeds.
+// The engine is heard from inside the cabin: a firing-order tone that follows the real RPM, an
+// uneven "burble", a little growl under load, and road & wind noise that take over at motorway
+// speeds. It was voiced on the Audi A8's 4.0 V8 behind double glazing; each car sets its own
+// cylinders, rev range, cabin insulation and turbos over that (setEngineProfile).
 
-const CYLINDERS = 8;
-const IDLE_RPM = 700;
-const MAX_RPM = 6500;
+// The A8, until a car is selected
+const DEFAULT_ENGINE = { cylinders: 8, idleRpm: 700, redline: 6500, insulation: 1, turbo: 1, shiftSec: 0.4 };
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
@@ -33,6 +33,7 @@ export class SoundEngine {
 
     this.master = null;
     this.masterGain = null;
+    this.engine = { ...DEFAULT_ENGINE };
     this.engineGain = null;
     this.turboGain = null;
     this.roadGain = null;
@@ -404,6 +405,30 @@ export class SoundEngine {
     }
   }
 
+  // Engine of the selected car (car.js → drivetrain): how many cylinders fire, the rev range the
+  // tone runs over, how much of it the cabin lets in and how loud the turbos are
+  setEngineProfile(drivetrain) {
+    this.engine = { ...DEFAULT_ENGINE, ...drivetrain };
+  }
+
+  // A wheel over an expansion joint or a seam: a short, low thud through the floor
+  playRoadThump(strength = 1) {
+    if (!this.ctx || !this.running || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(82, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(Math.min(0.16, 0.085 * strength) * (this.volumes?.wind ?? 1) + 0.0001, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
   updateEngine(rpm, throttle, speedKmh, paused, lateralG = 0) {
     if (!this.ctx || !this.running) return;
     const now = this.ctx.currentTime;
@@ -417,8 +442,11 @@ export class SoundEngine {
       return;
     }
 
-    const r = Math.max(IDLE_RPM * 0.9, Math.min(MAX_RPM * 1.03, rpm));
-    const rpmNorm = clamp01((r - IDLE_RPM) / (MAX_RPM - IDLE_RPM));
+    const { cylinders, idleRpm, redline, turbo } = this.engine;
+    // 0 behind the A8's double glazing, towards 1 as the cabin lets more of the engine in
+    const open = 1 - this.engine.insulation;
+    const r = Math.max(idleRpm * 0.9, Math.min(redline * 1.03, rpm));
+    const rpmNorm = clamp01((r - idleRpm) / (redline - idleRpm));
     const speedNorm = clamp01(speedKmh / 260);
 
     // Load follows the pedal with a little lag; boost builds more slowly (turbo spool)
@@ -426,28 +454,36 @@ export class SoundEngine {
     const boostTarget = throttle * clamp01((r - 1600) / 2400);
     this.boost += (boostTarget - this.boost) * Math.min(1, dt * (boostTarget > this.boost ? 2 : 5));
 
-    // Firing frequency: a four-stroke V8 fires 4 times per crank revolution
-    const firingHz = (r / 60) * (CYLINDERS / 2);
+    // Firing frequency: a four-stroke engine fires half its cylinders per crank revolution
+    // (a V8 four times, a four-cylinder twice, which is why it sounds an octave lower)
+    const firingHz = (r / 60) * (cylinders / 2);
     this.firingA.o.frequency.setTargetAtTime(firingHz, now, 0.025);
     this.firingB.o.frequency.setTargetAtTime(firingHz, now, 0.025);
     this.halfOrder.o.frequency.setTargetAtTime(firingHz / 2, now, 0.025);
-    this.crankOrder.o.frequency.setTargetAtTime(firingHz / 4, now, 0.025);
+    this.crankOrder.o.frequency.setTargetAtTime(r / 60, now, 0.025);
     this.lopeLfo.frequency.setTargetAtTime(firingHz / 8, now, 0.025);
     this.lopeDepth.gain.setTargetAtTime(0.025 + (1 - rpmNorm) * 0.04, now, 0.1);
 
     // Audi A8 acoustic isolation: subdued, creamy, whisper-quiet background hum
     // Under full throttle, the engine gently opens up to a warm, deep, insulated V8 baritone
-    this.driveGain.gain.setTargetAtTime(0.24 + this.load * 0.08, now, 0.06);
-    this.cabinFilter.frequency.setTargetAtTime(145 + rpmNorm * 115 + this.load * 135, now, 0.08);
+    // A less insulated cabin lets the harder edge of the exhaust through: the tone is driven
+    // further into the shaper (more harmonics) and the cabin filter opens up with revs and load
+    this.driveGain.gain.setTargetAtTime((0.24 + this.load * 0.08) * (1 + open * 2.2), now, 0.06);
+    this.cabinFilter.frequency.setTargetAtTime(
+      (145 + rpmNorm * 115 + this.load * 135) * (1 + open * (2 + rpmNorm * 5)),
+      now,
+      0.08
+    );
 
     // Executive cabin sound volume: quiet, calming, and never loud or raspy
     const shiftLevel = now < this.shiftDipUntil ? this.shiftDipLevel : 1;
-    const engineVol = (0.016 + rpmNorm * 0.022 + this.load * 0.026) * shiftLevel * this.volumes.engine;
+    const engineVol =
+      (0.016 + rpmNorm * 0.022 + this.load * 0.026) * (1 + open * 1.3) * shiftLevel * this.volumes.engine;
     this.engineGain.gain.setTargetAtTime(engineVol, now, 0.06);
 
     // Muted turbo breath (heavily insulated Hot-V turbos, no boy-racer whistle)
     this.turboFilter.frequency.setTargetAtTime(1100 + this.boost * 1200, now, 0.15);
-    this.turboGain.gain.setTargetAtTime(this.boost * 0.0025 * this.volumes.engine, now, 0.15);
+    this.turboGain.gain.setTargetAtTime(this.boost * 0.0025 * turbo * (1 + open) * this.volumes.engine, now, 0.15);
 
     // Tyre roar and laminar wind create a peaceful, serene highway cruiser ambience
     this.roadFilter.frequency.setTargetAtTime(160 + speedNorm * 320, now, 0.2);
@@ -483,12 +519,15 @@ export class SoundEngine {
     }
   }
 
-  // Smooth torque-converter ZF 8-speed tiptronic shifts (seamless luxury gear transitions)
+  // Gear change: the engine note dips on the way up and blips on the way down. A torque
+  // converter or dual clutch does it in a tenth of a second; a manual box (a long shiftSec)
+  // lets the engine drop right off while the clutch is in.
   triggerGearShift(isUpShift = true) {
     if (!this.ctx || this.muted) return;
     const now = this.ctx.currentTime;
-    this.shiftDipLevel = isUpShift ? 0.78 : 1.12;
-    this.shiftDipUntil = now + (isUpShift ? 0.10 : 0.12);
+    const manual = this.engine.shiftSec >= 0.5;
+    this.shiftDipLevel = isUpShift ? (manual ? 0.45 : 0.78) : 1.12;
+    this.shiftDipUntil = now + (manual ? 0.26 : isUpShift ? 0.1 : 0.12);
   }
 
   setHorn(active) {

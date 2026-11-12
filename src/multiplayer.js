@@ -258,6 +258,9 @@ export class MultiplayerManager {
         peerCar.parts = parts;
         peerCar.active.setParts?.(parts);
       },
+      rollWheels(distM) {
+        peerCar.active.rollWheels?.(distM);
+      },
       setPaint(paintHex) {
         peerCar.paintHex = paintHex;
         if (fallback.bodyMat) fallback.bodyMat.color.setHex(paintHex);
@@ -1372,6 +1375,7 @@ export class MultiplayerManager {
         group.rotation.x = curvePitch;
         group.rotation.y = -p.headingAngle + curveYaw;
         group.rotation.z = p.bodyRoll;
+        p.car.rollWheels(p.worldDistM);
       }
 
       // Brake lights & High-Beam Selektör visuals

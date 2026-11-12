@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<body style="margin:0;background:#222">
+<!-- Traffic car preview: converted models (src/trafficModels.js) and procedural body styles side by side.
+     /tools/model-preview/traffic.html?cars=corolla,passat-b8,sedan,suv&night=1&brake=1&blink=1&spin=1&az=2.5&pol=1.35&dist=9
+     cars: traffic model ids or vehicle types (sedan, sport, suv, van, truck; "sedan:1" picks a variant) -->
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { advanceTrafficWheelSpin, createTrafficVehicle, paintForIndex, setVehicleLightsNightMode } from '/src/vehicleModels.js';
+import { loadTrafficModels, trafficModel } from '/src/trafficModels.js';
+
+const TYPES = {
+  sedan: { type: 'sedan', width: 1.86, height: 1.42, length: 4.5 },
+  sport: { type: 'sport', width: 1.92, height: 1.28, length: 4.4 },
+  suv: { type: 'suv', width: 2.02, height: 1.72, length: 4.75 },
+  van: { type: 'van', width: 2.05, height: 2.08, length: 5.1 },
+  truck: { type: 'truck', width: 2.38, height: 3.15, length: 8.6 },
+};
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w') || 1100), H = +(q.get('h') || 620);
+const night = q.get('night') === '1';
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H);
+r.toneMapping = THREE.ACESFilmicToneMapping;
+r.toneMappingExposure = 1.35;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(night ? 0x0d1528 : 0x6f9bd8);
+scene.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = night ? 0.25 : 0.9;
+const sun = new THREE.DirectionalLight(0xffffff, night ? 0.5 : 1.8);
+sun.position.set(-4, 8, -5);
+scene.add(sun, new THREE.HemisphereLight(0xcfe0ff, 0x30343a, night ? 0.6 : 1.1));
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.6 })));
+
+await loadTrafficModels();
+setVehicleLightsNightMode(night);
+const names = (q.get('cars') || 'corolla,passat-b8,focus,c-class,passat-b5').split(',');
+const gap = +(q.get('gap') || 3.2);
+const cars = names.map((name, i) => {
+  const [id, variant = 0] = name.split(':');
+  const model = trafficModel(id);
+  if (!model && !TYPES[id]) throw new Error(`Bilinmeyen araç: ${id}`);
+  const spec = TYPES[id] || TYPES.sedan;
+  const paint = q.get('paint') ? Number(q.get('paint')) : paintForIndex(i + 1);
+  const car = createTrafficVehicle(spec, i, +variant, paint, model);
+  car.group.position.x = (i - (names.length - 1) / 2) * gap;
+  car.setNight(night);
+  car.setBraking(q.get('brake') === '1');
+  car.leftBlinker.visible = car.rightBlinker.visible = q.get('blink') === '1';
+  car.body.rotation.z = +(q.get('roll') || 0);
+  car.body.rotation.x = +(q.get('pitch') || 0);
+  scene.add(car.group);
+  return car;
+});
+
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 35), W / H, 0.05, 200);
+const az = +(q.get('az') || 2.5), pol = +(q.get('pol') || 1.35), dist = +(q.get('dist') || 12);
+const tgt = new THREE.Vector3(...(q.get('t') || '0,0.6,0').split(',').map(Number));
+cam.position.set(tgt.x + dist * Math.sin(pol) * Math.sin(az), tgt.y + dist * Math.cos(pol), tgt.z + dist * Math.sin(pol) * Math.cos(az));
+cam.lookAt(tgt);
+r.render(scene, cam);
+window.__info = { calls: r.info.render.calls, triangles: r.info.render.triangles };
+window.__scene = scene;
+window.__cars = cars;
+window.__done = true;
+
+const spin = q.get('spin') === '1';
+function animate() {
+  requestAnimationFrame(animate);
+  if (spin) advanceTrafficWheelSpin(1 / 60);
+  r.render(scene, cam);
+}
+animate();
+</script>
+</body>
+</html>

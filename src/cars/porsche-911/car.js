@@ -16,6 +16,9 @@ export default {
   // All-wheel drive launch and the sharpest turn-in
   price: 55000,
   performance: { topSpeed: 295, power: 1.04, traction: 1.08, handling: 1.16, braking: 1.12, upgradeCost: 1.5 },
+  // 3.0 flat-six biturbo behind the rear axle, 8-speed PDK
+  drivetrain: { gears: [4.89, 3.17, 2.15, 1.56, 1.18, 0.94, 0.76, 0.61], finalDrive: 3.39, wheelCircumference: 2.15, idleRpm: 800, redline: 7500, cruiseShiftRpm: 2300, shiftSec: 0.25, cylinders: 6, insulation: 0.4, turbo: 2 },
+  chassis: { layout: 'rwd', mass: 1550, roll: 0.5, pitch: 0.55 },
   credit: {
     title: '2021 Porsche 911 Targa 4S',
     url: 'https://sketchfab.com/3d-models/2021-porsche-911-targa-4s-616ebc4356c74a3b8554c396eb3bd34c',
@@ -35,11 +38,6 @@ export default {
     rims: { materials: ['caliper', 'rim'], reach: 0.82, outer: 0.07 },
     url: `${BASE}models/porsche-911.glb`,
     length: 4.52,
-    envMapIntensity: 0.25,
-    metalness: 0.18,
-    roughness: 0.68,
-    clearcoat: 0.04,
-    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
     lamps: [

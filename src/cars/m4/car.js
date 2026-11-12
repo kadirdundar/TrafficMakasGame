@@ -16,6 +16,9 @@ export default {
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   price: 25000,
   performance: { topSpeed: 290, power: 1.06, traction: 1.0, handling: 1.08, braking: 1.05, upgradeCost: 1.25 },
+  // S58 3.0 straight-six biturbo, 8-speed M Steptronic, M xDrive
+  drivetrain: { gears: [5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64], finalDrive: 3.15, wheelCircumference: 2.13, idleRpm: 800, redline: 7200, cruiseShiftRpm: 2300, shiftSec: 0.3, cylinders: 6, insulation: 0.45, turbo: 2.4 },
+  chassis: { layout: 'awd', mass: 1800, roll: 0.6, pitch: 0.65 },
   credit: {
     title: '2025 BMW M4 CS VR46 Edition',
     url: 'https://sketchfab.com/3d-models/2025-bmw-m4-cs-vr46-edition-3d111a7ed0f544bc9215e3038db4c8dc',
@@ -35,11 +38,6 @@ export default {
     rims: { reach: 0.72 },
     url: `${BASE}models/bmw-m4.glb`,
     length: 4.8,
-    envMapIntensity: 0.25,
-    metalness: 0.18,
-    roughness: 0.68,
-    clearcoat: 0.04,
-    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.8, highBeam: 3.5 },
     tail: { day: 0.35, night: 1.2, brake: 3.2 },
     lamps: [{ match: /^emissive$/, role: 'head', emissive: 0xffffff, intensity: 0.5 }],

@@ -29,6 +29,9 @@ export default {
   // Premium sedan between the Passat B8 and the M4: 204 hp, 0-100 in 7.3 s, 246 km/h
   price: 9000,
   performance: { topSpeed: 246, power: 0.78, traction: 0.8, handling: 0.92, braking: 0.9, upgradeCost: 0.9 },
+  // C 200: 1.5 four-cylinder turbo, 9-speed automatic, rear-wheel drive
+  drivetrain: { gears: [5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], finalDrive: 3.07, wheelCircumference: 2.05, idleRpm: 750, redline: 6300, cruiseShiftRpm: 2000, cylinders: 4, insulation: 0.8, turbo: 1.4 },
+  chassis: { layout: 'rwd', mass: 1650, roll: 0.95, pitch: 0.95 },
   credit: {
     title: 'Mercedes- Benz W206 C220',
     url: 'https://sketchfab.com/3d-models/mercedes-benz-w206-c220-c0ef31daf7cf4a8bada4b56005c19e83',

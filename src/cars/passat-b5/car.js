@@ -16,6 +16,9 @@ export default {
   // The cheapest car: a slow diesel with soft handling and modest brakes
   price: 2500,
   performance: { topSpeed: 200, power: 0.62, traction: 0.7, handling: 0.82, braking: 0.78, upgradeCost: 0.6 },
+  // 1.8 T, 5-speed manual, front-wheel drive: long gears, a thin bulkhead and soft springs
+  drivetrain: { gears: [3.5, 1.94, 1.3, 0.97, 0.8], finalDrive: 3.89, wheelCircumference: 1.99, idleRpm: 850, redline: 6200, cruiseShiftRpm: 2500, shiftSec: 0.6, cylinders: 4, insulation: 0.5, turbo: 1.5 },
+  chassis: { layout: 'fwd', mass: 1350, roll: 1.3, pitch: 1.25 },
   credit: {
     title: 'Volkswagen Passat B5',
     url: 'https://sketchfab.com/3d-models/volkswagen-passat-b5-4c3c05da2a3e46539cf324e756cc5e32',
@@ -30,11 +33,6 @@ export default {
     plate: { front: { y: 0.5 }, rear: { y: 0.78 } },
     url: `${BASE}models/passat-b5.glb`,
     length: 4.7,
-    envMapIntensity: 0.25,
-    metalness: 0.18,
-    roughness: 0.68,
-    clearcoat: 0.04,
-    clearcoatRoughness: 0.65,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 1.1, brake: 3.0 },
     lamps: [

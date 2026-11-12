@@ -871,6 +871,7 @@ export class CarCockpit {
   }
 
   update(dt, state, nearbyCars = []) {
+    this.redlineRpm = state.redline ?? 6500; // the rev counter turns red just under it
     this.radioState = state.radio || null;
     const {
       speedKmh,
@@ -1267,7 +1268,7 @@ export class CarCockpit {
     ctx.drawImage(this.getClusterFace(w, h, scale, brand), x, y, w, h);
 
     const { r, tach, speedo, centerX } = layout;
-    this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), rpm > 6500 ? '#ff3b4f' : accent);
+    this.drawClusterNeedle(ctx, tach.cx, tach.cy, r, Math.min(1, rpm / 8000), rpm > this.redlineRpm - 250 ? '#ff3b4f' : accent);
     this.drawClusterNeedle(ctx, speedo.cx, speedo.cy, r, Math.min(1, speedKmh / this.speedoMaxKmh), accent);
 
     ctx.textAlign = 'center';
@@ -1573,7 +1574,7 @@ export class CarCockpit {
     ctx.lineJoin = 'round';
     for (const [pts, t, color] of [
       [speedPts, Math.min(1, speedKmh / this.speedoMaxKmh), accent],
-      [revPts, revNorm, rpm > 6500 ? '#ff3b4f' : '#f97316'],
+      [revPts, revNorm, rpm > this.redlineRpm - 250 ? '#ff3b4f' : '#f97316'],
     ]) {
       ctx.strokeStyle = color;
       ctx.globalAlpha = 0.35;

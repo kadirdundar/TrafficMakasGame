@@ -16,6 +16,9 @@ export default {
   // Everyday 1.6 sedan: slow to pull, soft but honest handling
   price: 4000,
   performance: { topSpeed: 200, power: 0.64, traction: 0.72, handling: 0.86, braking: 0.8, upgradeCost: 0.6 },
+  // 1.6 naturally aspirated four-cylinder, 6-speed manual, front-wheel drive
+  drivetrain: { gears: [3.54, 1.91, 1.31, 0.97, 0.82, 0.7], finalDrive: 4.21, wheelCircumference: 1.99, idleRpm: 800, redline: 6400, cruiseShiftRpm: 2400, shiftSec: 0.55, cylinders: 4, insulation: 0.6, turbo: 0 },
+  chassis: { layout: 'fwd', mass: 1300, roll: 1.25, pitch: 1.2 },
   credit: {
     title: '2014 Toyota Corolla E180 EU (with interior)',
     url: 'https://sketchfab.com/3d-models/2014-toyota-corolla-e180-eu-with-interior-36f95efb0585464cae43a25a3b3392e8',
@@ -30,7 +33,6 @@ export default {
     plate: { replace: 'Material.010' },
     url: `${BASE}models/corolla.glb`,
     length: 4.62,
-    envMapIntensity: 1.2,
     head: { day: 0.5, night: 1.6, highBeam: 3.2 },
     tail: { day: 0.35, night: 0.9, brake: 2.2 }, // brighter washes the red lamps out to salmon
     // Rim colour (src/cars/rims.js): the rims share the chrome material with the trim

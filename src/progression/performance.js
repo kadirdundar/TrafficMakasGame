@@ -5,14 +5,17 @@ import { LEVEL_COST, MAX_UPGRADE_LEVEL, PARTS, UPGRADES } from './config.js';
 // updatePhysics() (src/main.js) drives with. The classic game uses CLASSIC_PHYSICS for every car.
 
 // The tuned physics all cars share in the classic game: ~3.3 s 0→100, ~5.6 s 100→200,
-// a slow 235→260 km/h climb to the limiter, 115 km/h/s braking
+// a slow 235→260 km/h climb to the limiter, and brakes that hold BRAKE_G on a dry road
+// (air drag adds to them, so the car slows hardest from high speed)
+const BRAKE_G = 1.15;
+export const KMH_PER_SEC_PER_G = 9.81 * 3.6; // 1 g as km/h per second
 export const CLASSIC_PHYSICS = Object.freeze({
   maxSpeed: 260,
   climbFrom: 235,
   enginePower: 4200,
   tractionLimit: 33,
   aeroDrag: 0.00027,
-  brakeDecel: 115,
+  brakeDecel: BRAKE_G * KMH_PER_SEC_PER_G,
   handling: 1,
 });
 
@@ -101,7 +104,8 @@ export function longitudinalAccel(phys, speedKmh, throttle, brake) {
     return effectiveThrust * throttle - resistance;
   }
   if (brake > 0) {
-    return -phys.brakeDecel * brake; // Strong sport brakes
+    // The tyres' grip plus everything that slows the car anyway
+    return -(phys.brakeDecel * brake + resistance);
   }
   // Off throttle: engine braking + drag (bleeds speed faster at 200+), rolling to a stop
   return -(6 + resistance);

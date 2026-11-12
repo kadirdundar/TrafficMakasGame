@@ -14,10 +14,23 @@ import { DEFAULT_PLATE, neonColorHex, rimColorHex, tintShade } from '../progress
 
 // Exterior car model for the garage turntable and online friends, driven by a car's `exterior`
 // config (src/cars/<id>/car.js, fields in src/cars/README.md). Returns
-// { group, bodyMat, setLights({ night, braking, highBeam }), setParts(parts) } with parts as in
+// { group, bodyMat, setLights({ night, braking, highBeam }), setParts(parts),
+// rollWheels(distM) } with parts as in
 // src/progression/profile.js → parts(); the garage recolours bodyMat. setSpoiler(id),
 // setRimColor(hex), setPlate(text), setFinish(id), setCarbon({ hood, mirrors }), setTint(shade)
 // and setNeon(hex) fit one part directly (preview pages).
+
+// Finish of the materials whose name says what they are (tools/convert-car.mjs standardises the
+// names): the limits their converted values are held to, and how strongly they reflect. Glass
+// and chrome stay as glossy as they are; everything unnamed is treated as matte plastic, since
+// the source models' own values are often arbitrary (plastics exported as mirror chrome).
+const SURFACE_FINISH = [
+  [/glass|window|lens|klosz/i, { minRoughness: 0.04, maxMetalness: 0.3, env: 1.0 }],
+  [/chrome|mirror|miror/i, { minRoughness: 0.1, maxMetalness: 1, env: 0.9 }],
+  [/rim|wheel|jant|silver/i, { minRoughness: 0.24, maxMetalness: 0.9, env: 0.75 }],
+  [/gloss|shiny/i, { minRoughness: 0.16, maxMetalness: 0.5, env: 0.6 }],
+];
+const MATTE_FINISH = { minRoughness: 0.62, maxMetalness: 0.3, env: 0.25 };
 
 function glowQuads(points, w, h, facingFront, material) {
   const geos = points.map(([x, y, z]) => {
@@ -67,13 +80,15 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
   group.add(model);
   group.updateMatrixWorld(true);
 
+  // Factory paint: a solid colour under a glossy clear coat (the garage's metallic, matte and
+  // pearl finishes are set over it, src/cars/finish.js)
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: paintHex,
-    metalness: cfg.metalness ?? 0.18,
-    roughness: cfg.roughness ?? 0.68,
-    clearcoat: cfg.clearcoat ?? 0.04,
-    clearcoatRoughness: cfg.clearcoatRoughness ?? 0.65,
-    envMapIntensity: cfg.envMapIntensity ?? 0.25,
+    metalness: cfg.metalness ?? 0.15,
+    roughness: cfg.roughness ?? 0.48,
+    clearcoat: cfg.clearcoat ?? 0.8,
+    clearcoatRoughness: cfg.clearcoatRoughness ?? 0.1,
+    envMapIntensity: cfg.envMapIntensity ?? 0.8,
     side: THREE.DoubleSide,
   });
   const paintName = cfg.paintMaterial || 'paint';
@@ -105,27 +120,20 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
       if (rule.box) boxes[rule.box].expandByObject(o);
       return;
     }
-    // Tame mirror reflections across all secondary exterior materials (trim, glass, rims, bodykit, etc.).
     // `keepFinish` names materials whose converted PBR values are tuned and kept as they are.
     if (mat && cfg.keepFinish?.includes(name)) {
       if ('envMapIntensity' in mat) mat.envMapIntensity = cfg.keepFinishEnv ?? 0.6;
       return;
     }
     if (mat) {
-      const isGlass = /glass|lens|window/i.test(name) || mat.transparent;
-      if ('roughness' in mat) {
-        mat.roughness = Math.max(mat.roughness ?? 0.6, isGlass ? 0.42 : 0.62);
-      }
-      if ('metalness' in mat) {
-        mat.metalness = Math.min(mat.metalness ?? 0.25, isGlass ? 0.15 : 0.3);
-      }
+      const finish = SURFACE_FINISH.find(([pattern]) => pattern.test(name))?.[1] ?? MATTE_FINISH;
+      if ('roughness' in mat) mat.roughness = Math.max(mat.roughness ?? 0.6, finish.minRoughness);
+      if ('metalness' in mat) mat.metalness = Math.min(mat.metalness ?? 0.25, finish.maxMetalness);
       if ('clearcoat' in mat) {
         mat.clearcoat = Math.min(mat.clearcoat || 0, 0.04);
         mat.clearcoatRoughness = Math.max(mat.clearcoatRoughness || 0.6, 0.6);
       }
-      if ('envMapIntensity' in mat) {
-        mat.envMapIntensity = Math.min(mat.envMapIntensity ?? 0.25, 0.25);
-      }
+      if ('envMapIntensity' in mat) mat.envMapIntensity = finish.env;
       mat.needsUpdate = true;
     }
   });
@@ -197,6 +205,8 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     setCarbon: carbon.set,
     setTint,
     setNeon: neon.setColor,
+    // Turns the wheels by the distance driven (m along the road)
+    rollWheels: setRimColor.rollWheels,
     // Parts the player fitted in the garage (ids from src/progression/config.js → PARTS) and
     // the plate's text
     setParts({

@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 <body style="margin:0;background:#222">
-<!-- Exterior preview (car = id or alias from src/cars/): /tools/model-preview/car.html?car=m4&az=-2.3&pol=1.3&dist=9.5&night=1&brake=1 -->
+<!-- Exterior preview (car = id or alias from src/cars/): /tools/model-preview/car.html?car=m4&az=-2.3&pol=1.3&dist=9.5&night=1&brake=1&spin=0.2 -->
 <script type="module">
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -45,8 +45,12 @@ window.__cam = cam;
 window.__c = c;
 window.__done = true;
 
+// &spin=0.2 turns the wheels as if driving that many metres a frame
+const spin = +(q.get('spin') || 0);
+let driven = 0;
 function animate() {
   requestAnimationFrame(animate);
+  if (spin) c.rollWheels((driven += spin));
   r.render(scene, cam);
 }
 animate();
