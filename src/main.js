@@ -39,6 +39,9 @@ const ABS_PEDAL = 0.85;
 const BRIDGE_JOINT_M = 30;
 const ROAD_SEAM_M = 420;
 const WHEELBASE_M = 2.9;
+// Body heave on the springs: ~1.1 Hz, damping ratio ~0.4 (a soft, floating ride)
+const HEAVE_SPRING = 48;
+const HEAVE_DAMPING = 5.5;
 // İstanbul Park tyre grip: the most lateral acceleration (in g) the tyres hold before the car
 // washes out of a corner, for a car with handling 1. Peak T1 (R≈80 m) is then ~130 km/h,
 // the T11 kink (R≈160 m) ~185 km/h, so the big corners need real braking.
@@ -325,6 +328,8 @@ class OtobanMakasGame {
     this.rollVel = 0;
     this.bodyPitch = 0; // rad suspension pitch angle (spring-damper)
     this.pitchVel = 0;
+    this.bodyHeave = 0; // m the body rides above/below its rest height (spring-damper)
+    this.heaveVel = 0;
     this.speedKmh = 0; // the car waits at a standstill until the gas is pressed
     this.rpm = 2200;
     this.gear = 3;
@@ -2103,6 +2108,8 @@ class OtobanMakasGame {
     this.rollVel = 0;
     this.bodyPitch = 0;
     this.pitchVel = 0;
+    this.bodyHeave = 0; // m the body rides above/below its rest height (spring-damper)
+    this.heaveVel = 0;
     this.accelFeel = 0;
     // Online the room shares one traffic (the host's): it is not reset for one player
     if (!this.multiplayer.connected) this.traffic.resetTraffic();
@@ -2462,7 +2469,7 @@ class OtobanMakasGame {
 
   // A knock costs one hit (a head-on two); the last one sets the car on fire. Alone that ends the
   // drive (see updateBurning); online the host sees it in our state and gives the round away.
-  // What the road does to the car on a straight: a fine tremor that grows with speed (returned
+  // What the road does to the car on a straight: a slow float over the road's long waves (returned
   // as a height offset for the driver's eye, in m), and a thump from each axle over the bridge's
   // expansion joints, the lip at either end of the tunnel and the odd seam in the asphalt.
   updateRoadFeel(dt, speedMs) {
@@ -2487,17 +2494,25 @@ class OtobanMakasGame {
       this.rearAxleIn = WHEELBASE_M / speedMs;
     }
 
+    // The road is never dead flat: long, shallow waves (70-150 m) that the body floats over on
+    // soft springs. They come by faster at speed but stay well under 1.5 Hz, so the car wafts
+    // instead of trembling. The spring is under-damped on purpose: it settles in a slow swing or two.
     const speedShare = Math.min(1, speedKmh / 220);
-    const t = performance.now() / 1000;
-    const tremor = Math.sin(t * 67) * (0.55 + 0.45 * Math.sin(t * 9.1)) + 0.5 * Math.sin(t * 113 + 1.7);
-    return tremor * 0.0008 * speedShare * speedShare * (onBridge ? 1.6 : 1);
+    const wave = Math.sin(dist / 23) + 0.6 * Math.sin(dist / 11 + 1.3) + 0.35 * Math.sin(dist / 37 + 4.1);
+    const target = wave * 0.0035 * speedShare * (onBridge ? 1.3 : 1) * this.chassis.pitch;
+    const step = Math.min(dt, 0.05);
+    const heaveAccel = (target - this.bodyHeave) * HEAVE_SPRING - this.heaveVel * HEAVE_DAMPING;
+    this.heaveVel += heaveAccel * step;
+    this.bodyHeave += this.heaveVel * step;
+    return this.bodyHeave;
   }
 
-  // One axle over a joint: the nose (-1) or the tail (+1) is kicked up, the cabin jolts and thuds
+  // One axle over a joint: the nose (-1) or the tail (+1) is kicked up, the body rises on its
+  // springs and settles again, with a thud
   axleBump(strength, end) {
     const speedShare = Math.min(1, this.speedKmh / 140);
     this.pitchVel += end * -0.07 * strength * this.chassis.pitch;
-    this.shakeIntensity = Math.max(this.shakeIntensity, 0.13 * strength * (0.5 + 0.5 * speedShare));
+    this.heaveVel += 0.03 * strength * this.chassis.pitch;
     this.sound.playRoadThump(strength * (0.5 + 0.5 * speedShare));
   }
 
@@ -3034,9 +3049,9 @@ class OtobanMakasGame {
     const shakeY = (Math.random() - 0.5) * 0.024 * this.shakeIntensity;
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 2.8);
 
-    const roadBuzz = this.updateRoadFeel(dt, speedMs);
+    const heave = this.updateRoadFeel(dt, speedMs);
     this.camera.position.x = preset.offset.x - this.lateralG * 0.022 + shakeX;
-    this.camera.position.y = preset.offset.y + shakeY + roadBuzz;
+    this.camera.position.y = preset.offset.y + shakeY + heave;
     // Pushed back into the seat under acceleration, thrown forward under braking (+Z is backward)
     this.camera.position.z = preset.offset.z + this.accelFeel * 0.06;
 
@@ -3050,7 +3065,8 @@ class OtobanMakasGame {
     // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean
     this.camera.rotation.y = -this.headingAngle * 0.52 + this.headTurn;
     this.camera.rotation.z = this.bodyRoll * 0.75;
-    this.camera.rotation.x = this.bodyPitch * 0.65;
+    // The nose rides the same waves a little, so the horizon drifts gently with the body
+    this.camera.rotation.x = this.bodyPitch * 0.65 + heave * 0.45;
 
     // Speed-based FOV warp for intense sense of speed above 140 km/h, widening a little more
     // while the car pulls (and narrowing a little under braking)
