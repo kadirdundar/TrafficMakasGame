@@ -205,6 +205,22 @@
     display: none;
   }
 
+  /* Speed vignette: the corners of the whole view (road and cabin) darken as the car gets fast.
+     Only its opacity changes, which the compositor does without repainting. */
+  .speed-vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s linear;
+    background: radial-gradient(ellipse 75% 80% at 50% 42%, transparent 45%, rgba(0, 0, 0, 0.55) 100%);
+  }
+
+  body:not([data-ui='drive']) .speed-vignette {
+    display: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .speed-lines {
       display: none;
