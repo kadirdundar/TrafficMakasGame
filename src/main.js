@@ -2499,7 +2499,7 @@ class OtobanMakasGame {
     // instead of trembling. The spring is under-damped on purpose: it settles in a slow swing or two.
     const speedShare = Math.min(1, speedKmh / 220);
     const wave = Math.sin(dist / 23) + 0.6 * Math.sin(dist / 11 + 1.3) + 0.35 * Math.sin(dist / 37 + 4.1);
-    const target = wave * 0.0035 * speedShare * (onBridge ? 1.3 : 1) * this.chassis.pitch;
+    const target = wave * 0.0012 * speedShare * (onBridge ? 1.3 : 1) * this.chassis.pitch;
     const step = Math.min(dt, 0.05);
     const heaveAccel = (target - this.bodyHeave) * HEAVE_SPRING - this.heaveVel * HEAVE_DAMPING;
     this.heaveVel += heaveAccel * step;
@@ -2512,7 +2512,7 @@ class OtobanMakasGame {
   axleBump(strength, end) {
     const speedShare = Math.min(1, this.speedKmh / 140);
     this.pitchVel += end * -0.07 * strength * this.chassis.pitch;
-    this.heaveVel += 0.03 * strength * this.chassis.pitch;
+    this.heaveVel += 0.01 * strength * this.chassis.pitch;
     this.sound.playRoadThump(strength * (0.5 + 0.5 * speedShare));
   }
 
