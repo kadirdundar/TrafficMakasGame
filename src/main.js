@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
 import { CarShadows } from './carShadows.js';
+import { DrawBatcher } from './drawBatcher.js';
 import { LUXURY_SPEC } from './vehicleModels.js';
 import { CABIN_LAYER, SpeedBlur, separateCabin } from './speedBlur.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
@@ -271,6 +272,14 @@ class OtobanMakasGame {
       for (const peer of this.replay.replayPeers) visit(peer.group, LUXURY_SPEC);
     });
     this.shadowSunKey = '';
+
+    // The traffic cars and the roadside segments are made of many small meshes: they are drawn
+    // in a few batches instead of one draw call each (same picture, see drawBatcher.js)
+    this.drawBatcher = new DrawBatcher(this.scene);
+    this.drawBatcher.watch(() => this.traffic.vehicles.map((car) => car.mesh));
+    this.drawBatcher.watch(() => this.world.sceneryItems);
+    if (new URLSearchParams(location.search).has('nobatch')) this.drawBatcher.setEnabled(false);
+    this.traffic.onModelsReady = () => this.drawBatcher.refresh(); // the cars were swapped for the real models
 
     // Start-menu garage with the rotatable car. Optional: the game runs without it if a second
     // WebGL context is not available.
@@ -3541,6 +3550,7 @@ class OtobanMakasGame {
     if (!this.paused) this.adaptRenderScale(frameSec);
     this.renderer.info.reset();
     this.carShadows.frame();
+    this.drawBatcher.frame();
     this.updateShadowSun();
 
     if (!this.paused && this.multiplayer.connected) {

@@ -1126,7 +1126,9 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
     return mesh;
   };
 
-  add(geo.body, bodyMat);
+  // Drawn in batches (drawBatcher.js): the bodies differ only in colour, the lamps and glows
+  // switch between these geometries
+  add(geo.body, bodyMat).userData.batchTint = true;
   add(geo.glass, m.glass);
   add(geo.trim, model ? m.modelTrim : m.trim);
   const rimMesh = add(
@@ -1146,7 +1148,9 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
   if (glows) {
     glows.visible = false;
     glows.renderOrder = 2;
+    glows.userData.batchGeometries = geo.glows;
   }
+  if (lamps) lamps.userData.batchGeometries = geo.lamps.flat();
 
   let braking = false;
   let night = false;
