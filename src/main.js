@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
+import { CarShadows } from './carShadows.js';
+import { LUXURY_SPEC } from './vehicleModels.js';
 import { CABIN_LAYER, SpeedBlur, separateCabin } from './speedBlur.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
@@ -259,6 +261,16 @@ class OtobanMakasGame {
         onVideoStatus: (status) => this.syncDroneVideoStatus(status),
       }
     );
+
+    // Shadows under every car on the road: the traffic, friends in the room and, in the drone
+    // replay, the driven car and the recorded friends
+    this.carShadows = new CarShadows(this.scene, (visit) => {
+      for (const car of this.traffic.vehicles) if (car.active) visit(car.mesh, car.spec);
+      for (const peer of this.multiplayer.players.values()) visit(peer.car.group, LUXURY_SPEC);
+      visit(this.replay.playerCarGroup, LUXURY_SPEC);
+      for (const peer of this.replay.replayPeers) visit(peer.group, LUXURY_SPEC);
+    });
+    this.shadowSunKey = '';
 
     // Start-menu garage with the rotatable car. Optional: the game runs without it if a second
     // WebGL context is not available.
@@ -2629,6 +2641,18 @@ class OtobanMakasGame {
     if (el) el.style.opacity = String(level * SPEED_VIGNETTE_MAX);
   }
 
+  // Where the sun throws the cars' shadows: short ones at midday, long and fainter ones at
+  // sunset, none under clouds, at night or in the tunnel (the contact shadows stay everywhere).
+  // The sun stands ahead and to the left, like the scene's directional light.
+  updateShadowSun() {
+    const key = this.world.currentZone === 'tunnel' ? 'tunnel' : this.world.weatherKey;
+    if (key === this.shadowSunKey) return;
+    this.shadowSunKey = key;
+    if (key === 'day') this.carShadows.setSun(0.36, 0.73, 0.45);
+    else if (key === 'sunset') this.carShadows.setSun(0.8, 1.6, 0.34);
+    else this.carShadows.setSun();
+  }
+
   resetDamage() {
     this.burning = null;
     this.damage = 0;
@@ -3516,6 +3540,8 @@ class OtobanMakasGame {
     // Only judge the frame rate while the road is actually drawn every frame (not in the garage)
     if (!this.paused) this.adaptRenderScale(frameSec);
     this.renderer.info.reset();
+    this.carShadows.frame();
+    this.updateShadowSun();
 
     if (!this.paused && this.multiplayer.connected) {
       // Online everyone shares the host's clock: a hitch frame (notification, GC, ...) is caught up
