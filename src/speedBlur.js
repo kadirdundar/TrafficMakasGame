@@ -102,10 +102,15 @@ export class SpeedBlur {
     renderer.render(scene, camera);
     this.smear(strength, centerY);
 
+    // The cabin goes on top of that picture: nothing may be cleared. A background colour clears
+    // the frame even with autoClear off, so the scene has none while the cabin is drawn.
     const autoClear = renderer.autoClear;
+    const background = scene.background;
     renderer.autoClear = false;
+    scene.background = null;
     camera.layers.set(CABIN_LAYER);
     renderer.render(scene, camera);
+    scene.background = background;
     renderer.autoClear = autoClear;
     camera.layers.mask = layers;
   }
