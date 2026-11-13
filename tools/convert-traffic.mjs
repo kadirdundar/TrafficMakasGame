@@ -30,6 +30,10 @@ import { MeshBVH } from 'three-mesh-bvh';
 // Triangles each part may keep, and the largest simplification error (m) allowed to get there
 const BUDGET = { body: 4000, trim: 3600, rim: 3000, glass: 700, head: 400, tail: 400 };
 const MAX_ERROR = { body: 0.02, glass: 0.02, trim: 0.05, rim: 0.03, head: 0.02, tail: 0.02 };
+// The same parts once more for cars far away (`<part>_far`, ~2,500 triangles in all): the traffic
+// swaps to them past FAR_DETAIL_M (src/vehicleModels.js), where this error is under a pixel
+const FAR_BUDGET = { body: 900, trim: 650, rim: 450, glass: 220, head: 90, tail: 90 };
+const FAR_ERROR = { body: 0.06, glass: 0.06, trim: 0.09, rim: 0.07, head: 0.05, tail: 0.05 };
 
 // Which part a material goes to, by its name; the first match wins. Names are the ones
 // tools/convert-car.mjs standardises (src/cars/<id>/convert.mjs → renameMaterials).
@@ -391,11 +395,8 @@ async function convert(id) {
   const material = out.createMaterial('traffic');
   let total = 0;
   const counts = [];
-  for (const [name, tris] of Object.entries(parts)) {
-    if (!tris.length) continue;
-    const mesh = simplifyMesh(weldTriangles(tris), BUDGET[name], MAX_ERROR[name]);
-    total += mesh.indices.length / 3;
-    counts.push(`${name} ${tris.length}→${mesh.indices.length / 3}`);
+  let totalFar = 0;
+  const addPart = (name, colours, mesh) => {
     const n = mesh.verts.length;
     const pos = new Float32Array(n * 3);
     const nrm = new Float32Array(n * 3);
@@ -412,10 +413,22 @@ async function convert(id) {
       .setIndices(out.createAccessor().setType('SCALAR').setArray(mesh.indices).setBuffer(buffer))
       .setAttribute('POSITION', out.createAccessor().setType('VEC3').setArray(pos).setBuffer(buffer))
       .setAttribute('NORMAL', out.createAccessor().setType('VEC3').setArray(nrm).setBuffer(buffer));
-    if (name === 'trim' || name === 'rim') {
+    if (colours) {
       prim.setAttribute('COLOR_0', out.createAccessor().setType('VEC4').setNormalized(true).setArray(col).setBuffer(buffer));
     }
     scene.addChild(out.createNode(name).setMesh(out.createMesh(name).addPrimitive(prim)));
+  };
+  for (const [name, tris] of Object.entries(parts)) {
+    if (!tris.length) continue;
+    const welded = weldTriangles(tris);
+    const colours = name === 'trim' || name === 'rim';
+    const mesh = simplifyMesh(welded, BUDGET[name], MAX_ERROR[name]);
+    const far = simplifyMesh(welded, FAR_BUDGET[name], FAR_ERROR[name]);
+    total += mesh.indices.length / 3;
+    totalFar += far.indices.length / 3;
+    counts.push(`${name} ${tris.length}→${mesh.indices.length / 3}/${far.indices.length / 3}`);
+    addPart(name, colours, mesh);
+    addPart(`${name}_far`, colours, far);
   }
   scene.setExtras(info);
 
@@ -424,7 +437,7 @@ async function convert(id) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const bin = await io.writeBinary(out);
   fs.writeFileSync(file, Buffer.from(bin));
-  console.log(`${id}: ${file} (${(bin.byteLength / 1024).toFixed(0)} KB, ${total} üçgen; ${hidden} / ${drawn} üçgen dışarıdan görünmüyordu)`);
+  console.log(`${id}: ${file} (${(bin.byteLength / 1024).toFixed(0)} KB, ${total} üçgen, uzakta ${totalFar}; ${hidden} / ${drawn} üçgen dışarıdan görünmüyordu)`);
   console.log(`  ${counts.join(', ')}`);
   console.log(`  ${report.join('  ')}`);
 }

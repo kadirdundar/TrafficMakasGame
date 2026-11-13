@@ -1029,10 +1029,11 @@ export function createModelGeometry(parts, info) {
   out.glass = parts.glass;
   out.trim = parts.trim;
   // Rims, hubs and brake discs turn: every metal vertex inside a wheel
-  out.rim = wheelSpinAttribute(parts.rim, (x, y, z) => {
+  const hubOf = (x, y, z) => {
     const w = info.wheels.find((wh) => x >= wh.x0 && x <= wh.x1 && Math.hypot(y - wh.y, z - wh.z) < wh.r);
     return w ? [w.y, w.z] : null;
-  });
+  };
+  out.rim = wheelSpinAttribute(parts.rim, hubOf);
   // Lamps are lit by vertex colour (finishLights): only their shape is taken from the model
   const lamp = (g) => {
     const flat = g.index ? g.toNonIndexed() : g.clone();
@@ -1043,7 +1044,26 @@ export function createModelGeometry(parts, info) {
   };
   out.head = lamp(parts.head);
   out.tail = lamp(parts.tail);
-  return finishLights(out);
+  finishLights(out);
+
+  // The same car in a quarter of the triangles, for when it is far away (`<part>_far` in the
+  // file, see tools/convert-traffic.mjs). Its shape differs from the full one by less than a
+  // pixel at the distance the traffic swaps to it (FAR_DETAIL_M).
+  const farParts = ['body', 'glass', 'trim', 'rim', 'head', 'tail'].map((name) => parts[`${name}_far`]);
+  if (farParts.every(Boolean)) {
+    const [body, glass, trim, rim, head, tail] = farParts;
+    const far = { head: lamp(head), tail: lamp(tail) };
+    out.far = {
+      body,
+      glass,
+      trim,
+      rim: wheelSpinAttribute(rim, hubOf),
+      lamps: [LIGHT_COLORS.day, LIGHT_COLORS.night].map((c) =>
+        [c.tail, c.brake].map((tailHex) => painted([[far.head, c.head], [far.tail, tailHex]]))
+      ),
+    };
+  }
+  return out;
 }
 
 // One copy of the lamps per light state, [night][braking], and of the glows per [braking]:
@@ -1100,6 +1120,10 @@ function createPaintMaterial(paintHex) {
 
 const PLATE_DETAIL_M = 70;
 const RIM_DETAIL_M = 140;
+// A car model is drawn from its light copy past FAR_DETAIL_M and from the full one again once
+// it is FAR_DETAIL_BACK_M closer than that (so a car pacing the player does not flip back and forth)
+const FAR_DETAIL_M = 70;
+const FAR_DETAIL_BACK_M = 8;
 
 // `model` is the geometry of a converted car model (src/trafficModels.js), in the same layout as
 // getStyleGeometry returns; without it the car is one of the procedural body styles.
@@ -1128,9 +1152,10 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
 
   // Drawn in batches (drawBatcher.js): the bodies differ only in colour, the lamps and glows
   // switch between these geometries
-  add(geo.body, bodyMat).userData.batchTint = true;
-  add(geo.glass, m.glass);
-  add(geo.trim, model ? m.modelTrim : m.trim);
+  const bodyMesh = add(geo.body, bodyMat);
+  bodyMesh.userData.batchTint = true;
+  const glassMesh = add(geo.glass, m.glass);
+  const trimMesh = add(geo.trim, model ? m.modelTrim : m.trim);
   const rimMesh = add(
     geo.rim,
     model ? m.modelMetal : S.truck ? m.rims[0] : m.rims[(index * 7 + variant) % m.rims.length]
@@ -1152,11 +1177,25 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
   }
   if (lamps) lamps.userData.batchGeometries = geo.lamps.flat();
 
+  // Full and far-away geometry of each part (models only; a procedural car is light already)
+  const farGeo = geo.far || null;
+  const lod = farGeo
+    ? [
+        [bodyMesh, geo.body, farGeo.body],
+        [glassMesh, geo.glass, farGeo.glass],
+        [trimMesh, geo.trim, farGeo.trim],
+        [rimMesh, geo.rim, farGeo.rim],
+      ].filter(([mesh]) => mesh)
+    : [];
+  for (const [mesh, near, far] of lod) mesh.userData.batchGeometries = [near, far];
+  if (farGeo && lamps) lamps.userData.batchGeometries.push(...farGeo.lamps.flat());
+
   let braking = false;
   let night = false;
   let detail = 2;
+  let isFar = false;
   const showLights = () => {
-    if (lamps) lamps.geometry = geo.lamps[night ? 1 : 0][braking ? 1 : 0];
+    if (lamps) lamps.geometry = (isFar ? farGeo : geo).lamps[night ? 1 : 0][braking ? 1 : 0];
     if (glows) glows.geometry = geo.glows[braking ? 1 : 0];
   };
   return {
@@ -1179,6 +1218,11 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
     // Small parts are only drawn near the camera: the plate within PLATE_DETAIL_M, rims and
     // chrome within RIM_DETAIL_M (past that they are a few pixels, but each is a draw call)
     setDistance(distM) {
+      if (farGeo && (isFar ? distM < FAR_DETAIL_M - FAR_DETAIL_BACK_M : distM > FAR_DETAIL_M)) {
+        isFar = !isFar;
+        for (const [mesh, near, far] of lod) mesh.geometry = isFar ? far : near;
+        showLights();
+      }
       const level = distM < PLATE_DETAIL_M ? 2 : distM < RIM_DETAIL_M ? 1 : 0;
       if (level === detail) return;
       detail = level;
