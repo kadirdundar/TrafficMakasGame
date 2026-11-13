@@ -13,16 +13,35 @@ import * as THREE from 'three';
 // A mesh is left to draw itself when it would gain nothing (the only one with its material),
 // when it is mirrored, or once its material or geometry is swapped for one the batch does not
 // know (userData.batchGeometries lists the ones a mesh switches between).
-// Meshes with userData.batchTint differ from each other only in colour (the cars' paint): they
-// share a batch, each instance with its own colour.
+// Meshes with userData.batchTint differ from each other only in colour and finish (the cars'
+// paint): they share a batch, each instance with its own colour, metalness and roughness. A car
+// that is repainted only gets new values there; nothing is rebuilt.
 
 const REFRESH_FRAMES = 120; // how often the roots are searched for new and removed meshes
 
 const attributeSignature = (geometry) =>
   Object.keys(geometry.attributes).sort().join(',') + (geometry.index ? '|i' : '');
 
-const tintSignature = (m) =>
-  ['tint', m.type, m.metalness, m.roughness, m.clearcoat, m.clearcoatRoughness, m.envMapIntensity].join('/');
+const tintSignature = (m) => ['tint', m.type, m.clearcoat, m.clearcoatRoughness, m.envMapIntensity].join('/');
+
+// Makes a standard material take its metalness and roughness per batched instance from
+// `finish` (one RGBA float texel per instance: r = metalness, g = roughness)
+function perInstanceFinish(material, finish) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.batchFinishTexture = { value: finish };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform highp sampler2D batchFinishTexture;\nvarying vec2 vBatchFinish;')
+      .replace(
+        '#include <color_vertex>',
+        '#include <color_vertex>\nvBatchFinish = texelFetch( batchFinishTexture, ivec2( int( getIndirectIndex( gl_DrawID ) ), 0 ), 0 ).rg;'
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vBatchFinish;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vBatchFinish.g;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vBatchFinish.r;');
+  };
+  material.customProgramCacheKey = () => 'batchFinish';
+}
 
 function batchable(mesh) {
   if (!mesh.isMesh || mesh.isInstancedMesh || mesh.isSkinnedMesh || mesh.isBatchedMesh) return false;
@@ -113,11 +132,15 @@ export class DrawBatcher {
         batch.mesh.setGeometryIdAt(p.id, id);
       }
       if (p.tint) {
-        if (tintSignature(mesh.material) !== p.signature) {
-          this.dirty = true; // another finish: it belongs in another batch
-        } else if (!p.color.equals(mesh.material.color)) {
-          p.color.copy(mesh.material.color);
-          batch.mesh.setColorAt(p.id, p.color);
+        const m = mesh.material;
+        if (tintSignature(m) !== p.signature) {
+          this.dirty = true; // another kind of paint: it belongs in another batch
+        } else {
+          if (!p.color.equals(m.color)) {
+            p.color.copy(m.color);
+            batch.mesh.setColorAt(p.id, p.color);
+          }
+          if (batch.finish && (m.metalness !== p.metalness || m.roughness !== p.roughness)) this.setFinish(p);
         }
       }
       let visible = true;
@@ -133,6 +156,15 @@ export class DrawBatcher {
       }
       if (visible) batch.mesh.setMatrixAt(p.id, mesh.matrixWorld);
     }
+  }
+
+  setFinish(p) {
+    const finish = p.batch.finish;
+    p.metalness = p.mesh.material.metalness;
+    p.roughness = p.mesh.material.roughness;
+    finish.image.data[p.id * 4] = p.metalness;
+    finish.image.data[p.id * 4 + 1] = p.roughness;
+    finish.needsUpdate = true;
   }
 
   // Brings the set of proxies in line with the meshes under the roots
@@ -171,6 +203,7 @@ export class DrawBatcher {
       this.scene.remove(batch.mesh);
       batch.mesh.dispose();
       if (batch.ownMaterial) batch.mesh.material.dispose();
+      batch.finish?.dispose();
     }
     this.batches = [];
   }
@@ -216,9 +249,14 @@ export class DrawBatcher {
       }
 
       let material = first.material;
+      let finish = null;
       if (first.tint) {
         material = first.material.clone();
         material.color.set(0xffffff); // each instance brings its own colour
+        if (material.isMeshStandardMaterial) {
+          finish = new THREE.DataTexture(new Float32Array(group.length * 4), group.length, 1, THREE.RGBAFormat, THREE.FloatType);
+          perInstanceFinish(material, finish);
+        }
       }
       const mesh = new THREE.BatchedMesh(group.length, vertices, indices, material);
       mesh.layers.mask = first.layerMask;
@@ -228,7 +266,7 @@ export class DrawBatcher {
       mesh.sortObjects = Boolean(material.transparent);
       mesh.matrixAutoUpdate = false;
 
-      const batch = { mesh, geometryIds: new Map(), ownMaterial: first.tint };
+      const batch = { mesh, geometryIds: new Map(), ownMaterial: first.tint, finish };
       for (const g of geometries) batch.geometryIds.set(g, mesh.addGeometry(g));
       for (const p of group) {
         p.id = mesh.addInstance(batch.geometryIds.get(p.geometry));
@@ -238,6 +276,7 @@ export class DrawBatcher {
         if (p.tint) {
           p.color = p.mesh.material.color.clone();
           mesh.setColorAt(p.id, p.color);
+          if (finish) this.setFinish(p);
         }
       }
       this.scene.add(mesh);
