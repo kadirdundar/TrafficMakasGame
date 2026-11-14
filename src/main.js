@@ -4,7 +4,6 @@ import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
 import { CarShadows } from './carShadows.js';
 import { DrawBatcher } from './drawBatcher.js';
 import { LUXURY_SPEC } from './vehicleModels.js';
-import { CABIN_LAYER, SpeedBlur, separateCabin } from './speedBlur.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
 import { MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
@@ -114,11 +113,10 @@ const HEAD_TURN_MAX = 0.12;
 // Speed lines fade in from SPEED_LINES_FROM km/h and are at full strength SPEED_LINES_SPAN later
 const SPEED_LINES_FROM = 180;
 const SPEED_LINES_SPAN = 90;
-// Speed blur and vignette: the edges of the road view smear towards the vanishing point and the
-// corners of the screen darken, from SPEED_BLUR_FROM km/h up to full strength SPEED_BLUR_SPAN later
-const SPEED_BLUR_FROM = 120;
-const SPEED_BLUR_SPAN = 140;
-const SPEED_BLUR_MAX = 0.085; // smear at the screen edge, as a share of the way to the vanishing point
+// Speed vignette: the corners of the screen darken from SPEED_VIGNETTE_FROM km/h, up to full
+// strength SPEED_VIGNETTE_SPAN later
+const SPEED_VIGNETTE_FROM = 120;
+const SPEED_VIGNETTE_SPAN = 140;
 const SPEED_VIGNETTE_MAX = 0.6; // opacity of the dark corners at full strength
 const HIT_GRACE_SEC = 1.5;
 const REPAIR_KM = 2;
@@ -162,7 +160,6 @@ class OtobanMakasGame {
       360
     );
     this.camera.layers.enable(MIRROR_SKIP_LAYER);
-    this.camera.layers.enable(CABIN_LAYER);
 
     // Subsystems
     this.world = new HighwayWorld(this.scene);
@@ -179,9 +176,6 @@ class OtobanMakasGame {
     this.damageHudKey = '';
     this.headTurn = 0; // yaw the driver's head has turned into the bend ahead
     this.speedLinesLevel = -1;
-    this.speedBlur = new SpeedBlur(this.renderer);
-    this.speedBlur.compile();
-    this.speedBlurAmount = 0; // 0..1, follows the speed (see updateSpeedBlur)
     this.speedVignetteLevel = -1;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.traffic = new TrafficManager(this.scene);
@@ -2638,12 +2632,11 @@ class OtobanMakasGame {
     el.classList.toggle('on', level > 0);
   }
 
-  // How strongly the view blurs and darkens at the edges for the current speed. The vignette is
-  // a CSS layer, written in 5 % steps like the speed lines; the blur is drawn in render().
-  updateSpeedBlur() {
-    const t = THREE.MathUtils.clamp((this.speedKmh - SPEED_BLUR_FROM) / SPEED_BLUR_SPAN, 0, 1);
-    this.speedBlurAmount = this.reducedMotion ? 0 : t * t * (3 - 2 * t);
-    const level = Math.round(this.speedBlurAmount * 20) / 20;
+  // How dark the corners of the screen are for the current speed: a CSS layer, written in 5 %
+  // steps like the speed lines
+  updateSpeedVignette() {
+    const t = THREE.MathUtils.clamp((this.speedKmh - SPEED_VIGNETTE_FROM) / SPEED_VIGNETTE_SPAN, 0, 1);
+    const level = this.reducedMotion ? 0 : Math.round(t * t * (3 - 2 * t) * 20) / 20;
     if (level === this.speedVignetteLevel) return;
     this.speedVignetteLevel = level;
     const el = document.getElementById('speed-vignette');
@@ -3133,7 +3126,7 @@ class OtobanMakasGame {
     this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, preset.baseFov + speedFovBoost + accelFovKick, dt * 6);
     this.camera.updateProjectionMatrix();
     this.updateSpeedLines();
-    this.updateSpeedBlur();
+    this.updateSpeedVignette();
 
     // 7. Continuous High-Speed Scoring, Odometer & Combo Decay
     const frameDistanceKm = (speedMs * dt) / 1000;
@@ -3672,16 +3665,7 @@ class OtobanMakasGame {
     this.cockpit.renderRearMirror(this.scene);
 
     // 2. Render main First-Person Cockpit Camera
-    //    At speed the edges of the road view smear towards the vanishing point; the cabin, on
-    //    its own layer, is drawn sharp on top (speedBlur.js)
-    const cabin = this.cockpit.interior3d?.group || null;
-    if (cabin !== this.blurCabin) {
-      this.blurCabin = cabin;
-      if (cabin) separateCabin(cabin, this.scene);
-    }
-    const blur = this.paused ? 0 : this.speedBlurAmount * SPEED_BLUR_MAX;
-    const centerY = 0.5 + CAMERA_PRESETS[this.cameraPresetIndex].horizonShiftY;
-    this.speedBlur.renderView(this.scene, this.camera, blur, centerY);
+    this.renderer.render(this.scene, this.camera);
 
     if (!this.paused) this.perfProbe.frame(frameSec, performance.now() - now, this.pixelRatio);
   }
