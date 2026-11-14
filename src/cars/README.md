@@ -123,6 +123,7 @@ vites oranları devir göstergesini ve motor sesini sürer, ivmeyi değiştirmez
 | `defaultEye` | Sürücü gözünün model içindeki konumu (GLB'de `eye` extras'ı varsa o kullanılır). |
 | `wheelRadius`, `steerSign` | Direksiyon çemberi (dokunmatik direksiyon için) ve dönüş yönü. |
 | `softMaterials`, `tints` | Deri/döşeme malzemeleri (mat yapılır) ve isteğe bağlı koyulaştırma (`{ ad: 0.4 }`). |
+| `finishes` | Malzemenin neyden yapıldığı: `{ ad: 'leather' \| 'plastic' \| 'fabric' \| 'gloss' \| 'satin' \| 'chrome' }` ya da `{ finish, roughness, metalness, color }` (`src/cabinFinish.js`). Parlaklığı ayarlar; deri, plastik ve kumaşa ince gren ekler (kendi normal haritası olan malzemeye eklenmez). `softMaterials`'tan sonra uygulanır. Gümüş parçalarda tam metal kullanma: gündüz gökyüzünü yansıtıp mavi, gece siyah görünür. |
 | `paintMaterials` | Ön camdan görünen kaput gibi koyu metalik boyanacak malzemeler. |
 | `screens.cluster` | Canlı gösterge camının köşeleri `tl/tr/bl/br`, normali `n`, `logical` boyut ve `px` çözünürlük. |
 | `ledPaths` | Ambiyans LED tüplerinin yolları. Model kendi şeritlerini (`ambient_led`) getiriyorsa `[]`. |

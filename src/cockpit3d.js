@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { applyFinish, patchCabinMaterial, resolveFinish } from './cabinFinish.js';
 import { applyAtlasPatch, applyPieceMaterial } from './cockpitDecals.js';
 import { getCar } from './cars/index.js';
 
@@ -126,26 +127,6 @@ function createAtlasLedMaterial(coreMat, map) {
   return mat;
 }
 
-// Multiplies a lit material's output by a height-based occlusion term in cockpit space.
-function addCabinOcclusion(material, uniforms) {
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform mat4 cabinInverse;\nvarying float vCabinY;')
-      .replace(
-        '#include <project_vertex>',
-        '#include <project_vertex>\nvCabinY = (cabinInverse * modelMatrix * vec4(transformed, 1.0)).y;'
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 cabinOcclusion;\nvarying float vCabinY;')
-      .replace(
-        '#include <opaque_fragment>',
-        'outgoingLight *= mix(cabinOcclusion.z, 1.0, smoothstep(cabinOcclusion.x, cabinOcclusion.y, vCabinY));\n#include <opaque_fragment>'
-      );
-  };
-  material.customProgramCacheKey = () => 'cabin-occlusion';
-}
-
 export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintScreen }) {
   const car = getCar(carType);
   const key = car.id;
@@ -244,7 +225,11 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
     cabinInverse: { value: new THREE.Matrix4() },
     cabinOcclusion: { value: new THREE.Vector3(cfg.occlusion.y0, cfg.occlusion.y1, cfg.occlusion.min) },
   };
+  // Body panels low in the cabin (sills, the shell behind the pedals) are in its shade too,
+  // however much sky the paint would reflect
+  patchCabinMaterial(paintMat, { occlusion });
   const cabinMats = new Set();
+  const finished = new Map(); // material → its grain uniforms (or null)
   model.traverse((o) => {
     if (!o.isMesh || o.material.isMeshBasicMaterial) return;
     o.material.side = THREE.DoubleSide;
@@ -266,7 +251,13 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
       const tint = cfg.tints?.[o.material.name];
       if (tint !== undefined) o.material.color.setScalar(tint);
     }
-    if (occlusion) addCabinOcclusion(o.material, occlusion);
+    // What the surface is made of: its gloss and, for leather, plastic and cloth, a fine grain
+    // (cabinFinish.js). A material shared by several meshes is set up once.
+    if (!finished.has(o.material)) {
+      const finish = resolveFinish(cfg.finishes?.[o.material.name]);
+      finished.set(o.material, finish ? applyFinish(o.material, finish) : null);
+      patchCabinMaterial(o.material, { occlusion, grain: finished.get(o.material) });
+    }
     if (o.material.map) {
       o.material.emissive.set(0xffffff);
       o.material.emissiveMap = o.material.map;

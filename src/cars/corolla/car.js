@@ -60,6 +60,12 @@ export default {
     wheelRadius: 0.21,
     steerSign: -1,
     softMaterials: new Set(['fabric_high', 'seat_fabric', 'leather', 'dark_plastic_grainy', 'car_plastic_grainy_gray', 'carpet.002', 'M_dashboard', 'M_Steering_wheel']),
+    // The centre stack is piano black; the rest keeps the model's own grain (normal maps)
+    finishes: {
+      M_dashboard: { roughness: 0.25, metalness: 0.2 },
+      M_Steering_wheel: { roughness: 0.6 },
+      dark_plastic_grainy: { roughness: 0.68 },
+    },
     paintMaterials: new Set(['main_paint.001']),
     screens: {
       // The model's dial face (M_dashboard.001), 5 mm in front of it

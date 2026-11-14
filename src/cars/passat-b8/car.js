@@ -60,6 +60,9 @@ export default {
     wheelRadius: 0.187,
     steerSign: -1,
     softMaterials: new Set(['interior', 'negru']),
+    // One material for the dashboard, wheel and door cards, one for the black trim around them;
+    // the trim strips are brushed metal (as a mirror they showed a band of blue sky)
+    finishes: { interior: 'leather', negru: { finish: 'plastic', roughness: 0.5 }, chrome: 'satin' },
     paintMaterials: new Set(['primary']),
     screens: {
       // The model's analog dials (interior.002) sit on a plane tilted back; the quad covers

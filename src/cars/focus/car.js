@@ -61,6 +61,14 @@ export default {
     wheelRadius: 0.198,
     steerSign: -1,
     softMaterials: new Set(['Salon.6', 'Salon.5', 'interior.001', 'interior']),
+    // The silver-painted parts (spokes, vents, centre stack) are a touch metallic, not white plastic
+    finishes: {
+      'Salon.5': 'leather',
+      'Salon.6': 'leather',
+      'black.0': 'plastic',
+      'interior.001': { metalness: 0.55, roughness: 0.42 },
+      interior: { metalness: 0.5, roughness: 0.45 },
+    },
     // The atlases' silver swatch (spokes, centre stack, door pulls) reads as white otherwise
     tints: { 'interior.001': 0.22, interior: 0.35 },
     paintMaterials: new Set(['primary']),

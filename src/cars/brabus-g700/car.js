@@ -69,6 +69,13 @@ export default {
       '2020_Mercedes-AMG_G63_Brabus_G700_DarkLeather',
       '2020_Mercedes-AMG_G63_Brabus_G700_Carpet',
     ]),
+    finishes: {
+      '2020_Mercedes-AMG_G63_Brabus_G700_SteeringWheel1': 'leather', // dashboard top and wheel
+      '2020_Mercedes-AMG_G63_Brabus_G700_LeatherWhite': 'leather',
+      '2020_Mercedes-AMG_G63_Brabus_G700_DarkLeather': 'leather',
+      '2020_Mercedes-AMG_G63_Brabus_G700_BlackTrim': 'plastic',
+      '2020_Mercedes-AMG_G63_Brabus_G700_PianoBlack': 'gloss',
+    },
     // Hood and A-pillars seen from the seat: dark metallic body paint
     paintMaterials: new Set(['Vehicle_Exterior_mm_ext', 'CarPaint', 'paint']),
     screens: {

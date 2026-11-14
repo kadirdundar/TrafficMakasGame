@@ -59,6 +59,8 @@ export default {
     wheelRadius: 0.18,
     steerSign: -1,
     softMaterials: new Set(['INTERIOR_12', 'PLASTI_NEGRO_3', 'modelSM_SoftTop_000.001SG3_11']),
+    // Nearly the whole cabin is one material coloured from a palette (no texture of its own)
+    finishes: { PLASTI_NEGRO_3: 'leather', 'modelSM_SoftTop_000.001SG3_11': 'fabric', INTERIOR_12: { roughness: 0.5 } },
     paintMaterials: new Set(['PAINT_COLOR_4']),
     screens: {
       cluster: {

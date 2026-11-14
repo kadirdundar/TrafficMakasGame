@@ -54,6 +54,7 @@ export default {
     wheelRadius: 0.18,
     steerSign: -1,
     softMaterials: new Set(['interior.4', 'interior.5', 'interior.7', 'BlackPlastic']),
+    finishes: { 'interior.7': 'leather', BlackPlastic: 'leather', 'interior.4': 'plastic', 'interior.5': 'plastic' },
     paintMaterials: new Set(['primary']),
     screens: {
       cluster: {

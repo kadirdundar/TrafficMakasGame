@@ -81,6 +81,13 @@ export default {
     wheelRadius: 0.19,
     steerSign: -1,
     softMaterials: new Set(['w206_leather_black', 'w206_leather_paintable', 'w206_leather_paintable_perf', 'w206_leather_black_paintable', 'w206_leather_perf']),
+    // The panel around the screens is piano black
+    finishes: {
+      w206_color4: 'gloss',
+      w206_leather_black: { roughness: 0.6 },
+      w206_leather_black_paintable: { roughness: 0.6 },
+      w206_leather_perf: { roughness: 0.6 },
+    },
     paintMaterials: new Set(['w206_paint']),
     screens: {
       // The model's flat cluster plate (w206_gauges): x 0.219-0.527, y 0.879-0.98, z 0.431 (bottom)

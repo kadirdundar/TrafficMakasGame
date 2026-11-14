@@ -59,6 +59,13 @@ export default {
     wheelRadius: 0.18,
     steerSign: -1,
     softMaterials: new Set(['interior']),
+    finishes: {
+      interior: 'leather',
+      black_matt: 'plastic',
+      black_shiny: 'gloss', // vent insides, console, mirror housings
+      chrome: 'satin', // spokes, vent rings, door pulls
+      carbon: { roughness: 0.3 },
+    },
     // Body panels seen from the seat (hood, door tops): dark metallic paint
     paintMaterials: new Set(['body']),
     screens: {
