@@ -321,7 +321,7 @@ export class CarCockpit {
     if (this.mode !== '3d') return;
 
     if (this.currentInteriorCar === key && this.interior3d) {
-      this.interior3d.group.visible = true;
+      this.interior3d.group.visible = !this.exteriorView;
       return;
     }
     this.detachInterior();
@@ -361,7 +361,7 @@ export class CarCockpit {
     this.detachInterior();
     this.interior3d = interior;
     this.group.add(interior.group);
-    interior.group.visible = true;
+    interior.group.visible = !this.exteriorView;
     this.currentInteriorCar = key;
     this._overlayCleared = false; // wipe the photo cockpit drawn while it was loading
   }
@@ -759,6 +759,14 @@ export class CarCockpit {
     this.viewPreset = index % 3;
   }
 
+  // Chase camera: the cabin is not drawn (nor its mirrors, screens and photo overlay) while the
+  // car is seen from outside
+  setExteriorView(on) {
+    this.exteriorView = Boolean(on);
+    if (this.interior3d) this.interior3d.group.visible = !this.exteriorView;
+    this._overlayCleared = false;
+  }
+
   setSpeedoMax(kmh) {
     this.speedoMaxKmh = kmh;
   }
@@ -822,7 +830,7 @@ export class CarCockpit {
   // Redrawn every other frame: a full second scene pass is the costliest part of a frame,
   // and a 30 Hz rear view is indistinguishable in a mirror this small
   renderRearMirror(scene) {
-    if (!this.renderer) return;
+    if (!this.renderer || this.exteriorView) return;
     this.resizeMirror();
     if (this.mirrorFrame++ % 2 !== 0) return;
     const prevTarget = this.renderer.getRenderTarget();
@@ -913,6 +921,15 @@ export class CarCockpit {
 
     if (this.makasFlashIntensity > 0) {
       this.makasFlashIntensity = Math.max(0, this.makasFlashIntensity - dt * 2.5);
+    }
+
+    if (this.exteriorView) {
+      // Nothing of the cabin is on screen; the overlay canvas stays for the steering drags
+      if (!this._overlayCleared && this.overlayCtx) {
+        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        this._overlayCleared = true;
+      }
+      return;
     }
 
     if (this.is3D) {

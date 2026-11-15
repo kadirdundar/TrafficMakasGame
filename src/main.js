@@ -56,6 +56,9 @@ const CAMERA_PRESETS = [
   { name: 'Standart', offset: new THREE.Vector3(0.0, 1.25, 0.2), baseFov: 58, horizonShiftY: 0.24 },
   { name: 'Tam Kabin', offset: new THREE.Vector3(0.0, 1.28, 0.35), baseFov: 62, horizonShiftY: 0.30 },
   { name: 'Yakın Sürüş', offset: new THREE.Vector3(0.0, 1.22, 0.05), baseFov: 54, horizonShiftY: 0.18 },
+  // Chase camera: behind and above the car, which is drawn from outside instead of its cabin
+  // (updateChaseView). `lookDown` tilts it towards the car (rad).
+  { name: 'Dış Kamera', chase: true, offset: new THREE.Vector3(0.0, 2.3, 6.4), baseFov: 60, horizonShiftY: 0.04, lookDown: 0.13 },
 ];
 
 // Touch steering choices, in Ayarlar and in the picker before the first drive
@@ -320,7 +323,9 @@ class OtobanMakasGame {
     // Add camera to cockpit group so it moves laterally with the car
     this.cockpit.group.add(this.camera);
     this.cockpit.camera = this.camera;
-    this.applyCameraPreset(0);
+    // The view chosen last time (a seat position in the cabin or the chase camera)
+    const savedCamera = Number(localStorage.getItem('otoban_camera'));
+    this.applyCameraPreset(savedCamera > 0 && savedCamera < CAMERA_PRESETS.length ? savedCamera : 0);
 
     // Game & Vehicle Physics State
     this.paused = true;
@@ -462,6 +467,14 @@ class OtobanMakasGame {
     this.camera.position.copy(preset.offset);
     this.camera.fov = preset.baseFov;
     this.updateCameraProjection();
+    // Outside view: no cabin and no mirrors, the car's own model and a speed readout instead
+    const chase = Boolean(preset.chase);
+    this.chaseView = chase;
+    this.cockpit.setExteriorView(chase);
+    document.body.dataset.view = chase ? 'chase' : 'cockpit';
+    if (this.replay && !this.replay.active) this.replay.playerCarGroup.visible = false; // shown again each frame in chase view
+    this.chaseX = this.playerX;
+    localStorage.setItem('otoban_camera', String(this.cameraPresetIndex));
 
     const label = document.getElementById('camera-label');
     if (label) label.textContent = preset.name;
@@ -2655,6 +2668,23 @@ class OtobanMakasGame {
     else this.carShadows.setSun();
   }
 
+  // Chase view: the driven car's outside model (the one the drone replay shows) stands where the
+  // cabin is, leaning and diving on its suspension, wheels turning, lamps lit.
+  updateChaseView() {
+    if (!this.chaseView || !this.replay) return;
+    const r = this.replay;
+    r.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot || 0, this.currentParts);
+    r.playerCarGroup.visible = true;
+    r.playerCarGroup.position.set(this.playerX, 0, 0);
+    r.playerCarGroup.rotation.set(this.bodyPitch, -this.headingAngle, this.bodyRoll);
+    r.playerActiveModel?.rollWheels?.(this.world.worldDistM || 0);
+    r.playerActiveModel?.setLights?.({
+      night: this.world.weatherKey !== 'day',
+      braking: Boolean(this.keys.brake) || this.touchBrake > 0,
+      highBeam: Boolean(this.keys.highBeam),
+    });
+  }
+
   resetDamage() {
     this.burning = null;
     this.damage = 0;
@@ -3105,6 +3135,15 @@ class OtobanMakasGame {
     this.camera.position.y = preset.offset.y + shakeY + heave;
     // Pushed back into the seat under acceleration, thrown forward under braking (+Z is backward)
     this.camera.position.z = preset.offset.z + this.accelFeel * 0.06;
+    if (preset.chase) {
+      // The camera follows the car's sideways moves a moment late, so a lane change shows as the
+      // car sliding across the picture; it drops back a little as the car pulls away and at speed
+      if (!Number.isFinite(this.chaseX)) this.chaseX = this.playerX;
+      this.chaseX += (this.playerX - this.chaseX) * Math.min(1, dt * 3.2);
+      this.camera.position.x = (this.chaseX - this.playerX) * 0.65 + shakeX * 4;
+      this.camera.position.y = preset.offset.y + shakeY * 4;
+      this.camera.position.z = preset.offset.z + this.accelFeel * 0.7 + Math.min(1, this.speedKmh / 260) * 0.9;
+    }
 
     // The driver looks into the bend coming up: the road's curvature a speed-dependent distance
     // ahead turns the head a few degrees (+ curvature = right bend, + yaw = look left)
@@ -3118,6 +3157,16 @@ class OtobanMakasGame {
     this.camera.rotation.z = this.bodyRoll * 0.75;
     // The nose rides the same waves a little, so the horizon drifts gently with the body
     this.camera.rotation.x = this.bodyPitch * 0.65 + heave * 0.45;
+    if (preset.chase) {
+      // Looks down at the car and keeps turning towards it while it is off to one side; into a
+      // bend it swings with the road, less than the driver's head does
+      this.camera.rotation.set(
+        -preset.lookDown,
+        -this.headingAngle * 0.25 + this.headTurn * 0.6 + this.camera.position.x * 0.07,
+        this.bodyRoll * 0.2
+      );
+    }
+    this.updateChaseView();
 
     // Speed-based FOV warp for intense sense of speed above 140 km/h, widening a little more
     // while the car pulls (and narrowing a little under braking)
@@ -3313,7 +3362,8 @@ class OtobanMakasGame {
     );
 
     if (this.roadNeonGroup) {
-      this.roadNeonGroup.visible = true;
+      // Laid on the road for the mirrors; in the chase view the car's model carries its own
+      this.roadNeonGroup.visible = !this.chaseView;
       this.roadNeonGroup.position.set(this.playerX, 0, 0);
       this.roadNeonGroup.rotation.set(this.world.getElevationPitchAtZ?.(0) ?? 0, -this.headingAngle, 0);
       const night = Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn);
@@ -3431,6 +3481,11 @@ class OtobanMakasGame {
     this.hudCache ??= {};
 
     this.setHudText('hud-score', Math.floor(this.score).toLocaleString('tr-TR'));
+    if (this.chaseView) {
+      // No dashboard in sight: speed and gear on the screen instead
+      this.setHudText('chase-speed', String(Math.round(this.speedKmh)));
+      this.setHudText('chase-gear', `D${this.gear}`);
+    }
     this.setHudText('hud-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
 
     // Sürüş / Oyun Süresi Sayacı (MM:SS)

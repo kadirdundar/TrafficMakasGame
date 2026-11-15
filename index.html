@@ -30,6 +30,10 @@
   <div id="speed-lines" class="speed-lines" aria-hidden="true"></div>
   <!-- Dark corners that close in with speed (main.js: updateSpeedVignette) -->
   <div id="speed-vignette" class="speed-vignette" aria-hidden="true"></div>
+  <!-- Speed and gear on screen while the chase camera hides the dashboard (main.js: updateHUD) -->
+  <div id="chase-speedo" class="chase-speedo" aria-hidden="true">
+    <strong id="chase-speed">0</strong><small>km/s</small><span id="chase-gear">D1</span>
+  </div>
 
   <!-- Top HUD Bar -->
   <header id="hud-top" class="hud-top">
@@ -610,6 +614,7 @@
               <button type="button" class="seg-btn active" data-camera="0">Standart</button>
               <button type="button" class="seg-btn" data-camera="1">Tam Kabin</button>
               <button type="button" class="seg-btn" data-camera="2">Yakın Sürüş</button>
+              <button type="button" class="seg-btn" data-camera="3">Dış Kamera</button>
             </div>
           </div>
 
