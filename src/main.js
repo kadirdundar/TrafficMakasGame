@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SoundEngine } from './audio.js';
 import { CarCockpit, AMBIENT_COLORS } from './cockpit.js';
 import { CarShadows } from './carShadows.js';
+import { TyreSmoke } from './tyreSmoke.js';
 import { DrawBatcher } from './drawBatcher.js';
 import { LUXURY_SPEC } from './vehicleModels.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
@@ -121,6 +122,12 @@ const SPEED_LINES_SPAN = 90;
 const SPEED_VIGNETTE_FROM = 120;
 const SPEED_VIGNETTE_SPAN = 140;
 const SPEED_VIGNETTE_MAX = 0.6; // opacity of the dark corners at full strength
+// Drifting (track only, updateDrift): the tail steps out to at most DRIFT_MAX_ANGLE (rad); a slide
+// past DRIFT_SCORE_ANGLE earns DRIFT_POINTS per rad·km/h·second and is paid out when it ends
+const DRIFT_MAX_ANGLE = 0.62;
+const DRIFT_SCORE_ANGLE = 0.2;
+const DRIFT_POINTS = 1.6;
+const DRIFT_MIN_PAYOUT = 40;
 const HIT_GRACE_SEC = 1.5;
 const REPAIR_KM = 2;
 
@@ -204,6 +211,7 @@ class OtobanMakasGame {
         this.lateralVel = 0;
         this.headingAngle = 0;
         this.trackSlideAngle = 0;
+        this.driftAngle = 0;
         this.sound.init();
         this.sound.setRainAmbience(this.world.weatherKey === 'rain');
         this.beginDrive();
@@ -269,6 +277,7 @@ class OtobanMakasGame {
       for (const peer of this.replay.replayPeers) visit(peer.group, LUXURY_SPEC);
     });
     this.shadowSunKey = '';
+    this.tyreSmoke = new TyreSmoke(this.scene);
 
     // The traffic cars and the roadside segments are made of many small meshes: they are drawn
     // in a few batches instead of one draw call each (same picture, see drawBatcher.js)
@@ -357,6 +366,9 @@ class OtobanMakasGame {
     this.yawRate = 0; // rad/s chassis yaw angular velocity
     this.headingAngle = 0; // rad chassis slip/heading angle relative to highway
     this.trackSlideAngle = 0; // rad, track only: how far the car has washed out past the tyres' grip
+    this.driftAngle = 0; // rad, track only: how far the tail is out in a drift (+ = nose to the right)
+    this.driftPoints = 0; // points of the drift in progress
+    this.driftIdleSec = 0;
     this.bodyRoll = 0; // rad suspension roll angle (spring-damper)
     this.rollVel = 0;
     this.bodyPitch = 0; // rad suspension pitch angle (spring-damper)
@@ -2145,6 +2157,7 @@ class OtobanMakasGame {
     this.yawRate = 0;
     this.headingAngle = 0;
     this.trackSlideAngle = 0;
+    this.driftAngle = 0;
     this.bodyRoll = 0;
     this.rollVel = 0;
     this.bodyPitch = 0;
@@ -2268,6 +2281,7 @@ class OtobanMakasGame {
     this.lateralVel = 0;
     this.headingAngle = 0;
     this.trackSlideAngle = 0;
+    this.driftAngle = 0;
 
     // Track mode state
     if (mode === 'track') {
@@ -2676,13 +2690,66 @@ class OtobanMakasGame {
     r.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot || 0, this.currentParts);
     r.playerCarGroup.visible = true;
     r.playerCarGroup.position.set(this.playerX, 0, 0);
-    r.playerCarGroup.rotation.set(this.bodyPitch, -this.headingAngle, this.bodyRoll);
+    r.playerCarGroup.rotation.set(this.bodyPitch, -(this.headingAngle + this.driftAngle), this.bodyRoll);
     r.playerActiveModel?.rollWheels?.(this.world.worldDistM || 0);
     r.playerActiveModel?.setLights?.({
       night: this.world.weatherKey !== 'day',
       braking: Boolean(this.keys.brake) || this.touchBrake > 0,
       highBeam: Boolean(this.keys.highBeam),
     });
+  }
+
+  // Drifting on the track. The tail breaks loose when the wheel is turned far under power (sooner
+  // with rear-wheel drive) or with the brake dabbed while turning; it stays out while the wheel
+  // is turned and the gas is on, and swings the other way if the wheel does. Returns how far
+  // out it is, 0..1. A slide past DRIFT_SCORE_ANGLE runs up points that are paid when it ends
+  // and lost off the track or in a crash.
+  updateDrift(dt, { throttle, brake, layout, isOffTrack }) {
+    const steer = this.steerInput;
+    const turned = Math.abs(steer);
+    const sliding = Math.abs(this.driftAngle) > 0.06;
+    const onTrack = this.traffic.roadMode === 'track' && !this.burning && !isOffTrack;
+    const breakaway = layout === 'rwd' ? 0.5 : layout === 'awd' ? 0.62 : 0.72;
+    const starts = (turned > breakaway && throttle > 0.65) || (turned > 0.4 && brake > 0.3);
+    const holds = turned > 0.12 && throttle > 0.2;
+    const active = onTrack && this.speedKmh > (sliding ? 35 : 55) && (starts || (sliding && holds));
+    const maxAngle = DRIFT_MAX_ANGLE * (layout === 'fwd' ? 0.75 : 1);
+    const target = active ? Math.sign(steer) * maxAngle * Math.min(1, turned * 1.15) * (0.6 + 0.4 * throttle) : 0;
+    // Quicker when the wheel is thrown the other way, quickest when the tyres bite again
+    const flick = active && sliding && Math.sign(target) !== Math.sign(this.driftAngle);
+    this.driftAngle += (target - this.driftAngle) * Math.min(1, dt * (active ? (flick ? 3.4 : 2.4) : 4.2));
+    if (!active && Math.abs(this.driftAngle) < 0.004) this.driftAngle = 0;
+
+    if (!onTrack) {
+      this.driftPoints = 0;
+    } else if (Math.abs(this.driftAngle) > DRIFT_SCORE_ANGLE && this.speedKmh > 50) {
+      this.driftPoints += Math.abs(this.driftAngle) * this.speedKmh * DRIFT_POINTS * dt;
+      this.driftIdleSec = 0;
+    } else if (this.driftPoints > 0) {
+      this.driftIdleSec += dt;
+      if (this.driftIdleSec > 0.6) {
+        if (this.driftPoints >= DRIFT_MIN_PAYOUT) {
+          this.score += this.driftPoints;
+          this.noteScore();
+          this.showMakasNotification('🔥 DRIFT', this.driftPoints, 'combo');
+        }
+        this.driftPoints = 0;
+      }
+    }
+    this.updateDriftMeter();
+    return Math.min(1, Math.abs(this.driftAngle) / maxAngle);
+  }
+
+  // The points of the drift in progress, on screen while it lasts
+  updateDriftMeter() {
+    const el = this.hudEls['drift-meter'] ?? (this.hudEls['drift-meter'] = document.getElementById('drift-meter'));
+    if (!el) return;
+    const shown = this.driftPoints >= 10;
+    if (shown !== this.driftMeterShown) {
+      this.driftMeterShown = shown;
+      el.classList.toggle('on', shown);
+    }
+    if (shown) this.setHudText('drift-points', Math.floor(this.driftPoints).toLocaleString('tr-TR'));
   }
 
   resetDamage() {
@@ -2758,6 +2825,7 @@ class OtobanMakasGame {
     this.yawRate = 0;
     this.headingAngle = 0;
     this.trackSlideAngle = 0;
+    this.driftAngle = 0;
     this.overtakeRun = null;
     if (info.round > 1 || info.standings.some((s) => s.points > 0)) {
       this.showMakasNotification(`🏁 TUR ${info.round} — İLK ${info.target} PUAN KAZANIR`, 0, 'gold');
@@ -2984,13 +3052,31 @@ class OtobanMakasGame {
       this.steerInput * steerPower * Math.min(1, this.speedKmh / 35); // no sideways creep when standing
     let desiredLatVel = steerLatVel + centrifugalDriftVel;
 
+    // Track only: the tail steps out under power (or a dab of brake) with the wheel turned. A
+    // drifting car is turned into the corner, holds a tighter line there and scrubs speed.
+    const drift = this.updateDrift(dt, { throttle, brake, layout, isOffTrack });
+    if (drift > 0) {
+      // Sliding, the car travels on along the road more than where its nose points: it still
+      // holds out against the corner's push, but what would carry it further in is mostly lost
+      if (desiredLatVel * this.driftAngle > 0) desiredLatVel *= 1 - 0.6 * drift;
+      this.speedKmh = Math.max(0, this.speedKmh - drift * (14 + this.speedKmh * 0.06) * dt);
+    }
+    this.tyreSmoke.update(dt, {
+      amount: drift,
+      x: this.playerX,
+      yaw: -(this.headingAngle + this.driftAngle),
+      speedMs,
+      night: this.world.weatherKey !== 'day',
+    });
+
     // Track only: the tyres can hold v²·κ of cornering up to their grip. Past it the car runs a
     // wider arc than the corner and its nose turns out at (needed − grip) / v rad/s, so carrying
     // 230 km/h into a corner sends it off; under the limit the spare grip pulls it back in line.
     let trackSlipG = 0;
     if (this.traffic.roadMode === 'track' && speedMs > 1) {
       const gripAccel =
-        TRACK_GRIP_G * GRAVITY * (0.75 + 0.25 * phys.handling) * wetFactor * offTrackGripPenalty * steerShare;
+        TRACK_GRIP_G * GRAVITY * (0.75 + 0.25 * phys.handling) * wetFactor * offTrackGripPenalty * steerShare *
+        (1 + 0.25 * drift); // a car held in a drift is turned into the corner already
       const neededAccel = speedMs * speedMs * Math.abs(curveKappa);
       const outward = -Math.sign(curveKappa) || Math.sign(this.trackSlideAngle);
       if (neededAccel > gripAccel) {
@@ -3007,6 +3093,7 @@ class OtobanMakasGame {
       desiredLatVel += Math.sin(this.trackSlideAngle) * speedMs;
     } else {
       this.trackSlideAngle = 0;
+      this.driftAngle = 0;
     }
     const prevLatVel = this.lateralVel;
     const tireCorneringStiffness = isCentering
@@ -3073,6 +3160,7 @@ class OtobanMakasGame {
         this.lateralVel *= -0.35;
         this.headingAngle *= 0.25;
         this.trackSlideAngle = 0;
+        this.driftAngle = 0;
         this.rollVel += -Math.sign(this.playerX) * 0.3;
         this.handleCollision('💥 BARİYERE ÇARPTIN! VİRAJA ÇOK HIZLI GİRDİN');
       }
@@ -3140,7 +3228,8 @@ class OtobanMakasGame {
       // car sliding across the picture; it drops back a little as the car pulls away and at speed
       if (!Number.isFinite(this.chaseX)) this.chaseX = this.playerX;
       this.chaseX += (this.playerX - this.chaseX) * Math.min(1, dt * 3.2);
-      this.camera.position.x = (this.chaseX - this.playerX) * 0.65 + shakeX * 4;
+      // In a drift it swings out to the side the tail slides to, so the car is seen at an angle
+      this.camera.position.x = (this.chaseX - this.playerX) * 0.65 + shakeX * 4 - this.driftAngle * 2.4;
       this.camera.position.y = preset.offset.y + shakeY * 4;
       this.camera.position.z = preset.offset.z + this.accelFeel * 0.7 + Math.min(1, this.speedKmh / 260) * 0.9;
     }
@@ -3153,7 +3242,8 @@ class OtobanMakasGame {
     this.headTurn = THREE.MathUtils.lerp(this.headTurn, lookTarget, Math.min(1, dt * 2.5));
 
     // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean
-    this.camera.rotation.y = -this.headingAngle * 0.52 + this.headTurn;
+    // (in a drift the whole car is turned into the corner: the view swings with most of that)
+    this.camera.rotation.y = -this.headingAngle * 0.52 - this.driftAngle * 0.7 + this.headTurn;
     this.camera.rotation.z = this.bodyRoll * 0.75;
     // The nose rides the same waves a little, so the horizon drifts gently with the body
     this.camera.rotation.x = this.bodyPitch * 0.65 + heave * 0.45;
@@ -3373,6 +3463,7 @@ class OtobanMakasGame {
     const squealG = Math.max(
       Math.abs(this.lateralG),
       this.trackSlipG ? 0.6 + this.trackSlipG : 0,
+      Math.abs(this.driftAngle) > 0.08 ? 0.5 + Math.abs(this.driftAngle) : 0, // tyres howling in a drift
       absActive && this.speedKmh > 50 ? 0.5 : 0 // tyres chattering on the ABS
     );
     this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, squealG);
@@ -3385,7 +3476,7 @@ class OtobanMakasGame {
       rpm: this.rpm,
       gear: this.gear,
       throttle,
-      headingAngle: this.headingAngle,
+      headingAngle: this.headingAngle + this.driftAngle, // the replay shows the car sideways too
       bodyRoll: this.bodyRoll,
       bodyPitch: this.bodyPitch,
       highBeam: this.keys.highBeam,
