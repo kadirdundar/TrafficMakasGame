@@ -221,6 +221,49 @@
     display: none;
   }
 
+  /* Chase camera: speed and gear at the bottom of the screen, where the dashboard is not */
+  .chase-speedo {
+    position: fixed;
+    inset-inline-start: 50%;
+    inset-block-end: max(14px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 8;
+    display: none;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 14px;
+    background: rgba(6, 10, 18, 0.55);
+    border: 1px solid rgba(120, 220, 255, 0.25);
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+
+  .chase-speedo strong {
+    font-size: 30px;
+    line-height: 1;
+    min-inline-size: 3ch;
+    text-align: end;
+  }
+
+  .chase-speedo small {
+    font-size: 11px;
+    opacity: 0.7;
+    letter-spacing: 0.06em;
+  }
+
+  .chase-speedo span {
+    margin-inline-start: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #5fe7ff;
+  }
+
+  body[data-ui='drive'][data-view='chase'] .chase-speedo {
+    display: flex;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .speed-lines {
       display: none;

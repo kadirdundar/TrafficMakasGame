@@ -276,7 +276,7 @@ export class MultiplayerManager {
   // then served from the HTTP cache); single-player never downloads it.
   loadPeerModel(player) {
     const paintHex = player.style?.paint ?? SLOT_STYLES[player.paintSlot % SLOT_STYLES.length]?.paint;
-    loadCarExterior(player.carModel, { paintHex })
+    loadCarExterior(player.carModel, { paintHex, plainGlass: true })
       .then((model) => {
         if (!player.removed) {
           player.car.swapModel(model);

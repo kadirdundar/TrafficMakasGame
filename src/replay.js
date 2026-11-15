@@ -163,7 +163,7 @@ export class DroneReplayManager {
 
     this.loadedCarId = cleanId;
     this.loadedPaintHex = paintHex;
-    loadCarExterior(cleanId, { paintHex })
+    loadCarExterior(cleanId, { paintHex, plainGlass: true })
       .then((model) => {
         if (this.loadedCarId !== cleanId) return;
         if (this.playerActiveModel && this.playerActiveModel !== this.playerFallback) {
@@ -198,7 +198,7 @@ export class DroneReplayManager {
 
     peerSlot.loadedCarId = cleanId;
     peerSlot.paintHex = paintHex;
-    loadCarExterior(cleanId, { paintHex })
+    loadCarExterior(cleanId, { paintHex, plainGlass: true })
       .then((model) => {
         if (peerSlot.loadedCarId !== cleanId) return;
         if (peerSlot.activeModel && peerSlot.activeModel !== peerSlot.fallback) {

@@ -61,7 +61,10 @@ function haloAnchor(def, boxes, front) {
   ];
 }
 
-export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
+// `plainGlass`: for a car on the road. Glass that refracts what is behind it (a material with
+// transmission, as some models have) makes three.js draw the whole scene once more every frame
+// for that one car; it becomes ordinary see-through glass instead. The garage keeps the real thing.
+export async function loadExterior(cfg, { paintHex = 0xd6182c, plainGlass = false } = {}) {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(cfg.url);
   const model = gltf.scene;
@@ -99,6 +102,12 @@ export async function loadExterior(cfg, { paintHex = 0xd6182c } = {}) {
     if (!o.isMesh) return;
     const mat = o.material;
     const name = mat?.name || '';
+    if (plainGlass && mat?.transmission > 0) {
+      mat.transmission = 0;
+      mat.transparent = true;
+      mat.opacity = Math.min(mat.opacity, 0.45);
+      mat.depthWrite = false;
+    }
     if (name === paintName) {
       // Baked ambient occlusion (vertex colours, convert.mjs → exterior.ao) carries over to the paint
       if (o.geometry.attributes.color) bodyMat.vertexColors = true;
