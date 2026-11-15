@@ -973,6 +973,9 @@ export class CarCockpit {
     // The canvas' laid-out size: right after a phone rotation window.innerWidth can still be stale
     const cssW = this.overlayCanvas.clientWidth || window.innerWidth;
     const cssH = this.overlayCanvas.clientHeight || window.innerHeight;
+    // Nothing to draw into while the page has no size (hidden tab, minimised window, an app
+    // switch on a phone): the cluster face would be a 0-pixel canvas, which drawImage rejects
+    if (cssW < 2 || cssH < 2) return;
     const targetW = Math.round(cssW * dpr);
     const targetH = Math.round(cssH * dpr);
 
