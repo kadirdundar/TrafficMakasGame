@@ -7,7 +7,8 @@ import { LEVEL_COST, MAX_UPGRADE_LEVEL, PARTS, UPGRADES } from './config.js';
 // The tuned physics all cars share in the classic game: ~3.3 s 0→100, ~5.6 s 100→200,
 // a slow 235→260 km/h climb to the limiter, and brakes that hold BRAKE_G on a dry road
 // (air drag adds to them, so the car slows hardest from high speed)
-const BRAKE_G = 1.15;
+// Twice the grip of a road car on purpose: the game needs short, sharp stops between traffic
+const BRAKE_G = 2.3;
 export const KMH_PER_SEC_PER_G = 9.81 * 3.6; // 1 g as km/h per second
 export const CLASSIC_PHYSICS = Object.freeze({
   maxSpeed: 260,

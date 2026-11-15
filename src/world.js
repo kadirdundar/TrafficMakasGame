@@ -510,6 +510,39 @@ function createTrackStartGantryTexture() {
   return tex;
 }
 
+// The light the player's headlamps throw on the asphalt, seen from above: narrow at the bumper
+// (bottom of the canvas), fanning out ahead and fading into the dark at the far end (top).
+// A spot light alone barely shows on the road: it meets the asphalt at a grazing angle.
+function createHeadlightPoolTexture() {
+  const W = 128;
+  const H = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    const t = 1 - y / (H - 1); // 0 at the bumper, 1 at the far end
+    // Beam half-width grows ahead; brightness peaks a little way out, then fades with distance
+    const halfW = 0.16 + 0.34 * Math.sqrt(t);
+    const along = Math.min(1, t / 0.12) * Math.pow(1 - t, 1.6);
+    for (let x = 0; x < W; x++) {
+      const u = Math.abs(x / (W - 1) - 0.5) / halfW;
+      const across = u >= 1 ? 0 : Math.pow(1 - u * u, 1.5);
+      const a = along * across;
+      const i = (y * W + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 250;
+      img.data[i + 2] = 238;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function createTrackBrakeBoardTexture(meters) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -1045,6 +1078,37 @@ export class HighwayWorld {
     this.headlightGroup.add(this.highBeamLight);
     this.headlightGroup.add(this.highBeamTarget);
     this.highBeamLight.target = this.highBeamTarget;
+
+    // The visible pool of light on the road ahead: low beam, and the longer reach of the
+    // high beam. Laid on the road and bent with it like the asphalt (curvable geometry);
+    // the group carries it sideways with the player's car.
+    const poolTex = createHeadlightPoolTexture();
+    const makePool = (width, nearZ, farZ, y) => {
+      const geo = new THREE.PlaneGeometry(width, farZ - nearZ, 1, 16);
+      geo.rotateX(-Math.PI / 2);
+      geo.translate(0, y, -(nearZ + farZ) / 2);
+      this.registerCurvableGeometry(geo);
+      const mat = new THREE.MeshBasicMaterial({
+        map: poolTex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = 1;
+      mesh.frustumCulled = false;
+      this.headlightGroup.add(mesh);
+      return mesh;
+    };
+    this.lowBeamPool = makePool(9, 1.5, 48, 0.02);
+    this.highBeamPool = makePool(12, 6, 115, 0.025);
+    this.headlightPoolStrength = 0.55;
   }
 
   drawTrackMarkings(ctx) {
@@ -2272,6 +2336,8 @@ export class HighwayWorld {
 
     // Adjust player low-beams based on day/night
     this.lowBeamLight.intensity = preset.streetlightsOn ? 14.0 : 2.5;
+    // Daylight drowns the pool of the headlamps; at dusk, at night and in the rain it shows
+    this.headlightPoolStrength = preset.streetlightsOn ? 0.55 : 0.06;
 
     this.updateGroundAndTrackColors();
 
@@ -2492,6 +2558,13 @@ export class HighwayWorld {
     this.highBeamTarget.position.x = this.getCurveOffsetAtZ(-115) * 0.7;
     this.highBeamTarget.position.y = isTrack ? 0.5 + this.getElevationOffsetAtZ(-115) * 0.6 : 0.5;
     this.highBeamLight.intensity = highBeamActive ? 28.0 : 0.0;
+    const poolFade = Math.min(1, dt * 10);
+    const lowPool = this.lowBeamPool.material;
+    lowPool.opacity += (this.headlightPoolStrength - lowPool.opacity) * poolFade;
+    const highPool = this.highBeamPool.material;
+    highPool.opacity += ((highBeamActive ? this.headlightPoolStrength * 0.8 : 0) - highPool.opacity) * poolFade;
+    this.lowBeamPool.visible = lowPool.opacity > 0.005;
+    this.highBeamPool.visible = highPool.opacity > 0.005;
 
     // Update falling rain streaks if Rainy weather is active
     if (this.rainSystem && this.rainSystem.visible) {
