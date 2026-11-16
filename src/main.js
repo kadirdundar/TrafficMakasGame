@@ -13,7 +13,16 @@ import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
 import { CAR_LIST, CARS, getCar } from './cars/index.js';
 import { DroneReplayManager } from './replay.js';
-import { CLASSIC_PHYSICS, carStats, longitudinalAccel, resolvePhysics } from './progression/performance.js';
+import {
+  CLASSIC_PHYSICS,
+  ENGINE_BRAKING,
+  KMH_PER_SEC_PER_G,
+  carStats,
+  longitudinalAccel,
+  resolvePhysics,
+  roadResistance,
+} from './progression/performance.js';
+import { bounceTrackCar, createTrackCar, resetTrackCar, setTrackCarSpeed, stepTrackCar } from './trackDynamics.js';
 import { TRAFFIC_MASS, nextGear, resolveChassis, resolveDrivetrain, rpmInGear } from './progression/drivetrain.js';
 import { PlayerProfile } from './progression/profile.js';
 import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js';
@@ -46,11 +55,12 @@ const WHEELBASE_M = 2.9;
 // Body heave on the springs: ~1.1 Hz, damping ratio ~0.4 (a soft, floating ride)
 const HEAVE_SPRING = 48;
 const HEAVE_DAMPING = 5.5;
-// İstanbul Park tyre grip: the most lateral acceleration (in g) the tyres hold before the car
-// washes out of a corner, for a car with handling 1. Peak T1 (R≈80 m) is then ~130 km/h,
-// the T11 kink (R≈160 m) ~185 km/h, so the big corners need real braking.
+// İstanbul Park tyre grip (the friction of slicks on a dry track, for a car with handling 1) and
+// what is left of it in the rain and on the gravel. The driving model is src/trackDynamics.js.
+// Peak T1 (R≈80 m) is then ~125 km/h, the T11 kink (R≈160 m) ~175 km/h.
 const TRACK_GRIP_G = 1.6;
-const GRAVITY = 9.81;
+const TRACK_WET_GRIP = 0.78;
+const TRACK_GRAVEL_GRIP = 0.55;
 
 // Camera / Seat Presets aligned with the Photorealistic Audi A8 Windshield
 const CAMERA_PRESETS = [
@@ -122,15 +132,9 @@ const SPEED_LINES_SPAN = 90;
 const SPEED_VIGNETTE_FROM = 120;
 const SPEED_VIGNETTE_SPAN = 140;
 const SPEED_VIGNETTE_MAX = 0.6; // opacity of the dark corners at full strength
-// Drifting (track only, updateDrift): the car's slide angle is a mass on a spring, turned by the
-// wheel and the engine and pulled straight by the rear tyres. All per second², for a full input:
-const DRIFT_STEER = 6.0; // the wheel yawing a car whose tail is loose
-const DRIFT_GRIP = 16.0; // the rear tyres pulling it straight, per rad of slide ...
-const DRIFT_GRIP_ANGLE = 0.6; // ... rising steeply past this angle (rad), which is what stops a held slide
-const DRIFT_POWER = { rwd: 25, awd: 20, fwd: -6 }; // the engine pushing the tail on round (pulling it straight with front drive)
-const DRIFT_DAMPING = 3.4; // per second
-const DRIFT_SPIN_ANGLE = 1.05; // rad: past this the car has spun
-const DRIFT_MAX_ANGLE = 0.7; // rad: a full-blooded drift (for the smoke, the sound and the feel)
+// Drift points (track only, updateDriftScore): a slide between these two angles (rad) between
+// where the car points and where it goes runs up points; past the second it has spun
+const DRIFT_SPIN_ANGLE = 1.2;
 const DRIFT_SCORE_ANGLE = 0.2;
 const DRIFT_POINTS = 1.6;
 const DRIFT_MIN_PAYOUT = 40;
@@ -216,10 +220,7 @@ class OtobanMakasGame {
         this.speedKmh = 0; // everyone starts from a standstill
         this.lateralVel = 0;
         this.headingAngle = 0;
-        this.trackSlideAngle = 0;
-        this.driftAngle = 0;
-        this.driftRate = 0;
-        this.driftLoose = 0;
+        resetTrackCar(this.trackCar);
         this.sound.init();
         this.sound.setRainAmbience(this.world.weatherKey === 'rain');
         this.beginDrive();
@@ -373,10 +374,11 @@ class OtobanMakasGame {
     this.lateralVel = 0;
     this.yawRate = 0; // rad/s chassis yaw angular velocity
     this.headingAngle = 0; // rad chassis slip/heading angle relative to highway
-    this.trackSlideAngle = 0; // rad, track only: how far the car has washed out past the tyres' grip
-    this.driftAngle = 0; // rad, track only: how far the tail is out in a drift (+ = nose to the right)
-    this.driftRate = 0; // rad/s
-    this.driftLoose = 0; // 0..1: how far the rear tyres have let go
+    this.trackCar = createTrackCar(); // the car on İstanbul Park (src/trackDynamics.js)
+    this.trackSetup = { layout: 'awd', cgHeight: 0.38 };
+    this.tyreHowl = 0; // how hard the tyres are sliding, as the lateral g the squeal is driven with
+    this.tyreSmokeAmount = 0;
+    this.chaseYaw = 0; // rad: the direction the chase camera stands behind the car in
     this.driftPoints = 0; // points of the drift in progress
     this.driftIdleSec = 0;
     this.bodyRoll = 0; // rad suspension roll angle (spring-damper)
@@ -568,6 +570,7 @@ class OtobanMakasGame {
       if (code === 'KeyS' || code === 'ArrowDown') this.keys.brake = true;
       if (code === 'KeyA' || code === 'ArrowLeft') this.keys.left = true;
       if (code === 'KeyD' || code === 'ArrowRight') this.keys.right = true;
+      if (code === 'ShiftLeft' || code === 'ShiftRight' || code === 'KeyX') this.keys.handbrake = true;
       if (code === 'KeyF' || code === 'Space') {
         this.setHighBeam(true);
       }
@@ -613,6 +616,7 @@ class OtobanMakasGame {
       if (code === 'KeyS' || code === 'ArrowDown') this.keys.brake = false;
       if (code === 'KeyA' || code === 'ArrowLeft') this.keys.left = false;
       if (code === 'KeyD' || code === 'ArrowRight') this.keys.right = false;
+      if (code === 'ShiftLeft' || code === 'ShiftRight' || code === 'KeyX') this.keys.handbrake = false;
       if (code === 'KeyF' || code === 'Space') {
         this.setHighBeam(false);
       }
@@ -2166,10 +2170,7 @@ class OtobanMakasGame {
     this.roadZone = null;
     this.yawRate = 0;
     this.headingAngle = 0;
-    this.trackSlideAngle = 0;
-    this.driftAngle = 0;
-    this.driftRate = 0;
-    this.driftLoose = 0;
+    resetTrackCar(this.trackCar);
     this.bodyRoll = 0;
     this.rollVel = 0;
     this.bodyPitch = 0;
@@ -2292,10 +2293,7 @@ class OtobanMakasGame {
     this.playerX = this.startX();
     this.lateralVel = 0;
     this.headingAngle = 0;
-    this.trackSlideAngle = 0;
-    this.driftAngle = 0;
-    this.driftRate = 0;
-    this.driftLoose = 0;
+    resetTrackCar(this.trackCar);
 
     // Track mode state
     if (mode === 'track') {
@@ -2704,7 +2702,7 @@ class OtobanMakasGame {
     r.ensurePlayerExteriorModel(this.selectedCar, this.selectedPaintSlot || 0, this.currentParts);
     r.playerCarGroup.visible = true;
     r.playerCarGroup.position.set(this.playerX, 0, 0);
-    r.playerCarGroup.rotation.set(this.bodyPitch, -(this.headingAngle + this.driftAngle), this.bodyRoll);
+    r.playerCarGroup.rotation.set(this.bodyPitch, -this.headingAngle, this.bodyRoll);
     r.playerActiveModel?.rollWheels?.(this.world.worldDistM || 0);
     r.playerActiveModel?.setLights?.({
       night: this.world.weatherKey !== 'day',
@@ -2713,65 +2711,17 @@ class OtobanMakasGame {
     });
   }
 
-  // Drifting on the track: the slide angle (how far the car is turned from the way it travels)
-  // has its own momentum.
-  //
-  // The tail comes loose with the wheel turned and either the gas floored (power oversteer; not
-  // with front-wheel drive) or the brake on (the weight goes off the rear). Loose, the wheel yaws
-  // the car; the engine pushes the tail further round, the rear tyres pull it back, harder the
-  // further out it is. So a slide is started by turning in, held on the gas (more gas, more
-  // angle), trimmed or ended by steering against it, and ended by lifting off, when the tail
-  // swings back and a little past straight. Too much of everything and the car spins.
-  // Returns how far out it is, 0..1. A slide past DRIFT_SCORE_ANGLE runs up points that are paid
-  // when it ends and lost in a spin, off the track or in a crash.
-  updateDrift(dt, { throttle, brake, layout, isOffTrack }) {
-    const onTrack = this.traffic.roadMode === 'track' && !this.burning;
-    if (!onTrack) {
-      this.driftAngle = this.driftRate = this.driftLoose = this.driftPoints = 0;
-      this.updateDriftMeter();
-      return 0;
-    }
-    const steer = this.steerInput;
-    const turned = Math.abs(steer);
+  // Drift points on the track: while the car travels at an angle to where it points (the slide
+  // itself is the driving model's, src/trackDynamics.js) points run up; they are paid when the
+  // slide ends and lost in a spin, off the track or in a crash.
+  updateDriftScore(dt, isOffTrack) {
+    const angle = Math.abs(this.trackCar.slip);
     const speed = this.speedKmh;
-    const moving = THREE.MathUtils.clamp((speed - 30) / 40, 0, 1); // nothing slides at a crawl
-    const grip = (this.world.weatherKey === 'rain' ? 0.72 : 1) * (isOffTrack ? 0.6 : 1);
-    const power = DRIFT_POWER[layout] ?? DRIFT_POWER.awd;
-
-    // Is the tail loose? It lets go under power or braking with the wheel turned, stays loose
-    // while the car is sideways and takes hold again once it runs straight
-    const breakaway = layout === 'rwd' ? 0.45 : 0.6;
-    const letsGo =
-      speed > 45 && ((power > 0 && throttle > 0.7 && turned > breakaway) || (brake > 0.25 && turned > 0.35 && speed > 60));
-    const sideways = Math.abs(this.driftAngle) > 0.07 || Math.abs(this.driftRate) > 0.35;
-    if (letsGo) this.driftLoose = Math.min(1, this.driftLoose + dt * 5);
-    else if (!sideways) this.driftLoose = Math.max(0, this.driftLoose - dt * 3);
-
-    const a = this.driftAngle;
-    const accel =
-      DRIFT_STEER * steer * this.driftLoose * moving + // the wheel
-      power * throttle * a * moving - // the engine, pushing the way the car already slides
-      DRIFT_GRIP * grip * a * (1 + (a / DRIFT_GRIP_ANGLE) ** 2) - // the rear tyres
-      DRIFT_DAMPING * this.driftRate;
-    this.driftRate += accel * dt;
-    this.driftAngle += this.driftRate * dt;
-
-    // Spun: the car has gone round too far to catch. It stops turning there and loses its speed
-    // (the scrub in updatePhysics), and comes back once it is slow.
-    if (Math.abs(this.driftAngle) > DRIFT_SPIN_ANGLE) {
-      this.driftAngle = Math.sign(this.driftAngle) * DRIFT_SPIN_ANGLE;
-      this.driftRate = 0;
-      if (this.driftPoints > 0) this.showMakasNotification('🌀 SPİN ATTIN', 0, 'danger');
+    if (isOffTrack || this.burning || angle > DRIFT_SPIN_ANGLE) {
+      if (angle > DRIFT_SPIN_ANGLE && this.driftPoints > 0) this.showMakasNotification('🌀 SPİN ATTIN', 0, 'danger');
       this.driftPoints = 0;
-    }
-    if (this.driftLoose === 0 && Math.abs(this.driftAngle) < 0.003 && Math.abs(this.driftRate) < 0.02) {
-      this.driftAngle = this.driftRate = 0;
-    }
-
-    if (isOffTrack) {
-      this.driftPoints = 0;
-    } else if (Math.abs(this.driftAngle) > DRIFT_SCORE_ANGLE && speed > 50) {
-      this.driftPoints += Math.abs(this.driftAngle) * speed * DRIFT_POINTS * dt;
+    } else if (angle > DRIFT_SCORE_ANGLE && speed > 50) {
+      this.driftPoints += angle * speed * DRIFT_POINTS * dt;
       this.driftIdleSec = 0;
     } else if (this.driftPoints > 0) {
       this.driftIdleSec += dt;
@@ -2785,7 +2735,108 @@ class OtobanMakasGame {
       }
     }
     this.updateDriftMeter();
-    return Math.min(1, Math.abs(this.driftAngle) / DRIFT_MAX_ANGLE);
+  }
+
+  // İstanbul Park: the car is driven by its tyres (src/trackDynamics.js). This feeds the model
+  // the pedals and the wheel, moves the car across the track by what comes out, and handles
+  // the kerbs, the gravel and the barrier.
+  updateTrackDriving(dt, { rawSteer, throttle, brake, phys, accelKmhPerSec, isWet }) {
+    const car = this.trackCar;
+    const edgeX = this.world.roadHalfWidth - 0.85; // white line / outer edge of the kerb
+    const wallX = this.world.roadHalfWidth + 3.0; // tyre barrier / Armco
+    const isOffTrack = Math.abs(this.playerX) > edgeX;
+
+    // The speed may have been changed since the last frame (a crash, the gravel, a new start)
+    setTrackCarSpeed(car, this.speedKmh / 3.6);
+    const resist = roadResistance(phys, this.speedKmh);
+    const drive = throttle > 0 ? accelKmhPerSec + resist : brake > 0 ? 0 : -ENGINE_BRAKING;
+    this.trackSetup.layout = this.chassis.layout;
+    this.trackSetup.cgHeight = 0.3 + 0.08 * this.chassis.roll; // a tall car shifts more weight
+    stepTrackCar(
+      car,
+      dt,
+      {
+        steer: this.steerInput,
+        handsOff: Math.abs(rawSteer) < 0.02,
+        handbrake: Boolean(this.keys.handbrake) && !this.burning,
+        drive: drive / 3.6,
+        brake: throttle > 0 ? 0 : (phys.brakeDecel * brake) / 3.6,
+        drag: resist / 3.6,
+        curvature: this.world.getCurrentCurvature(),
+        grip:
+          TRACK_GRIP_G *
+          (0.75 + 0.25 * phys.handling) *
+          (isWet ? TRACK_WET_GRIP : 1) *
+          (isOffTrack ? TRACK_GRAVEL_GRIP : 1),
+        maxSpeed: phys.maxSpeed / 3.6,
+      },
+      this.trackSetup
+    );
+
+    this.speedKmh = car.speed * 3.6;
+    this.headingAngle = car.heading;
+    this.yawRate = car.yawRate;
+    this.lateralVel = car.dx / Math.max(0.001, dt);
+    this.longitudinalG = THREE.MathUtils.lerp(
+      this.longitudinalG,
+      (car.longG * KMH_PER_SEC_PER_G) / 90,
+      Math.min(1, dt * 12)
+    );
+    this.lateralG = THREE.MathUtils.lerp(this.lateralG, car.lateralG, Math.min(1, dt * 12));
+    this.playerX += car.dx + this.knockVel * dt;
+    this.knockVel *= Math.exp(-dt * 3.5);
+    if (Math.abs(this.knockVel) < 0.02) this.knockVel = 0;
+
+    // Sliding tyres howl, smoke at the rear and shudder through the car
+    const fast = THREE.MathUtils.clamp((this.speedKmh - 25) / 30, 0, 1);
+    const sliding = Math.max(car.rearSlide, car.frontSlide * 0.7);
+    this.tyreHowl = sliding > 0.02 ? 0.3 + 0.8 * sliding : 0;
+    const spinning = car.wheelspin > 0.9 && this.speedKmh < 70 ? 0.5 : 0;
+    this.tyreSmokeAmount = Math.max(car.rearSlide * fast, spinning * Math.min(1, this.speedKmh / 8));
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.05 * sliding * fast);
+    this.updateDriftScore(dt, isOffTrack);
+
+    // The chase camera stands behind the way the car is going, not the way it points, so a
+    // slide shows as the car turned in front of it
+    const behind = THREE.MathUtils.clamp(car.course * 0.8 + car.heading * 0.1, -1.1, 1.1);
+    this.chaseYaw += (behind - this.chaseYaw) * Math.min(1, dt * 4);
+
+    const absX = Math.abs(this.playerX);
+    // 1. Kerb rumble zone
+    if (absX > edgeX - 1 && this.speedKmh > 35) {
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.09 * Math.min(1, this.speedKmh / 150));
+    }
+
+    // 2. Run-off / gravel trap: no invisible rail at the white line
+    if (absX > edgeX) {
+      const offTrackDepth = absX - edgeX;
+      // Heavy gravel drag scrubs speed rapidly so you cannot wall-ride around corners (a car
+      // that is already slow can still drive out)
+      if (this.speedKmh > 38) this.speedKmh = Math.max(38, this.speedKmh - (78 + offTrackDepth * 38) * dt);
+      this.shakeIntensity = Math.max(
+        this.shakeIntensity,
+        (0.18 + Math.min(0.24, offTrackDepth * 0.08)) * Math.min(1, this.speedKmh / 90)
+      );
+      if (this.combo > 1) {
+        this.combo = 1;
+        this.comboProgress = 0;
+      }
+      const nowMs = performance.now();
+      if (this.speedKmh > 30 && (!this._lastOffTrackWarnMs || nowMs - this._lastOffTrackWarnMs > 2200)) {
+        this._lastOffTrackWarnMs = nowMs;
+        this.showMakasNotification('⚠️ PİST DIŞI! ÇAKIL HAVUZU (HIZ KAYBI)', 0, 'normal');
+        this.sound.playTireChirp(this.speedKmh);
+      }
+    }
+
+    // 3. Outer tyre barrier / Armco
+    if (absX > wallX) {
+      this.playerX = Math.sign(this.playerX) * (wallX - 0.35);
+      bounceTrackCar(car);
+      this.headingAngle = car.heading;
+      this.rollVel += -Math.sign(this.playerX) * 0.3;
+      if (this.speedKmh > 25) this.handleCollision('💥 BARİYERE ÇARPTIN! VİRAJA ÇOK HIZLI GİRDİN');
+    }
   }
 
   // The points of the drift in progress, on screen while it lasts
@@ -2872,10 +2923,7 @@ class OtobanMakasGame {
     this.lateralVel = 0;
     this.yawRate = 0;
     this.headingAngle = 0;
-    this.trackSlideAngle = 0;
-    this.driftAngle = 0;
-    this.driftRate = 0;
-    this.driftLoose = 0;
+    resetTrackCar(this.trackCar);
     this.overtakeRun = null;
     if (info.round > 1 || info.standings.some((s) => s.points > 0)) {
       this.showMakasNotification(`🏁 TUR ${info.round} — İLK ${info.target} PUAN KAZANIR`, 0, 'gold');
@@ -2941,6 +2989,91 @@ class OtobanMakasGame {
     document.getElementById('round-banner')?.classList.add('hidden');
   }
 
+  // Sideways on the motorway and the two-way road: the car changes lanes on rails that lean
+  // (smooth yaw, tyre response, a gentle push to the outside of the bends), tuned for weaving
+  // through traffic.
+  updateRoadDriving(dt, { throttle, steerShare, phys, speedRatio, isCentering, isWet }) {
+    const speedMs = this.speedKmh / 3.6;
+    const wetFactor = isWet ? 0.85 : 1.0;
+
+    // Target chassis heading angle (narrows at high speed for stability)
+    // How hard the driven wheels are working: full throttle while the car is still limited by
+    // traction rather than power (to ~130 km/h, further on a wet road), nothing at speed
+    const powerLoad = throttle * THREE.MathUtils.clamp((isWet ? 1.6 : 1.3) - this.speedKmh / 130, 0, 1);
+    const layout = this.chassis.layout;
+
+    const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 260 km/h
+    // Rear-wheel drive under power pushes its tail out: the nose turns in further than asked
+    const targetHeading = this.steerInput * maxHeadingAngle * (layout === 'rwd' ? 1 + 0.35 * powerLoad : 1);
+
+    // Critically damped yaw response (no oscillation/fishtailing when driving straight)
+    const headingRate = isCentering ? 11.5 + speedRatio * 3.5 : (8.2 + speedRatio * 2.0) * wetFactor;
+    this.headingAngle = THREE.MathUtils.lerp(
+      this.headingAngle,
+      targetHeading,
+      Math.min(1, dt * headingRate)
+    );
+    if (isCentering && Math.abs(this.headingAngle) < 0.0008) {
+      this.headingAngle = 0;
+    }
+    this.yawRate = (targetHeading - this.headingAngle) * headingRate;
+
+    // Lateral velocity follows nose heading + front tire cornering force + highway curve centrifugal drift
+    const curveKappa = this.world.getCurrentCurvature(); // + = right curve ahead, - = left curve ahead
+    const maxDrift = 1.35;
+    const centrifugalDriftVel = Math.max(-maxDrift, Math.min(maxDrift, -curveKappa * speedMs * 21.0));
+
+    // The car's handling (classic: 1) scales how far it moves sideways for a given steer, and
+    // part of it how quickly the tyres take that up
+    let steerPower = (4.6 + speedRatio * 2.0) * phys.handling * steerShare;
+    // Front-wheel drive under power runs wide: the wheels that steer are busy pulling
+    if (layout === 'fwd') steerPower *= 1 - 0.22 * powerLoad;
+    const tireResponse = 0.6 + 0.4 * phys.handling;
+
+    const desiredLatVel =
+      Math.sin(this.headingAngle) * speedMs * 0.62 +
+      this.steerInput * steerPower * Math.min(1, this.speedKmh / 35) + // no sideways creep when standing
+      centrifugalDriftVel;
+
+    const prevLatVel = this.lateralVel;
+    const tireCorneringStiffness = isCentering
+      ? 12.5 * wetFactor
+      : (9.2 - speedRatio * 1.4) * wetFactor * tireResponse * steerShare;
+    this.lateralVel = THREE.MathUtils.lerp(
+      this.lateralVel,
+      desiredLatVel,
+      Math.min(1, dt * tireCorneringStiffness)
+    );
+    if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralVel) < 0.01) {
+      this.lateralVel = 0;
+    }
+    // A knock from another car slides this one sideways for a moment on top of its own steering
+    this.playerX += (this.lateralVel + this.knockVel) * dt;
+    this.knockVel *= Math.exp(-dt * 3.5);
+    if (Math.abs(this.knockVel) < 0.02) this.knockVel = 0;
+
+    // Smooth lateral G-force (includes steady cornering load inside highway curves, 0 on straightaways)
+    const latAccelG = (this.lateralVel - prevLatVel) / (Math.max(0.001, dt) * 24.0);
+    const rawLatG = (this.lateralVel - centrifugalDriftVel * 0.75) / 9.8 + latAccelG * 0.25;
+    this.lateralG = THREE.MathUtils.lerp(this.lateralG, rawLatG, Math.min(1, dt * 12));
+    this.tyreHowl = 0;
+    if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralG) < 0.005) {
+      this.lateralG = 0;
+    }
+
+    // Keep the car between the barriers
+    const maxLateralX = this.world.roadHalfWidth - 1.05;
+    if (Math.abs(this.playerX) > maxLateralX) {
+      this.playerX = Math.sign(this.playerX) * maxLateralX;
+      this.lateralVel *= -0.3;
+      this.headingAngle *= 0.3;
+      this.rollVel += -Math.sign(this.playerX) * 0.2;
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
+      // Slight speed scrub on barrier scrape
+      this.speedKmh = Math.max(0, this.speedKmh - 28 * dt);
+    }
+  }
+
   updatePhysics(dt) {
     // 1. Determine throttle & brake input (a burning car no longer answers the controls)
     const burning = Boolean(this.burning);
@@ -2976,6 +3109,12 @@ class OtobanMakasGame {
     } else {
       steerRate = 10.5 - speedRatio * 2.5; // Quick turn-in, still a little heavier at 200+ km/h
     }
+    // On the track full input is the grip limit, so the wheel is wound on more slowly the
+    // faster the car goes (a tap on a key is a nudge, not a swerve); it comes off, and goes
+    // on against a slide, as quickly as ever
+    if (this.traffic.roadMode === 'track' && !isCentering && !isCounterSteer) {
+      steerRate = 7.5 - speedRatio * 3.5;
+    }
     this.steerInput = THREE.MathUtils.lerp(this.steerInput, rawSteer, Math.min(1, dt * steerRate));
 
     // 2. Longitudinal Speed (KM/H)
@@ -3001,17 +3140,20 @@ class OtobanMakasGame {
     // What the tyres spend on braking is not there for turning
     const steerShare = 1 - (1 - STEER_UNDER_BRAKING) * brake * brake;
 
-    // Slight cornering scrub when carving aggressively at high G
-    const corneringDrag = Math.abs(this.lateralG) * 4.2;
-    accelKmhPerSec -= corneringDrag;
+    // On the track the tyres move the car (updateTrackDriving, below); on the roads:
+    if (!isTrackRoad) {
+      // Slight cornering scrub when carving aggressively at high G
+      const corneringDrag = Math.abs(this.lateralG) * 4.2;
+      accelKmhPerSec -= corneringDrag;
 
-    const prevSpeed = this.speedKmh;
-    this.speedKmh = Math.max(0, Math.min(phys.maxSpeed, this.speedKmh + accelKmhPerSec * dt));
-    this.longitudinalG = THREE.MathUtils.lerp(
-      this.longitudinalG,
-      (this.speedKmh - prevSpeed) / (Math.max(0.001, dt) * 90),
-      Math.min(1, dt * 12)
-    );
+      const prevSpeed = this.speedKmh;
+      this.speedKmh = Math.max(0, Math.min(phys.maxSpeed, this.speedKmh + accelKmhPerSec * dt));
+      this.longitudinalG = THREE.MathUtils.lerp(
+        this.longitudinalG,
+        (this.speedKmh - prevSpeed) / (Math.max(0.001, dt) * 90),
+        Math.min(1, dt * 12)
+      );
+    }
 
     // 3. Gearbox & RPM from the car's own ratios (car.js → drivetrain). Shift points follow the
     //    pedal: off the gas it changes up early and cruises quietly (the A8 turns ~1,700 rpm at
@@ -3034,204 +3176,21 @@ class OtobanMakasGame {
     );
     this.rpm = THREE.MathUtils.lerp(this.rpm, targetRpm, Math.min(1, dt * 10));
 
-    // 4. Realistic Lateral Vehicle Dynamics (Smooth Yaw, Tire Grip & Rock-Solid Straight-Line Stability)
-    const speedMs = this.speedKmh / 3.6;
-    const wetFactor = this.world.weatherKey === 'rain' ? 0.85 : 1.0;
-
-    // Target chassis heading angle (narrows at high speed for stability)
-    // How hard the driven wheels are working: full throttle while the car is still limited by
-    // traction rather than power (to ~130 km/h, further on a wet road), nothing at speed
-    const powerLoad = throttle * THREE.MathUtils.clamp((isWet ? 1.6 : 1.3) - this.speedKmh / 130, 0, 1);
-    const layout = this.chassis.layout;
-
-    const maxHeadingAngle = 0.19 - speedRatio * 0.06; // ~11 deg at low speed, ~7.5 deg at 260 km/h
-    // Rear-wheel drive under power pushes its tail out: the nose turns in further than asked
-    const targetHeading = this.steerInput * maxHeadingAngle * (layout === 'rwd' ? 1 + 0.35 * powerLoad : 1);
-
-    // Critically damped yaw response (no oscillation/fishtailing when driving straight)
-    const headingRate = isCentering ? 11.5 + speedRatio * 3.5 : (8.2 + speedRatio * 2.0) * wetFactor;
-    this.headingAngle = THREE.MathUtils.lerp(
-      this.headingAngle,
-      targetHeading,
-      Math.min(1, dt * headingRate)
-    );
-    if (isCentering && Math.abs(this.headingAngle) < 0.0008) {
-      this.headingAngle = 0;
-    }
-    this.yawRate = (targetHeading - this.headingAngle) * headingRate;
-
-    // Lateral velocity follows nose heading + front tire cornering force + highway curve centrifugal drift
-    const curveKappa = this.world.getCurrentCurvature(); // + = right curve ahead, - = left curve ahead
-    let centrifugalDriftVel;
-    let steerPower;
-    if (this.traffic.roadMode === 'track') {
-      // In track mode: realistic v^2 centrifugal physics!
-      // Blend current curvature with 18m lookahead so corner entry immediately pushes the car outward.
-      const lookaheadKappa = this.world.evalRoadDeriv2
-        ? this.world.evalRoadDeriv2((this.world.worldDistM || 0) + 18)
-        : curveKappa;
-      const effectiveKappa =
-        Math.abs(lookaheadKappa) > Math.abs(curveKappa)
-          ? curveKappa * 0.55 + lookaheadKappa * 0.45
-          : curveKappa;
-      // Non-linear v^2 centrifugal outward drift:
-      // Entering a tight hairpin (|kappa| ~ 0.013) at 240 km/h produces ~21 m/s outward push,
-      // exceeding max steering authority (~15.4 m/s) -> genuine high-speed understeer unless the player brakes!
-      const driftMagnitude = -effectiveKappa * speedMs * (11.5 + speedMs * 0.30);
-      centrifugalDriftVel = Math.max(-21.0, Math.min(21.0, driftMagnitude));
-      steerPower = 5.4 + speedRatio * 2.2;
+    // 4. Sideways: İstanbul Park has its own driving model, the roads keep their lane-change one
+    let speedMs = this.speedKmh / 3.6; // along the road
+    if (isTrackRoad) {
+      this.updateTrackDriving(dt, { rawSteer, throttle, brake, phys, accelKmhPerSec, isWet });
+      speedMs = this.trackCar.progress;
     } else {
-      // Highway mode: gentle highway drift
-      const maxDrift = 1.35;
-      centrifugalDriftVel = Math.max(-maxDrift, Math.min(maxDrift, -curveKappa * speedMs * 21.0));
-      steerPower = 4.6 + speedRatio * 2.0;
-    }
-
-    // The car's handling (classic: 1) scales how far it moves sideways for a given steer, and
-    // part of it how quickly the tyres take that up
-    steerPower *= phys.handling * steerShare;
-    // Front-wheel drive under power runs wide: the wheels that steer are busy pulling
-    if (layout === 'fwd') steerPower *= 1 - 0.22 * powerLoad;
-    const isOffTrack =
-      this.traffic.roadMode === 'track' && Math.abs(this.playerX) > this.world.roadHalfWidth - 0.85;
-    const offTrackGripPenalty = isOffTrack ? 0.65 : 1.0;
-    const tireResponse = (0.6 + 0.4 * phys.handling) * offTrackGripPenalty;
-
-    const steerLatVel =
-      Math.sin(this.headingAngle) * speedMs * (this.traffic.roadMode === 'track' ? 0.90 : 0.62) * offTrackGripPenalty +
-      this.steerInput * steerPower * Math.min(1, this.speedKmh / 35); // no sideways creep when standing
-    let desiredLatVel = steerLatVel + centrifugalDriftVel;
-
-    // Track only: the car sliding with its tail out (updateDrift). Sideways, the front tyres have
-    // less left to steer with, the engine drives the car where its nose points, and tyres dragged
-    // across the road scrub speed, most of all in a spin.
-    const drift = this.updateDrift(dt, { throttle, brake, layout, isOffTrack });
-    if (drift > 0) {
-      const slip = Math.abs(Math.sin(this.driftAngle));
-      if (desiredLatVel * this.driftAngle > 0) desiredLatVel *= 1 - 0.5 * drift;
-      desiredLatVel += Math.sin(this.driftAngle) * speedMs * 0.16 * throttle;
-      const spun = Math.abs(this.driftAngle) > DRIFT_SPIN_ANGLE - 0.1;
-      this.speedKmh = Math.max(0, this.speedKmh - slip * (spun ? 95 : 16 + this.speedKmh * 0.09) * dt);
+      this.updateRoadDriving(dt, { throttle, steerShare, phys, speedRatio, isCentering, isWet });
     }
     this.tyreSmoke.update(dt, {
-      amount: drift,
+      amount: isTrackRoad ? this.tyreSmokeAmount : 0,
       x: this.playerX,
-      yaw: -(this.headingAngle + this.driftAngle),
+      yaw: -this.headingAngle,
       speedMs,
       night: this.world.weatherKey !== 'day',
     });
-
-    // Track only: the tyres can hold v²·κ of cornering up to their grip. Past it the car runs a
-    // wider arc than the corner and its nose turns out at (needed − grip) / v rad/s, so carrying
-    // 230 km/h into a corner sends it off; under the limit the spare grip pulls it back in line.
-    let trackSlipG = 0;
-    if (this.traffic.roadMode === 'track' && speedMs > 1) {
-      const gripAccel =
-        TRACK_GRIP_G * GRAVITY * (0.75 + 0.25 * phys.handling) * wetFactor * offTrackGripPenalty * steerShare *
-        (1 + 0.12 * drift); // a car held in a drift is turned into the corner already
-      const neededAccel = speedMs * speedMs * Math.abs(curveKappa);
-      const outward = -Math.sign(curveKappa) || Math.sign(this.trackSlideAngle);
-      if (neededAccel > gripAccel) {
-        this.trackSlideAngle += outward * ((neededAccel - gripAccel) / speedMs) * dt;
-        this.trackSlideAngle = THREE.MathUtils.clamp(this.trackSlideAngle, -0.35, 0.35);
-        // Tyres pushing wide scrub speed
-        this.speedKmh = Math.max(0, this.speedKmh - (neededAccel - gripAccel) * 0.35 * 3.6 * dt);
-        trackSlipG = (neededAccel - gripAccel) / GRAVITY;
-      } else if (this.trackSlideAngle !== 0) {
-        const recover = Math.max(0.6, (gripAccel - neededAccel) / speedMs) * dt;
-        this.trackSlideAngle =
-          Math.sign(this.trackSlideAngle) * Math.max(0, Math.abs(this.trackSlideAngle) - recover);
-      }
-      desiredLatVel += Math.sin(this.trackSlideAngle) * speedMs;
-    } else {
-      this.trackSlideAngle = 0;
-      this.driftAngle = 0;
-      this.driftRate = 0;
-      this.driftLoose = 0;
-    }
-    const prevLatVel = this.lateralVel;
-    const tireCorneringStiffness = isCentering
-      ? 12.5 * wetFactor
-      : (9.2 - speedRatio * 1.4) * wetFactor * tireResponse * steerShare * (1 - 0.55 * drift); // sliding, the car keeps going the way it was
-    this.lateralVel = THREE.MathUtils.lerp(
-      this.lateralVel,
-      desiredLatVel,
-      Math.min(1, dt * tireCorneringStiffness)
-    );
-    if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralVel) < 0.01) {
-      this.lateralVel = 0;
-    }
-    // A knock from another car slides this one sideways for a moment on top of its own steering
-    this.playerX += (this.lateralVel + this.knockVel) * dt;
-    this.knockVel *= Math.exp(-dt * 3.5);
-    if (Math.abs(this.knockVel) < 0.02) this.knockVel = 0;
-
-    // Smooth lateral G-force (includes steady cornering load inside highway curves, 0 on straightaways)
-    const latAccelG = (this.lateralVel - prevLatVel) / (Math.max(0.001, dt) * 24.0);
-    const rawLatG = (this.lateralVel - centrifugalDriftVel * 0.75) / 9.8 + latAccelG * 0.25;
-    this.lateralG = THREE.MathUtils.lerp(this.lateralG, rawLatG, Math.min(1, dt * 12));
-    this.trackSlipG = trackSlipG; // drives the tyre squeal while the car washes wide
-    if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralG) < 0.005) {
-      this.lateralG = 0;
-    }
-
-    // Keep car inside highway/track boundaries
-    if (this.traffic.roadMode === 'track') {
-      const absX = Math.abs(this.playerX);
-      const trackEdgeX = this.world.roadHalfWidth - 0.85; // 8.35m: white line / outer edge of kerb
-      const barrierWallX = this.world.roadHalfWidth + 3.0; // 12.2m: outer tire barrier / Armco wall
-
-      // 1. Kerb rumble zone (7.35m to 8.35m)
-      if (absX > this.world.roadHalfWidth - 1.85 && this.speedKmh > 35) {
-        this.shakeIntensity = Math.max(this.shakeIntensity, 0.09 * Math.min(1, this.speedKmh / 150));
-      }
-
-      // 2. Off-track run-off / gravel trap zone (8.35m to 12.2m) - NO invisible rail at white line!
-      if (absX > trackEdgeX) {
-        const offTrackDepth = absX - trackEdgeX;
-        // Heavy gravel trap drag scrubs speed rapidly so you cannot wall-ride around corners
-        const gravelDecel = 78 + offTrackDepth * 38;
-        this.speedKmh = Math.max(38, this.speedKmh - gravelDecel * dt);
-        this.shakeIntensity = Math.max(
-          this.shakeIntensity,
-          (0.18 + Math.min(0.24, offTrackDepth * 0.08)) * Math.min(1, this.speedKmh / 90)
-        );
-        if (this.combo > 1) {
-          this.combo = 1;
-          this.comboProgress = 0;
-        }
-        const nowMs = performance.now();
-        if (!this._lastOffTrackWarnMs || nowMs - this._lastOffTrackWarnMs > 2200) {
-          this._lastOffTrackWarnMs = nowMs;
-          this.showMakasNotification('⚠️ PİST DIŞI! ÇAKIL HAVUZU (HIZ KAYBI)', 0, 'normal');
-          this.sound.playTireChirp(this.speedKmh);
-        }
-      }
-
-      // 3. Outer Tire Barrier / Armco Wall Impact (> 12.2m)
-      if (absX > barrierWallX) {
-        this.playerX = Math.sign(this.playerX) * (barrierWallX - 0.35);
-        this.lateralVel *= -0.35;
-        this.headingAngle *= 0.25;
-        this.trackSlideAngle = 0;
-        this.driftAngle = 0;
-        this.driftRate = 0;
-        this.driftLoose = 0;
-        this.rollVel += -Math.sign(this.playerX) * 0.3;
-        this.handleCollision('💥 BARİYERE ÇARPTIN! VİRAJA ÇOK HIZLI GİRDİN');
-      }
-    } else {
-      const maxLateralX = this.world.roadHalfWidth - 1.05;
-      if (Math.abs(this.playerX) > maxLateralX) {
-        this.playerX = Math.sign(this.playerX) * maxLateralX;
-        this.lateralVel *= -0.3;
-        this.headingAngle *= 0.3;
-        this.rollVel += -Math.sign(this.playerX) * 0.2;
-        this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
-        // Slight speed scrub on barrier scrape
-        this.speedKmh = Math.max(0, this.speedKmh - 28 * dt);
-      }
-    }
 
     // 5. Critically Damped Suspension Dynamics (Smooth Weight Transfer, Zero Straight-Line Bounce)
     //    How far the body leans and dives is the car's own (car.js → chassis): a tall, softly
@@ -3267,6 +3226,10 @@ class OtobanMakasGame {
     // Move cockpit 3D group laterally (keep group rotation neutral so camera doesn't double-rotate)
     this.cockpit.group.position.x = this.playerX;
     this.cockpit.group.rotation.set(0, 0, 0);
+    // On the track the cabin turns with the car, all the way round in a spin, and the driver
+    // inside it looks towards where the car is sliding to
+    const cabinTurns = isTrackRoad && !CAMERA_PRESETS[this.cameraPresetIndex].chase;
+    if (cabinTurns) this.cockpit.group.rotation.y = -this.headingAngle;
 
     // 6. Driver Head Camera Movement (Rock-solid on straightaways, natural lean in turns)
     const preset = CAMERA_PRESETS[this.cameraPresetIndex];
@@ -3284,10 +3247,13 @@ class OtobanMakasGame {
       // car sliding across the picture; it drops back a little as the car pulls away and at speed
       if (!Number.isFinite(this.chaseX)) this.chaseX = this.playerX;
       this.chaseX += (this.playerX - this.chaseX) * Math.min(1, dt * 3.2);
-      // In a drift it swings out to the side the tail slides to, so the car is seen at an angle
-      this.camera.position.x = (this.chaseX - this.playerX) * 0.65 + shakeX * 4 - this.driftAngle * 2.4;
+      // On the track it stands behind the way the car is going (chaseYaw), so in a slide the
+      // car is seen at an angle
+      const behind = isTrackRoad ? this.chaseYaw : 0;
+      const back = preset.offset.z + this.accelFeel * 0.7 + Math.min(1, this.speedKmh / 260) * 0.9;
+      this.camera.position.x = (this.chaseX - this.playerX) * 0.65 + shakeX * 4 - Math.sin(behind) * back;
       this.camera.position.y = preset.offset.y + shakeY * 4;
-      this.camera.position.z = preset.offset.z + this.accelFeel * 0.7 + Math.min(1, this.speedKmh / 260) * 0.9;
+      this.camera.position.z = Math.cos(behind) * back;
     }
 
     // The driver looks into the bend coming up: the road's curvature a speed-dependent distance
@@ -3298,8 +3264,9 @@ class OtobanMakasGame {
     this.headTurn = THREE.MathUtils.lerp(this.headTurn, lookTarget, Math.min(1, dt * 2.5));
 
     // Camera yaw & roll reflect smooth vehicle nose heading and suspension lean
-    // (in a drift the whole car is turned into the corner: the view swings with most of that)
-    this.camera.rotation.y = -this.headingAngle * 0.52 - this.driftAngle * 0.7 + this.headTurn;
+    this.camera.rotation.y = cabinTurns
+      ? this.headTurn - THREE.MathUtils.clamp(this.trackCar.slip * 0.45, -0.45, 0.45)
+      : -this.headingAngle * 0.52 + this.headTurn;
     this.camera.rotation.z = this.bodyRoll * 0.75;
     // The nose rides the same waves a little, so the horizon drifts gently with the body
     this.camera.rotation.x = this.bodyPitch * 0.65 + heave * 0.45;
@@ -3308,7 +3275,9 @@ class OtobanMakasGame {
       // bend it swings with the road, less than the driver's head does
       this.camera.rotation.set(
         -preset.lookDown,
-        -this.headingAngle * 0.25 + this.headTurn * 0.6 + this.camera.position.x * 0.07,
+        isTrackRoad
+          ? -this.chaseYaw + this.headTurn * 0.6 + (this.chaseX - this.playerX) * 0.045
+          : -this.headingAngle * 0.25 + this.headTurn * 0.6 + this.camera.position.x * 0.07,
         this.bodyRoll * 0.2
       );
     }
@@ -3352,7 +3321,7 @@ class OtobanMakasGame {
       dt,
       {
         playerX: this.playerX,
-        speedKmh: this.speedKmh,
+        speedKmh: isTrackRoad ? speedMs * 3.6 : this.speedKmh, // what carries the car along the road
         headingAngle: this.headingAngle,
         bodyRoll: this.bodyRoll,
         highBeam: this.keys.highBeam,
@@ -3518,8 +3487,7 @@ class OtobanMakasGame {
 
     const squealG = Math.max(
       Math.abs(this.lateralG),
-      this.trackSlipG ? 0.6 + this.trackSlipG : 0,
-      Math.abs(this.driftAngle) > 0.08 ? 0.5 + Math.abs(this.driftAngle) : 0, // tyres howling in a drift
+      this.tyreHowl, // tyres sliding on the track
       absActive && this.speedKmh > 50 ? 0.5 : 0 // tyres chattering on the ABS
     );
     this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, squealG);
@@ -3532,7 +3500,7 @@ class OtobanMakasGame {
       rpm: this.rpm,
       gear: this.gear,
       throttle,
-      headingAngle: this.headingAngle + this.driftAngle, // the replay shows the car sideways too
+      headingAngle: this.headingAngle,
       bodyRoll: this.bodyRoll,
       bodyPitch: this.bodyPitch,
       highBeam: this.keys.highBeam,

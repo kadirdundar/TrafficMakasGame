@@ -32,6 +32,8 @@ export const DEFAULT_PERFORMANCE = Object.freeze({
 });
 
 const ROLLING_DRAG = 1.5;
+// Off the pedals the engine holds the car back by this much (km/h per second)
+export const ENGINE_BRAKING = 6;
 // Net full-throttle acceleration (km/h/s) at the start and end of the climb to the limiter
 const CLIMB_START_ACCEL = 1.5;
 const CLIMB_END_ACCEL = 0.38;
@@ -82,7 +84,7 @@ export function resolvePhysics(stats) {
 export function longitudinalAccel(phys, speedKmh, throttle, brake) {
   // Resistance grows with the square of speed (aero drag) plus a small rolling term,
   // so the car pulls hard in town but has to fight the air at the top of its range.
-  const resistance = phys.aeroDrag * speedKmh * speedKmh + ROLLING_DRAG;
+  const resistance = roadResistance(phys, speedKmh);
 
   if (throttle > 0) {
     // Constant-power engine: thrust ~ P / v, capped by tyre traction at low speed
@@ -109,7 +111,12 @@ export function longitudinalAccel(phys, speedKmh, throttle, brake) {
     return -(phys.brakeDecel * brake + resistance);
   }
   // Off throttle: engine braking + drag (bleeds speed faster at 200+), rolling to a stop
-  return -(6 + resistance);
+  return -(ENGINE_BRAKING + resistance);
+}
+
+// Air and rolling resistance (km/h per second) at a speed
+export function roadResistance(phys, speedKmh) {
+  return phys.aeroDrag * speedKmh * speedKmh + ROLLING_DRAG;
 }
 
 // Seconds from a standstill to `targetKmh` at full throttle
