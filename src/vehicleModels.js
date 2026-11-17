@@ -1128,9 +1128,9 @@ function wetStreakGeometries(width) {
   if (!geos) {
     const tail = { xs: [-width * 0.36, width * 0.36], width: 0.42 };
     geos = {
-      tail: roadQuads({ ...tail, hex: 0xff2032, k: 0.5 }),
-      brake: roadQuads({ ...tail, hex: 0xff3043, k: 1 }),
-      head: roadQuads({ xs: [-width * 0.38, width * 0.38], width: 0.6, hex: 0xe4eeff, k: 0.55 }),
+      tail: roadQuads({ ...tail, hex: 0xff2032, k: 0.35 }),
+      brake: roadQuads({ ...tail, hex: 0xff3043, k: 0.7 }),
+      head: roadQuads({ xs: [-width * 0.38, width * 0.38], width: 0.6, hex: 0xe4eeff, k: 0.4 }),
     };
     WET_STREAKS.set(key, geos);
   }
