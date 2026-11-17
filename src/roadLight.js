@@ -32,7 +32,8 @@ export function fadeInFog(material) {
   return material;
 }
 
-// A pool of lamp light: bright under the lamp, fading softly to nothing at the edge
+// A pool of lamp light: a broad, even glow under the lamp (no hot spot), fading softly to nothing
+// at the edge
 export function createLampPoolTexture() {
   const S = 128;
   const canvas = document.createElement('canvas');
@@ -40,9 +41,9 @@ export function createLampPoolTexture() {
   canvas.height = S;
   const ctx = canvas.getContext('2d');
   const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.3, 'rgba(255,255,255,0.62)');
-  g.addColorStop(0.62, 'rgba(255,255,255,0.18)');
+  g.addColorStop(0, 'rgba(255,255,255,0.8)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.72, 'rgba(255,255,255,0.16)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);

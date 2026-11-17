@@ -30,7 +30,7 @@ export const WEATHER_PRESETS = {
     roadRoughness: 0.42,
     roadMetalness: 0.2,
     streetlightsOn: true,
-    lampPool: 0.6, // how bright the pools under the street lamps are (0: none)
+    lampPool: 0.3, // how bright the pools under the street lamps are (0: none)
     rain: false,
   },
   rain: {
@@ -50,7 +50,7 @@ export const WEATHER_PRESETS = {
     streetlightsOn: true,
     // A wet road scatters less of the lamps' light back up: its pools are fainter, the lights
     // show as streaks on the water instead (roadLight.js)
-    lampPool: 0.3,
+    lampPool: 0.15,
     rain: true,
   },
   sunset: {
@@ -68,7 +68,7 @@ export const WEATHER_PRESETS = {
     roadRoughness: 0.36,
     roadMetalness: 0.25,
     streetlightsOn: true,
-    lampPool: 0.12,
+    lampPool: 0.06,
     rain: false,
   },
   day: {
@@ -1545,7 +1545,7 @@ export class HighwayWorld {
     lampPoolGeo.translate(0, 0, -0.5).scale(1, 1, 15); // 15 m long, centred under the lamps
     // On a wet road: each lamp's reflection, a streak from its foot towards the viewer. The
     // texture is laid back to front (its bright part near the viewer, see STREAK_REACH).
-    const lampStreakGeo = roadQuads({ xs: [0], width: 1.1, hex: 0xffc277, k: 0.55, vNear: 1, vFar: 0 });
+    const lampStreakGeo = roadQuads({ xs: [0], width: 1.1, hex: 0xffc277, k: 0.35, vNear: 1, vFar: 0 });
 
     const redReflectorMat = new THREE.MeshBasicMaterial({ color: 0xff2233 });
     const whiteReflectorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
