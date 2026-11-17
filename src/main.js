@@ -53,15 +53,15 @@ const ABS_PEDAL = 0.85;
 const BRIDGE_JOINT_M = 30;
 const ROAD_SEAM_M = 420;
 const WHEELBASE_M = 2.9;
-// Changing up under power the gearbox cuts the engine's drive for a moment (for 40 % of the car's
-// shiftSec): the nose dips as the push goes and the car squats when it comes back. A quick
-// dual-clutch box (shiftSec 0.25) keeps SHIFT_KEEP_QUICK of the drive for a short, sharp cut, a
-// slow automatic (0.6) SHIFT_KEEP_SLOW for a longer, softer one.
-const SHIFT_CUT_SHARE = 0.4;
-const SHIFT_KEEP_QUICK = 0.2;
-const SHIFT_KEEP_SLOW = 0.6;
-const SHIFT_NOD = 0.16; // pitch kick (rad/s) as the drive goes, at full throttle and a full cut
-const SHIFT_SQUAT = 0.2; // and as it comes back
+// Changing up under power the gearbox eases the engine's drive for a moment (for 30 % of the
+// car's shiftSec): the nose dips a touch as the push softens and the car settles back when it
+// returns. Kept light: a hint of the change, not a jolt. A quick dual-clutch box (shiftSec 0.25)
+// keeps SHIFT_KEEP_QUICK of the drive, a slow automatic (0.6) SHIFT_KEEP_SLOW.
+const SHIFT_CUT_SHARE = 0.3;
+const SHIFT_KEEP_QUICK = 0.7;
+const SHIFT_KEEP_SLOW = 0.85;
+const SHIFT_NOD = 0.06; // pitch kick (rad/s) as the drive goes, at full throttle and a full cut
+const SHIFT_SQUAT = 0.08; // and as it comes back
 // Where the player's car ends in front (the car is centred on z = 0, the chase view draws it so)
 const OWN_NOSE_Z = -2.5;
 // Body heave on the springs: ~1.1 Hz, damping ratio ~0.4 (a soft, floating ride)
