@@ -1,3 +1,5 @@
+import { loadEngineSamples } from './engineSamples.js';
+
 // Procedural Web Audio Synthesizer for Engine, Turbo, Horn, Makas Whoosh & Rain
 //
 // The engine is heard from inside the cabin: a firing-order tone that follows the real RPM, an
@@ -17,6 +19,13 @@ const OVERRUN_FROM = 0.4;
 const BLOWOFF_FROM_BOOST = 0.35;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+// Recorded engine (engineSamples.js): how loud its loops play into the cabin chain next to the
+// synthesised tone (more through a thin cabin, as the tone itself gets harder there), and how
+// much of the synthesised tone stays under them (its clean low end)
+const SAMPLE_LEVEL = 1;
+const SAMPLE_LEVEL_OPEN = 2;
+const SYNTH_UNDER_SAMPLES = 0.35;
 
 // Low-pass corner of the muffle filter: open (inaudible) and closed in ("underwater")
 const OPEN_HZ = 20000;
@@ -82,6 +91,9 @@ export class SoundEngine {
     this.lifted = false;
     this.overrunUntil = 0;
     this.overrunLength = 1;
+    // Recorded engine of the current car: one looping voice per loop (see useEngineSamples)
+    this.sampleVoices = null;
+    this.sampleSetId = null;
   }
 
   init() {
@@ -133,6 +145,11 @@ export class SoundEngine {
     this.noise.start();
 
     this.setupEngine();
+    if (this.sampleSetId) {
+      const id = this.sampleSetId;
+      this.sampleSetId = null;
+      this.useEngineSamples(id);
+    }
     this.setupRoadNoise();
     this.setupTunnelAcoustics();
     this.setupTireSound();
@@ -237,9 +254,18 @@ export class SoundEngine {
     this.engineGain = ctx.createGain();
     this.engineGain.gain.value = 0.0;
 
+    // How much of the synthesised tone plays (less under a recorded engine)
+    this.synthLevel = ctx.createGain();
+    this.synthLevel.gain.value = 1;
+    // Recorded engine loops join after the tone's own shaping, into the cabin's filter
+    this.sampleBus = ctx.createGain();
+    this.sampleBus.gain.value = SAMPLE_LEVEL;
+    this.sampleBus.connect(this.cabinFilter);
+
     this.lopeGain.connect(this.driveGain);
     this.driveGain.connect(shaper);
-    shaper.connect(bodyEq);
+    shaper.connect(this.synthLevel);
+    this.synthLevel.connect(bodyEq);
     bodyEq.connect(this.cabinFilter);
     this.cabinFilter.connect(this.engineGain);
     this.engineGain.connect(this.master);
@@ -423,6 +449,71 @@ export class SoundEngine {
   // tone runs over, how much of it the cabin lets in and how loud the turbos are
   setEngineProfile(drivetrain) {
     this.engine = { ...DEFAULT_ENGINE, ...drivetrain };
+    this.useEngineSamples(this.engine.engineSound || null);
+  }
+
+  // Plays the car's recorded engine (engineSamples.js) in place of most of the synthesised tone,
+  // once it has loaded; null goes back to the synthesised tone alone
+  useEngineSamples(id) {
+    if (id === this.sampleSetId && (this.sampleVoices || !id)) return;
+    this.sampleSetId = id;
+    if (!this.ctx) return; // set up in init()
+    this.stopEngineSamples();
+    if (!id) return;
+    loadEngineSamples(this.ctx, id)
+      .then((loaded) => {
+        if (!loaded || this.sampleSetId !== id || this.sampleVoices) return;
+        const now = this.ctx.currentTime;
+        const { buffer, set } = loaded;
+        this.sampleVoices = set.loops.map((loop) => {
+          const src = this.ctx.createBufferSource();
+          src.buffer = buffer;
+          src.loop = true;
+          src.loopStart = loop.start / set.rate;
+          src.loopEnd = (loop.start + loop.length) / set.rate;
+          const gain = this.ctx.createGain();
+          gain.gain.value = 0;
+          src.connect(gain);
+          gain.connect(this.sampleBus);
+          // Each voice starts at its own point in the loop, so they never line up
+          src.start(now, src.loopStart + Math.random() * (src.loopEnd - src.loopStart));
+          return { rpm: loop.rpm, src, gain };
+        });
+      })
+      .catch((err) => console.warn('Motor sesi kaydı yüklenemedi, sentez sesi kullanılıyor:', err));
+  }
+
+  stopEngineSamples() {
+    for (const v of this.sampleVoices || []) {
+      v.src.stop();
+      v.src.disconnect();
+      v.gain.disconnect();
+    }
+    this.sampleVoices = null;
+    this.synthLevel?.gain.setTargetAtTime(1, this.ctx.currentTime, 0.1);
+  }
+
+  // The two loops either side of the revs play, each sped up or slowed down to them, faded into
+  // each other by how close the revs are to one or the other (equal power: they are unlike)
+  updateEngineSamples(now, rpm, open) {
+    const voices = this.sampleVoices;
+    if (!voices) return;
+    this.sampleBus.gain.setTargetAtTime(SAMPLE_LEVEL * (1 + open * SAMPLE_LEVEL_OPEN), now, 0.1);
+    let hi = voices.findIndex((v) => v.rpm >= rpm);
+    if (hi === -1) hi = voices.length - 1;
+    const lo = Math.max(0, hi - 1);
+    let mix = 1;
+    if (hi !== lo && rpm > voices[lo].rpm) {
+      mix = Math.log(rpm / voices[lo].rpm) / Math.log(voices[hi].rpm / voices[lo].rpm);
+    } else if (hi !== lo) {
+      mix = 0;
+    }
+    voices.forEach((v, i) => {
+      const level = i === lo && i === hi ? 1 : i === lo ? Math.cos((mix * Math.PI) / 2) : i === hi ? Math.sin((mix * Math.PI) / 2) : 0;
+      v.gain.gain.setTargetAtTime(level, now, 0.03);
+      v.src.playbackRate.setTargetAtTime(Math.max(0.5, Math.min(2, rpm / v.rpm)), now, 0.025);
+    });
+    this.synthLevel.gain.setTargetAtTime(SYNTH_UNDER_SAMPLES, now, 0.1);
   }
 
   // A wheel over an expansion joint or a seam: a short, low thud through the floor
@@ -482,6 +573,7 @@ export class SoundEngine {
     this.halfOrder.o.frequency.setTargetAtTime(firingHz / 2, now, 0.025);
     this.crankOrder.o.frequency.setTargetAtTime(r / 60, now, 0.025);
     this.lopeLfo.frequency.setTargetAtTime(firingHz / 8, now, 0.025);
+    this.updateEngineSamples(now, r, open);
     this.lopeDepth.gain.setTargetAtTime(0.025 + (1 - rpmNorm) * 0.04, now, 0.1);
 
     // Audi A8 acoustic isolation: subdued, creamy, whisper-quiet background hum

@@ -24,6 +24,8 @@ export const DEFAULT_DRIVETRAIN = Object.freeze({
   // Under braking a sporty gearbox changes down early to keep the engine above these revs,
   // blipping the throttle on every change (0: it waits until the revs have fallen right off)
   brakeShiftRpm: 0,
+  // Recorded engine sound set (src/engineSamples.js), or null for the synthesised engine alone
+  engineSound: null,
 });
 
 export const DEFAULT_CHASSIS = Object.freeze({

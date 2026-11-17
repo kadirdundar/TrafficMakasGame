@@ -16,7 +16,7 @@ export default {
   price: 0,
   performance: { topSpeed: 250, power: 0.84, traction: 0.86, handling: 0.9, braking: 0.92, upgradeCost: 1 },
   // Audi A8 60 TFSI: 4.0 V8 biturbo, ZF 8-speed automatic, quattro, double glazing
-  drivetrain: { gears: [5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64], finalDrive: 2.85, wheelCircumference: 2.23, redline: 6500, cylinders: 8, insulation: 1, turbo: 1 },
+  drivetrain: { gears: [5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64], finalDrive: 2.85, wheelCircumference: 2.23, redline: 6500, cylinders: 8, insulation: 1, turbo: 1, engineSound: 'v8' },
   chassis: { layout: 'awd', mass: 2100, roll: 1, pitch: 1 },
   credit: {
     title: 'Audi A8 Custom 2018',
