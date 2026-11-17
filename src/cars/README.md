@@ -69,7 +69,7 @@ fiziği kullanır. Açıkken aracın fiziği bu değerlerden ve alınan yükselt
 
 Mevcut araçlar: A8 (başlangıç, 250 km/s, 0-100 3,9 sn), M4 CS (15.000), G 700 (18.000, hızlı
 kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra). Giriş seviyesi: Passat B5 (3.000,
-200 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s), C 200 (12.000, 246 km/s). Yükseltmeler, spoylerler, jant renkleri,
+200 km/s), Linea (3.000, 195 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s), C 200 (12.000, 246 km/s). Yükseltmeler, spoylerler, jant renkleri,
 kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 
 Fren: `braking: 1` kuru yolda 1,15 g'dir (hava direnci buna eklenir, yani araç yüksek hızdan
@@ -122,7 +122,7 @@ vites oranları devir göstergesini ve motor sesini sürer, ivmeyi değiştirmez
 | Alan | Anlamı |
 | --- | --- |
 | `modelUrl`, `scale` | Kokpit GLB'si ve ölçeği. |
-| `cluster` | Gösterge çizimi: `'bmw'` ya da iki kadranlı çizim; kadranlar arasındaki marka `'audi'` (halkalar), `'vw'` (amblem), `'mercedes'` (AMG), `'brabus'`, `'porsche'`, `'toyota'`, `'ford'` (`src/cockpit.js` → `CLUSTER_LETTERING`, `paint3DScreen`). |
+| `cluster` | Gösterge çizimi: `'bmw'` ya da iki kadranlı çizim; kadranlar arasındaki marka `'audi'` (halkalar), `'vw'` (amblem), `'mercedes'` (AMG), `'brabus'`, `'porsche'`, `'toyota'`, `'ford'`, `'fiat'` (`src/cockpit.js` → `CLUSTER_LETTERING`, `paint3DScreen`). |
 | `defaultEye` | Sürücü gözünün model içindeki konumu (GLB'de `eye` extras'ı varsa o kullanılır). |
 | `wheelRadius`, `steerSign` | Direksiyon çemberi (dokunmatik direksiyon için) ve dönüş yönü. |
 | `softMaterials`, `tints` | Deri/döşeme malzemeleri (mat yapılır) ve isteğe bağlı koyulaştırma (`{ ad: 0.4 }`). |
