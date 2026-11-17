@@ -62,6 +62,9 @@ const SHIFT_KEEP_QUICK = 0.7;
 const SHIFT_KEEP_SLOW = 0.85;
 const SHIFT_NOD = 0.06; // pitch kick (rad/s) as the drive goes, at full throttle and a full cut
 const SHIFT_SQUAT = 0.08; // and as it comes back
+// Changing down, the gearbox blips the throttle: the revs flare this far past the new gear's and
+// settle back in ~0.2 s
+const REV_BLIP = 0.07;
 // Where the player's car ends in front (the car is centred on z = 0, the chase view draws it so)
 const OWN_NOSE_Z = -2.5;
 // Body heave on the springs: ~1.1 Hz, damping ratio ~0.4 (a soft, floating ride)
@@ -406,6 +409,7 @@ class OtobanMakasGame {
     this.shiftCutSec = 0; // s the engine's drive is still cut for an upshift (see updatePhysics)
     this.shiftCutKeep = 1; // share of the drive left during that cut
     this.shiftKick = 0; // how hard the drive comes back when the cut ends
+    this.revBlip = 0; // 1 right after a downshift's throttle blip, dies away (see updatePhysics)
     this._viewerPos = new THREE.Vector3();
     this.knockVel = 0; // m/s sideways, from a knock by another car; dies away on its own
     this.steerLossSec = 0; // the wheel is jolted out of the driver's hands for this long
@@ -2200,6 +2204,7 @@ class OtobanMakasGame {
     this.accelFeel = 0;
     this.shiftCutSec = 0;
     this.shiftKick = 0;
+    this.revBlip = 0;
     // Online the room shares one traffic (the host's): it is not reset for one player
     if (!this.multiplayer.connected) this.traffic.resetTraffic();
     if (this.traffic.roadMode === 'track') {
@@ -3193,7 +3198,7 @@ class OtobanMakasGame {
     const drivetrain = this.drivetrain;
     const shiftClockSec = performance.now() / 1000;
     if (shiftClockSec - this.lastShiftAt > drivetrain.shiftSec) {
-      const targetGear = nextGear(drivetrain, this.speedKmh, this.gear, throttle);
+      const targetGear = nextGear(drivetrain, this.speedKmh, this.gear, throttle, brake);
       if (targetGear !== this.gear) {
         const upshift = targetGear > this.gear;
         this.sound.triggerGearShift(upshift);
@@ -3204,13 +3209,15 @@ class OtobanMakasGame {
           this.shiftKick = throttle * (1 - this.shiftCutKeep);
           this.pitchVel -= SHIFT_NOD * this.shiftKick * this.chassis.pitch;
         }
+        if (!upshift && this.speedKmh > 15) this.revBlip = 1;
         this.gear = targetGear;
         this.lastShiftAt = shiftClockSec;
       }
     }
 
+    this.revBlip = Math.max(0, this.revBlip - dt * 5);
     const targetRpm = THREE.MathUtils.clamp(
-      rpmInGear(drivetrain, this.speedKmh, this.gear),
+      rpmInGear(drivetrain, this.speedKmh, this.gear) * (1 + REV_BLIP * this.revBlip),
       drivetrain.idleRpm,
       drivetrain.redline
     );
@@ -3536,7 +3543,7 @@ class OtobanMakasGame {
       this.tyreHowl, // tyres sliding on the track
       absActive && this.speedKmh > 50 ? 0.5 : 0 // tyres chattering on the ABS
     );
-    this.sound.updateEngine(this.rpm, driveThrottle, this.speedKmh, this.paused, squealG);
+    this.sound.updateEngine(this.rpm, driveThrottle, this.speedKmh, this.paused, squealG, throttle);
     this.updateHUD();
 
     // Zero-overhead 10s ring buffer recording (writes flat typed arrays only, ~0.01ms)
