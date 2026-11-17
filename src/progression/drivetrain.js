@@ -19,6 +19,11 @@ export const DEFAULT_DRIVETRAIN = Object.freeze({
   // how loud the turbos are over it (0 for an engine without one)
   insulation: 1,
   turbo: 1,
+  // Pops and bangs from the exhaust when the gas is lifted at high revs (0: none, 1: loud)
+  crackle: 0,
+  // Under braking a sporty gearbox changes down early to keep the engine above these revs,
+  // blipping the throttle on every change (0: it waits until the revs have fallen right off)
+  brakeShiftRpm: 0,
 });
 
 export const DEFAULT_CHASSIS = Object.freeze({
@@ -48,19 +53,25 @@ export function rpmInGear(drivetrain, speedKmh, gear) {
 // The gear an automatic box would be in next: one up past the shift point, or as many down as
 // the pedal asks for (a kickdown may skip gears, as long as the lower gear is not itself past
 // its shift point). Off the pedal it changes up early and cruises quietly; flat out it holds
-// each gear to just under the redline.
-export function nextGear(drivetrain, speedKmh, gear, throttle) {
+// each gear to just under the redline. On the brakes a sporty box (brakeShiftRpm) changes down
+// one gear at a time to keep the revs up, and does not change up again until the brake is off.
+export function nextGear(drivetrain, speedKmh, gear, throttle, brake = 0) {
   const top = drivetrain.gears.length;
   const upshiftRpm = drivetrain.cruiseShiftRpm + throttle * (drivetrain.redline * 0.93 - drivetrain.cruiseShiftRpm);
-  const downshiftRpm = 1150 + throttle * drivetrain.redline * 0.34;
+  const braking = brake > 0.15 && drivetrain.brakeShiftRpm > 0;
+  const kickdownRpm = 1150 + throttle * drivetrain.redline * 0.34;
+  const downshiftRpm = braking ? Math.max(kickdownRpm, drivetrain.brakeShiftRpm) : kickdownRpm;
+  // The lower gear must not land past this many revs
+  const ceilingRpm = braking ? drivetrain.redline * 0.8 : upshiftRpm - 300;
   let target = Math.min(gear, top);
-  if (target < top && rpmInGear(drivetrain, speedKmh, target) > upshiftRpm) return target + 1;
+  if (!braking && target < top && rpmInGear(drivetrain, speedKmh, target) > upshiftRpm) return target + 1;
   while (
     target > 1 &&
     rpmInGear(drivetrain, speedKmh, target) < downshiftRpm &&
-    rpmInGear(drivetrain, speedKmh, target - 1) < upshiftRpm - 300
+    rpmInGear(drivetrain, speedKmh, target - 1) < ceilingRpm
   ) {
     target -= 1;
+    if (braking) break;
   }
   return target;
 }

@@ -6,7 +6,15 @@
 // cylinders, rev range, cabin insulation and turbos over that (setEngineProfile).
 
 // The A8, until a car is selected
-const DEFAULT_ENGINE = { cylinders: 8, idleRpm: 700, redline: 6500, insulation: 1, turbo: 1, shiftSec: 0.4 };
+const DEFAULT_ENGINE = { cylinders: 8, idleRpm: 700, redline: 6500, insulation: 1, turbo: 1, shiftSec: 0.4, crackle: 0 };
+
+// Lifting off: the pedal counts as lifted below LIFT_PEDAL if it was past LIFT_FROM_PEDAL a moment
+// before (a quick lift, not a slow ease off). Pops follow a lift above OVERRUN_FROM of the rev
+// range, the turbo's blow-off one with at least BLOWOFF_FROM_BOOST of boost built up.
+const LIFT_PEDAL = 0.12;
+const LIFT_FROM_PEDAL = 0.6;
+const OVERRUN_FROM = 0.4;
+const BLOWOFF_FROM_BOOST = 0.35;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
@@ -68,6 +76,12 @@ export class SoundEngine {
     this.lastEngineUpdate = 0;
     this.shiftDipUntil = 0;
     this.shiftDipLevel = 1;
+    // Downshift throttle blip, and what lifting off the gas sets going (see updateEngine)
+    this.blipUntil = 0;
+    this.recentPedal = 0; // the most pedal of the last ~0.4 s
+    this.lifted = false;
+    this.overrunUntil = 0;
+    this.overrunLength = 1;
   }
 
   init() {
@@ -429,7 +443,9 @@ export class SoundEngine {
     osc.stop(now + 0.12);
   }
 
-  updateEngine(rpm, throttle, speedKmh, paused, lateralG = 0) {
+  // `throttle` is the drive the engine gives (less during an upshift), `pedal` how far the
+  // driver's foot is down
+  updateEngine(rpm, throttle, speedKmh, paused, lateralG = 0, pedal = throttle) {
     if (!this.ctx || !this.running) return;
     const now = this.ctx.currentTime;
     const dt = Math.min(0.1, Math.max(0, now - this.lastEngineUpdate));
@@ -449,10 +465,14 @@ export class SoundEngine {
     const rpmNorm = clamp01((r - idleRpm) / (redline - idleRpm));
     const speedNorm = clamp01(speedKmh / 260);
 
-    // Load follows the pedal with a little lag; boost builds more slowly (turbo spool)
-    this.load += (throttle - this.load) * Math.min(1, dt * 4);
+    // Load follows the pedal with a little lag (a downshift blip snaps it open for a moment);
+    // boost builds more slowly (turbo spool)
+    const blipping = now < this.blipUntil;
+    const loadTarget = blipping ? Math.max(throttle, 0.9) : throttle;
+    this.load += (loadTarget - this.load) * Math.min(1, dt * (blipping ? 30 : 4));
     const boostTarget = throttle * clamp01((r - 1600) / 2400);
     this.boost += (boostTarget - this.boost) * Math.min(1, dt * (boostTarget > this.boost ? 2 : 5));
+    this.updateLiftOff(now, dt, pedal, rpmNorm, open);
 
     // Firing frequency: a four-stroke engine fires half its cylinders per crank revolution
     // (a V8 four times, a four-cylinder twice, which is why it sounds an octave lower)
@@ -519,15 +539,123 @@ export class SoundEngine {
     }
   }
 
-  // Gear change: the engine note dips on the way up and blips on the way down. A torque
-  // converter or dual clutch does it in a tenth of a second; a manual box (a long shiftSec)
-  // lets the engine drop right off while the clutch is in.
+  // Gear change: the engine note dips on the way up. On the way down the box blips the throttle
+  // to match the revs: the note swells and turns harder for a moment (the revs themselves flare
+  // in main.js → REV_BLIP). A torque converter or dual clutch does it in a tenth of a second; a
+  // manual box (a long shiftSec) lets the engine drop right off while the clutch is in.
   triggerGearShift(isUpShift = true) {
     if (!this.ctx || this.muted) return;
     const now = this.ctx.currentTime;
     const manual = this.engine.shiftSec >= 0.5;
-    this.shiftDipLevel = isUpShift ? (manual ? 0.45 : 0.78) : 1.12;
-    this.shiftDipUntil = now + (manual ? 0.26 : isUpShift ? 0.1 : 0.12);
+    this.shiftDipLevel = isUpShift ? (manual ? 0.45 : 0.78) : 1.35;
+    this.shiftDipUntil = now + (manual ? 0.26 : isUpShift ? 0.1 : 0.16);
+    if (!isUpShift) this.blipUntil = now + 0.13;
+  }
+
+  // Lifting off the gas quickly: a turbo engine dumps its boost (blow-off) and a sporty exhaust
+  // pops and bangs for a second or so while the revs are high (overrun)
+  updateLiftOff(now, dt, pedal, rpmNorm, open) {
+    this.recentPedal = Math.max(pedal, this.recentPedal - dt * 2.5);
+    if (pedal > 0.4) {
+      this.lifted = false;
+      this.overrunUntil = 0; // back on the gas: the pops stop
+    } else if (!this.lifted && pedal < LIFT_PEDAL && this.recentPedal > LIFT_FROM_PEDAL) {
+      this.lifted = true;
+      if (this.engine.turbo > 0 && this.boost > BLOWOFF_FROM_BOOST) {
+        this.playBlowOff(this.boost, open);
+        this.boost *= 0.2;
+      }
+      if (this.engine.crackle > 0 && rpmNorm > OVERRUN_FROM) {
+        this.overrunLength = 0.5 + rpmNorm * 1.0;
+        this.overrunUntil = now + this.overrunLength;
+      }
+    }
+
+    // Pops come thick at first and thin out as the revs and the unburnt fuel run down
+    if (now < this.overrunUntil) {
+      const left = (this.overrunUntil - now) / this.overrunLength;
+      const perSecond = this.engine.crackle * (4 + 12 * rpmNorm) * left;
+      if (Math.random() < perSecond * dt) this.playPop((0.5 + 0.5 * left) * (0.6 + 0.4 * Math.random()), open);
+    }
+  }
+
+  // One pop on the overrun: a sharp crack of noise through the exhaust's resonance, over a short
+  // low thud. Heard mostly through a thin cabin (insulation).
+  playPop(strength, open) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.005;
+    const level = strength * this.engine.crackle * (0.25 + open) * this.volumes.engine;
+    if (level < 0.01) return;
+    const dur = 0.03 + Math.random() * 0.05;
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise.buffer;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 240 + Math.random() * 520;
+    band.Q.value = 1.4;
+    const crack = ctx.createGain();
+    crack.gain.setValueAtTime(0.0001, t);
+    crack.gain.exponentialRampToValueAtTime(0.11 * level, t + 0.003);
+    crack.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(band);
+    band.connect(crack);
+    crack.connect(this.master);
+    src.start(t, Math.random() * (src.buffer.duration - 0.2), dur + 0.02);
+
+    const thud = ctx.createOscillator();
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(95 + Math.random() * 35, t);
+    thud.frequency.exponentialRampToValueAtTime(48, t + dur);
+    const body = ctx.createGain();
+    body.gain.setValueAtTime(0.0001, t);
+    body.gain.exponentialRampToValueAtTime(0.09 * level, t + 0.004);
+    body.gain.exponentialRampToValueAtTime(0.0001, t + dur * 1.4);
+    thud.connect(body);
+    body.connect(this.master);
+    thud.start(t);
+    thud.stop(t + dur * 1.5);
+  }
+
+  // The turbo's blow-off valve venting the boost: a hiss of air falling in pitch. Strong turbos
+  // (turbo ≥ 2) flutter a little as it dies away.
+  playBlowOff(boost, open) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const { turbo } = this.engine;
+    const level = boost * Math.min(1.5, turbo / 1.5) * (0.35 + open) * this.volumes.engine;
+    if (level < 0.02) return;
+    const dur = 0.32 + boost * 0.18;
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise.buffer;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 2.2;
+    band.frequency.setValueAtTime(3600, t);
+    band.frequency.exponentialRampToValueAtTime(1300, t + dur);
+    const hiss = ctx.createGain();
+    hiss.gain.setValueAtTime(0.0001, t);
+    hiss.gain.exponentialRampToValueAtTime(0.05 * level, t + 0.02);
+    hiss.gain.setTargetAtTime(0.0001, t + 0.06, dur / 3.5);
+    src.connect(band);
+    band.connect(hiss);
+    hiss.connect(this.master);
+    src.start(t, Math.random() * (src.buffer.duration - dur - 0.1), dur + 0.1);
+
+    if (turbo >= 2) {
+      const flutter = ctx.createOscillator();
+      flutter.frequency.setValueAtTime(26, t);
+      flutter.frequency.linearRampToValueAtTime(17, t + dur);
+      const depth = ctx.createGain();
+      depth.gain.setValueAtTime(0.0001, t);
+      depth.gain.linearRampToValueAtTime(0.02 * level, t + 0.08);
+      depth.gain.linearRampToValueAtTime(0.0001, t + dur);
+      flutter.connect(depth);
+      depth.connect(hiss.gain);
+      flutter.start(t);
+      flutter.stop(t + dur + 0.05);
+    }
   }
 
   setHorn(active) {

@@ -92,6 +92,8 @@ vites oranları devir göstergesini ve motor sesini sürer, ivmeyi değiştirmez
 | `drivetrain.cylinders` | Silindir sayısı: ateşleme frekansını, yani sesin perdesini belirler. |
 | `drivetrain.insulation` | Kabin yalıtımı: 1 çift camlı limuzin (A8), 0'a doğru egzoz sesi içeri girer (spor araç ~0.35-0.45, eski sedan ~0.5-0.6). |
 | `drivetrain.turbo` | Turbo sesinin gücü; atmosferik motorda 0. |
+| `drivetrain.crackle` | Gazdan hızla çekince yüksek devirde egzoz patlamaları: 0 yok (varsayılan), 1 AMG GT kadar gürültülü. Duyulma oranı kabin yalıtımına da bağlı. |
+| `drivetrain.brakeShiftRpm` | Frenlerken şanzımanın devri en az bu kadar tutmak için vitesleri teker teker, ara gazla küçültmesi (spor araç ~2600-3100). 0 (varsayılan): devir düşene kadar bekler. |
 | `chassis.layout` | `'fwd'`, `'rwd'` ya da `'awd'`. Önden çekiş tam gazda (≈130 km/s altı) dışa açar, arkadan itiş burnu içeri çevirir; dört çeker yağmurda kalkış çekişini en az kaybeder. |
 | `chassis.mass` | Kütle (kg): çarpışmada ne kadar savrulduğunu ve ne kadar hız kaybettiğini belirler (trafik kütleleri `drivetrain.js` → `TRAFFIC_MASS`). |
 | `chassis.roll`, `chassis.pitch` | Virajda yatma ve gaz/frende dalma, A8'e göre çarpan (G 700 1.9 / 1.6, 911 0.5 / 0.55). Büyük değer aynı zamanda daha yavaş oturan bir gövde demektir. |

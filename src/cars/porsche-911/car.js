@@ -17,7 +17,7 @@ export default {
   price: 55000,
   performance: { topSpeed: 295, power: 1.04, traction: 1.08, handling: 1.16, braking: 1.12, upgradeCost: 1.5 },
   // 3.0 flat-six biturbo behind the rear axle, 8-speed PDK
-  drivetrain: { gears: [4.89, 3.17, 2.15, 1.56, 1.18, 0.94, 0.76, 0.61], finalDrive: 3.39, wheelCircumference: 2.15, idleRpm: 800, redline: 7500, cruiseShiftRpm: 2300, shiftSec: 0.25, cylinders: 6, insulation: 0.4, turbo: 2 },
+  drivetrain: { gears: [4.89, 3.17, 2.15, 1.56, 1.18, 0.94, 0.76, 0.61], finalDrive: 3.39, wheelCircumference: 2.15, idleRpm: 800, redline: 7500, cruiseShiftRpm: 2300, shiftSec: 0.25, cylinders: 6, insulation: 0.4, turbo: 2, crackle: 0.5, brakeShiftRpm: 3100 },
   chassis: { layout: 'rwd', mass: 1550, roll: 0.5, pitch: 0.55 },
   credit: {
     title: '2021 Porsche 911 Targa 4S',
