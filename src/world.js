@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import {
+  STREAK_REACH,
+  aimStreak,
+  createLampPoolTexture,
+  fadeInFog,
+  roadQuads,
+  wetStreakMaterial,
+} from './roadLight.js';
 
 // Objects on this layer are drawn by the main camera but skipped by the rear-view mirror
 export const MIRROR_SKIP_LAYER = 1;
@@ -12,14 +20,17 @@ export const WEATHER_PRESETS = {
     skyColor: 0x0d1528,
     fogColor: 0x131e36,
     fogDensity: 0.0022,
-    ambientIntensity: 1.25,
+    // Kept low at night: the street lamps' pools and the headlights light the road, the space
+    // between them stays dark (the cabin keeps its own light)
+    ambientIntensity: 0.62,
     ambientColor: 0x9bb4e8,
     hemiGroundColor: 0x2a364f,
-    dirIntensity: 1.1,
+    dirIntensity: 0.55,
     dirColor: 0xa5c4ff,
     roadRoughness: 0.42,
     roadMetalness: 0.2,
     streetlightsOn: true,
+    lampPool: 0.6, // how bright the pools under the street lamps are (0: none)
     rain: false,
   },
   rain: {
@@ -29,14 +40,17 @@ export const WEATHER_PRESETS = {
     skyColor: 0x0b1220,
     fogColor: 0x121c30,
     fogDensity: 0.0032,
-    ambientIntensity: 1.05,
+    ambientIntensity: 0.58,
     ambientColor: 0x8aa4d6,
     hemiGroundColor: 0x222d42,
-    dirIntensity: 0.9,
+    dirIntensity: 0.45,
     dirColor: 0x8ab0ff,
     roadRoughness: 0.18, // Wet shiny asphalt
     roadMetalness: 0.48,
     streetlightsOn: true,
+    // A wet road scatters less of the lamps' light back up: its pools are fainter, the lights
+    // show as streaks on the water instead (roadLight.js)
+    lampPool: 0.3,
     rain: true,
   },
   sunset: {
@@ -54,6 +68,7 @@ export const WEATHER_PRESETS = {
     roadRoughness: 0.36,
     roadMetalness: 0.25,
     streetlightsOn: true,
+    lampPool: 0.12,
     rain: false,
   },
   day: {
@@ -780,6 +795,8 @@ export class HighwayWorld {
 
     this.sceneryItems = [];
     this.lampFixtures = [];
+    this.lampPoolMat = null;
+    this.wetRoad = false;
     this.rainSystem = null;
 
     // Player Headlights & High-beam (Selektör) SpotLights
@@ -1406,7 +1423,8 @@ export class HighwayWorld {
       this.scene.remove(seg);
       seg.traverse((o) => {
         o.geometry?.dispose();
-        if (o.material) {
+        // The road streaks' material is shared with the traffic and outlives the segments
+        if (o.material && o.material !== wetStreakMaterial()) {
           o.material.map?.dispose();
           o.material.dispose();
         }
@@ -1504,6 +1522,30 @@ export class HighwayWorld {
       color: 0xffd27d,
     });
     this.lampFixtures.push(lampGlowMat);
+
+    // The light the lamps throw on the road: a warm pool under each lamp head, brighter towards
+    // the lanes than over the verge. One shared quad pair, drawn for every segment in one batch;
+    // how bright it is follows the weather (preset.lampPool, see applyWeather).
+    this.lampPoolMat = fadeInFog(
+      new THREE.MeshBasicMaterial({
+        map: createLampPoolTexture(),
+        color: 0xffc98c,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+    );
+    const lampHeadX = half - 0.85; // |x| of the lamp heads (poleX - side * 2.2 below)
+    const poolW = Math.min(11, half * 1.3);
+    const lampPoolGeo = roadQuads({ xs: [-half * 0.6, half * 0.6], width: poolW, y: 0.025 });
+    lampPoolGeo.translate(0, 0, -0.5).scale(1, 1, 15); // 15 m long, centred under the lamps
+    // On a wet road: each lamp's reflection, a streak from its foot towards the viewer. The
+    // texture is laid back to front (its bright part near the viewer, see STREAK_REACH).
+    const lampStreakGeo = roadQuads({ xs: [0], width: 1.1, hex: 0xffc277, k: 0.55, vNear: 1, vFar: 0 });
 
     const redReflectorMat = new THREE.MeshBasicMaterial({ color: 0xff2233 });
     const whiteReflectorMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -1779,6 +1821,17 @@ export class HighwayWorld {
       buildings.layers.set(MIRROR_SKIP_LAYER);
       highwayGroup.add(buildings);
       [...poleParts, ...bulbParts, ...buildingParts].forEach((g) => g.dispose());
+
+      // Light of the two lamps on the road, and their reflections when it is wet (turned
+      // towards the viewer every frame, see update)
+      highwayGroup.add(new THREE.Mesh(lampPoolGeo, this.lampPoolMat));
+      segGroup.lampStreaks = [-1, 1].map((side) => {
+        const streak = new THREE.Mesh(lampStreakGeo, wetStreakMaterial());
+        streak.position.x = side * lampHeadX;
+        streak.visible = false;
+        highwayGroup.add(streak);
+        return streak;
+      });
 
       // Overhead Highway Gantry Sign every 6 segments
       if (i % 6 === 2 && !twoWay) {
@@ -2284,26 +2337,31 @@ export class HighwayWorld {
     }
   }
 
+  // Falling rain: each drop is a short thin line along the way it moves past the car (down, and
+  // towards us as fast as we drive), the streak a falling drop leaves in the eye. Vertex 2i is
+  // the drop, 2i + 1 the end of its streak.
   buildRainParticles() {
     const count = 1400;
-    const positions = new Float32Array(count * 3);
+    const positions = new Float32Array(count * 6);
     for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 28;
-      positions[i * 3 + 1] = Math.random() * 14;
-      positions[i * 3 + 2] = 10 - Math.random() * 140;
+      const x = (Math.random() - 0.5) * 28;
+      const y = Math.random() * 14;
+      const z = 10 - Math.random() * 140;
+      positions.set([x, y, z, x, y + 0.5, z], i * 6);
     }
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-    const mat = new THREE.PointsMaterial({
-      color: 0xa5d8ff,
-      size: 0.14,
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x9fb8d8,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.38,
+      depthWrite: false,
     });
 
-    this.rainSystem = new THREE.Points(geo, mat);
+    this.rainSystem = new THREE.LineSegments(geo, mat);
+    this.rainSystem.frustumCulled = false; // its drops are always around the car
     this.rainSystem.visible = false;
     this.scene.add(this.rainSystem);
   }
@@ -2340,6 +2398,17 @@ export class HighwayWorld {
 
     if (this.rainSystem) {
       this.rainSystem.visible = preset.rain;
+    }
+
+    if (this.lampPoolMat) {
+      this.lampPoolMat.opacity = preset.lampPool ?? 0;
+      this.lampPoolMat.visible = this.lampPoolMat.opacity > 0;
+    }
+    // On a wet road every light also throws a streak towards the viewer (lamps here, the
+    // traffic's in traffic.js)
+    this.wetRoad = Boolean(preset.rain);
+    if (!this.wetRoad) {
+      for (const seg of this.sceneryItems) seg.lampStreaks?.forEach((s) => (s.visible = false));
     }
 
     // Adjust player low-beams based on day/night
@@ -2461,6 +2530,18 @@ export class HighwayWorld {
       const isHighway = zone === 'highway';
 
       if (seg.highwayGroup) seg.highwayGroup.visible = !isTrack && isHighway;
+      if (this.wetRoad && seg.lampStreaks && !isTrack && isHighway) {
+        // Each lamp's reflection points from the foot of the lamp at the camera
+        const yaw = seg.rotation.y;
+        const cos = Math.cos(yaw);
+        const sin = Math.sin(yaw);
+        for (const streak of seg.lampStreaks) {
+          const lx = streak.position.x;
+          const lampX = seg.position.x + lx * cos;
+          const lampZ = seg.position.z - lx * sin;
+          aimStreak(streak, lampX, lampZ, yaw, STREAK_REACH.lamp, 70);
+        }
+      }
       if (seg.tunnelGroup) seg.tunnelGroup.visible = !isTrack && isTunnel;
       if (seg.bridgeGroup) seg.bridgeGroup.visible = !isTrack && isBridge;
       if (seg.trackGroup) {
@@ -2578,17 +2659,25 @@ export class HighwayWorld {
     if (this.rainSystem && this.rainSystem.visible) {
       const pos = this.rainSystem.geometry.attributes.position;
       const arr = pos.array;
-      const count = pos.count;
-      const dy = 18 * dt;
-      const dz = speedMs * dt * 0.85;
+      const count = pos.count / 2;
+      const fall = 18;
+      const rush = speedMs * 0.85;
+      const dy = fall * dt;
+      const dz = rush * dt;
+      // The streak covers ~1/30 s of the drop's path
+      const tailY = fall * 0.033;
+      const tailZ = rush * 0.033;
       for (let i = 0; i < count; i++) {
-        const idx = i * 3;
+        const idx = i * 6;
         let y = arr[idx + 1] - dy;
         let z = arr[idx + 2] + dz;
         if (y < 0) y = 14;
         if (z > 10) z -= 140;
         arr[idx + 1] = y;
         arr[idx + 2] = z;
+        arr[idx + 3] = arr[idx];
+        arr[idx + 4] = y + tailY;
+        arr[idx + 5] = z - tailZ;
       }
       pos.needsUpdate = true;
     }

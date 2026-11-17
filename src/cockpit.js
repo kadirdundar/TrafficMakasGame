@@ -942,6 +942,9 @@ export class CarCockpit {
         flash: this.makasFlashIntensity,
         wiperSweep: Math.sin(this.wiperPhase),
         wipersVisible: this.wipersEnabled || this.wiperPhase > 0.01,
+        dt,
+        raining: Boolean(state.rainOnGlass),
+        speedKmh: speedKmh || 0,
       });
       if (this.camera) this.wheelScreenBounds = this.interior3d.getWheelScreenBounds(this.camera);
       // The overlay canvas stays in place (it receives wheel drags) but draws nothing

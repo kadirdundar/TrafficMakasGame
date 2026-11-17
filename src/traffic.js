@@ -60,6 +60,7 @@ export class TrafficManager {
     this.roadMode = 'highway'; // 'highway' | 'twoway'
     this.isRemoteControlled = false;
     this.nightLights = null; // Synced from world.weatherKey in update()
+    this.wetRoad = false; // rain: the cars' lamps leave streaks on the road (also from update())
 
     // Track recent makas timestamp to detect "ÇİFT MAKAS / İĞNE DELİĞİ" (threading the needle between 2 cars)
     this.lastMakasTime = 0;
@@ -74,6 +75,11 @@ export class TrafficManager {
     this.nightLights = night;
     setVehicleLightsNightMode(night);
     for (const car of this.vehicles) car.visual.setNight(night);
+  }
+
+  setWetRoad(wet) {
+    this.wetRoad = wet;
+    for (const car of this.vehicles) car.visual.setWet(wet);
   }
 
   setDensity(mode) {
@@ -184,6 +190,7 @@ export class TrafficManager {
           car.leftBlinker = built.leftBlinker;
           car.rightBlinker = built.rightBlinker;
           if (this.nightLights !== null) built.setNight(this.nightLights);
+          built.setWet(this.wetRoad);
         });
         this.onModelsReady?.();
       })
@@ -670,6 +677,8 @@ export class TrafficManager {
     if (world) {
       const night = Boolean(WEATHER_PRESETS[world.weatherKey]?.streetlightsOn);
       if (night !== this.nightLights) this.setNightLights(night);
+      const wet = Boolean(WEATHER_PRESETS[world.weatherKey]?.rain);
+      if (wet !== this.wetRoad) this.setWetRoad(wet);
     }
 
     // Traffic has to cover the whole pack: from the leading player to the trailing one
@@ -885,6 +894,7 @@ export class TrafficManager {
       car.mesh.position.set(car.x + curveX + car.knockX, curveY, car.z);
       car.mesh.rotation.y = laneChangeYaw + curveYaw + car.knockYaw + (car.dir < 0 ? Math.PI : 0);
       car.visual.setDistance(Math.abs(car.z));
+      if (this.wetRoad) car.visual.placeWetStreak(car.dir);
 
       // 4. COLLISION & MAKAS (NEAR-MISS) DETECTION around Z = 0
       const absZ = Math.abs(car.z);

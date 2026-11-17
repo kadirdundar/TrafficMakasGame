@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { STREAK_REACH, aimStreak, roadQuads, wetStreakMaterial } from './roadLight.js';
 
 // Modern procedural traffic vehicles.
 // Every body style is built ONCE (side-profile extrusions with rounded bevels, wheel arches,
@@ -1118,6 +1119,24 @@ function createPaintMaterial(paintHex) {
   return mat;
 }
 
+// Reflections of a car's lamps on a wet road (roadLight.js): the pair of tail lights, brighter
+// while braking, and the pair of headlights. Shared by every car of about the same width.
+const WET_STREAKS = new Map();
+function wetStreakGeometries(width) {
+  const key = Math.round(width * 20);
+  let geos = WET_STREAKS.get(key);
+  if (!geos) {
+    const tail = { xs: [-width * 0.36, width * 0.36], width: 0.42 };
+    geos = {
+      tail: roadQuads({ ...tail, hex: 0xff2032, k: 0.5 }),
+      brake: roadQuads({ ...tail, hex: 0xff3043, k: 1 }),
+      head: roadQuads({ xs: [-width * 0.38, width * 0.38], width: 0.6, hex: 0xe4eeff, k: 0.55 }),
+    };
+    WET_STREAKS.set(key, geos);
+  }
+  return geos;
+}
+
 const PLATE_DETAIL_M = 70;
 const RIM_DETAIL_M = 140;
 // A car model is drawn from its light copy past FAR_DETAIL_M and from the full one again once
@@ -1177,6 +1196,15 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
   }
   if (lamps) lamps.userData.batchGeometries = geo.lamps.flat();
 
+  // On a wet road the lamps at the end of the car that faces the viewer leave a streak on the
+  // water towards them (placeWetStreak). Level with the road, like the glows.
+  const streaks = wetStreakGeometries(spec.width);
+  const streak = new THREE.Mesh(streaks.tail, wetStreakMaterial());
+  streak.visible = false;
+  streak.userData.batchGeometries = [streaks.tail, streaks.brake, streaks.head];
+  group.add(streak);
+  const halfLength = spec.length / 2;
+
   // Full and far-away geometry of each part (models only; a procedural car is light already)
   const farGeo = geo.far || null;
   const lod = farGeo
@@ -1192,6 +1220,7 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
 
   let braking = false;
   let night = false;
+  let wet = false;
   let detail = 2;
   let isFar = false;
   const showLights = () => {
@@ -1214,6 +1243,24 @@ export function createTrafficVehicle(spec, index, variant, paintHex, model = nul
       night = isNight;
       if (glows) glows.visible = isNight;
       showLights();
+    },
+    setWet(isWet) {
+      wet = isWet;
+      if (!wet) streak.visible = false;
+    },
+    // Called every frame on a wet road, once the car is in place: a car ahead going our way
+    // shows its tail lights, one coming the other way (or following us, in the mirror) its
+    // headlights. `dir` is the car's direction (1 our way).
+    placeWetStreak(dir) {
+      if (!wet) return;
+      const tailFacesViewer = (group.position.z < 0) === (dir > 0);
+      const end = tailFacesViewer ? halfLength : -halfLength;
+      streak.position.z = end;
+      streak.geometry = tailFacesViewer ? (braking ? streaks.brake : streaks.tail) : streaks.head;
+      const yaw = group.rotation.y;
+      const lampX = group.position.x + end * Math.sin(yaw);
+      const lampZ = group.position.z + end * Math.cos(yaw);
+      aimStreak(streak, lampX, lampZ, yaw, STREAK_REACH.car, 40);
     },
     // Small parts are only drawn near the camera: the plate within PLATE_DETAIL_M, rims and
     // chrome within RIM_DETAIL_M (past that they are a few pixels, but each is a draw call)

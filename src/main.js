@@ -22,6 +22,7 @@ import { GarageProgressUI } from './progression/garageUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
 import { MenuMusicPlayer } from './menuMusic.js';
 import { PerfProbe } from './perfProbe.js';
+import { setStreakViewer } from './roadLight.js';
 
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
@@ -42,6 +43,17 @@ const ABS_PEDAL = 0.85;
 const BRIDGE_JOINT_M = 30;
 const ROAD_SEAM_M = 420;
 const WHEELBASE_M = 2.9;
+// Changing up under power the gearbox cuts the engine's drive for a moment (for 40 % of the car's
+// shiftSec): the nose dips as the push goes and the car squats when it comes back. A quick
+// dual-clutch box (shiftSec 0.25) keeps SHIFT_KEEP_QUICK of the drive for a short, sharp cut, a
+// slow automatic (0.6) SHIFT_KEEP_SLOW for a longer, softer one.
+const SHIFT_CUT_SHARE = 0.4;
+const SHIFT_KEEP_QUICK = 0.2;
+const SHIFT_KEEP_SLOW = 0.6;
+const SHIFT_NOD = 0.16; // pitch kick (rad/s) as the drive goes, at full throttle and a full cut
+const SHIFT_SQUAT = 0.2; // and as it comes back
+// Where the player's car ends in front (the car is centred on z = 0, the chase view draws it so)
+const OWN_NOSE_Z = -2.5;
 // Body heave on the springs: ~1.1 Hz, damping ratio ~0.4 (a soft, floating ride)
 const HEAVE_SPRING = 48;
 const HEAVE_DAMPING = 5.5;
@@ -367,6 +379,10 @@ class OtobanMakasGame {
     this.rpm = 2200;
     this.gear = 3;
     this.lastShiftAt = 0;
+    this.shiftCutSec = 0; // s the engine's drive is still cut for an upshift (see updatePhysics)
+    this.shiftCutKeep = 1; // share of the drive left during that cut
+    this.shiftKick = 0; // how hard the drive comes back when the cut ends
+    this._viewerPos = new THREE.Vector3();
     this.knockVel = 0; // m/s sideways, from a knock by another car; dies away on its own
     this.steerLossSec = 0; // the wheel is jolted out of the driver's hands for this long
     this.roadJoint = -1; // last expansion joint / seam driven over
@@ -1280,14 +1296,18 @@ class OtobanMakasGame {
     this.updateHomeSummary();
   }
 
+  // Where the cabin is placed around the driver's eye: the current cockpit view's camera spot.
+  // The chase view's camera is far behind the car, so a cabin loaded while it is on (the game
+  // remembers the view) is placed for the first cockpit view instead.
+  cabinEyeAnchor() {
+    const preset = CAMERA_PRESETS[this.cameraPresetIndex || 0];
+    return (preset.chase ? CAMERA_PRESETS[0] : preset).offset;
+  }
+
   // The 3D interior is the only cockpit. While its model downloads (or if every attempt
   // fails) the photo cockpit stays on screen as a fallback so the game remains playable.
   async loadCockpit3D(attempt = 1) {
-    const applied = await this.cockpit.setMode(
-      '3d',
-      CAMERA_PRESETS[this.cameraPresetIndex || 0].offset,
-      this.selectedCar
-    );
+    const applied = await this.cockpit.setMode('3d', this.cabinEyeAnchor(), this.selectedCar);
     if (applied !== '3d' && attempt < 3) {
       setTimeout(() => this.loadCockpit3D(attempt + 1), attempt * 2000);
     }
@@ -1392,7 +1412,7 @@ class OtobanMakasGame {
     }
 
     if (this.cockpit) {
-      this.cockpit.setCarType(carId, CAMERA_PRESETS[this.cameraPresetIndex || 0].offset);
+      this.cockpit.setCarType(carId, this.cabinEyeAnchor());
     }
 
     if (this.multiplayer) {
@@ -2152,6 +2172,8 @@ class OtobanMakasGame {
     this.bodyHeave = 0; // m the body rides above/below its rest height (spring-damper)
     this.heaveVel = 0;
     this.accelFeel = 0;
+    this.shiftCutSec = 0;
+    this.shiftKick = 0;
     // Online the room shares one traffic (the host's): it is not reset for one player
     if (!this.multiplayer.connected) this.traffic.resetTraffic();
     if (this.traffic.roadMode === 'track') {
@@ -2871,7 +2893,17 @@ class OtobanMakasGame {
     const phys = Object.assign(this.roadPhysics, this.carPhysics);
     phys.brakeDecel *= brakeGrip;
     if (isWet) phys.tractionLimit *= WET_TRACTION[this.chassis.layout] ?? WET_TRACTION.awd;
-    let accelKmhPerSec = longitudinalAccel(phys, this.speedKmh, throttle, brake);
+    // In the middle of an upshift only part of the engine's drive reaches the wheels; when the
+    // next gear takes up the drive the car squats on its springs
+    const driveThrottle = this.shiftCutSec > 0 ? throttle * this.shiftCutKeep : throttle;
+    if (this.shiftCutSec > 0) {
+      this.shiftCutSec -= dt;
+      if (this.shiftCutSec <= 0) {
+        this.shiftCutSec = 0;
+        this.pitchVel += SHIFT_SQUAT * this.shiftKick * this.chassis.pitch;
+      }
+    }
+    let accelKmhPerSec = longitudinalAccel(phys, this.speedKmh, driveThrottle, brake);
 
     // ABS: flat on the pedal the wheels are held at the edge of locking, which pulses through
     // the car (more on a wet road, where they let go sooner)
@@ -2903,7 +2935,15 @@ class OtobanMakasGame {
     if (shiftClockSec - this.lastShiftAt > drivetrain.shiftSec) {
       const targetGear = nextGear(drivetrain, this.speedKmh, this.gear, throttle);
       if (targetGear !== this.gear) {
-        this.sound.triggerGearShift(targetGear > this.gear);
+        const upshift = targetGear > this.gear;
+        this.sound.triggerGearShift(upshift);
+        if (upshift && throttle > 0.3 && this.speedKmh > 15 && !burning) {
+          const slowBox = THREE.MathUtils.clamp((drivetrain.shiftSec - 0.25) / 0.35, 0, 1);
+          this.shiftCutKeep = SHIFT_KEEP_QUICK + (SHIFT_KEEP_SLOW - SHIFT_KEEP_QUICK) * slowBox;
+          this.shiftCutSec = drivetrain.shiftSec * SHIFT_CUT_SHARE;
+          this.shiftKick = throttle * (1 - this.shiftCutKeep);
+          this.pitchVel -= SHIFT_NOD * this.shiftKick * this.chassis.pitch;
+        }
         this.gear = targetGear;
         this.lastShiftAt = shiftClockSec;
       }
@@ -3219,6 +3259,10 @@ class OtobanMakasGame {
       this.world
     );
 
+    // Reflections on a wet road point at the camera (last frame's place is close enough) and
+    // end at our own car's nose
+    this.camera.getWorldPosition(this._viewerPos);
+    setStreakViewer(this._viewerPos.x, this._viewerPos.z, OWN_NOSE_Z);
     this.world.update(
       dt,
       speedMs,
@@ -3353,6 +3397,8 @@ class OtobanMakasGame {
         bodyRoll: this.bodyRoll,
         bodyPitch: this.bodyPitch,
         cabinNight: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
+        // Rain lands on the windscreen everywhere but in the tunnel
+        rainOnGlass: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.rain) && this.world.currentZone !== 'tunnel',
         radio: {
           active: this.radio.isPlaying,
           title: this.radio.currentTrack?.title || '',
@@ -3375,7 +3421,7 @@ class OtobanMakasGame {
       this.trackSlipG ? 0.6 + this.trackSlipG : 0,
       absActive && this.speedKmh > 50 ? 0.5 : 0 // tyres chattering on the ABS
     );
-    this.sound.updateEngine(this.rpm, throttle, this.speedKmh, this.paused, squealG);
+    this.sound.updateEngine(this.rpm, driveThrottle, this.speedKmh, this.paused, squealG);
     this.updateHUD();
 
     // Zero-overhead 10s ring buffer recording (writes flat typed arrays only, ~0.01ms)

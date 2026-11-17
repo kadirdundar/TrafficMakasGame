@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { applyFinish, patchCabinMaterial, resolveFinish } from './cabinFinish.js';
 import { applyAtlasPatch, applyPieceMaterial } from './cockpitDecals.js';
 import { getCar } from './cars/index.js';
+import { createWindscreenRain } from './windscreenRain.js';
 
 // 3D cockpit: interactive steering wheel, live instrument cluster screens, rear-view mirrors and
 // ambient cabin lighting, driven by a car's `cockpit` config (src/cars/<id>/car.js, fields in
@@ -207,6 +208,9 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
   const upDir = cfg.glassUp.clone().addScaledVector(restDir, -cfg.glassUp.dot(restDir)).normalize();
   const wipers = cfg.wiperPivots.map((p) => createWiper(p, cfg.glassOut, cfg.wiperLen));
   model.add(...wipers);
+  // Rain on the glass, cleared by the wipers
+  const rain = createWindscreenRain(cfg, eye);
+  if (rain) model.add(rain.mesh);
 
   // Cabin interior fill light for day & night clarity
   const cabinLight = new THREE.PointLight(0xfff5ea, 1.3, 2.5, 0.8);
@@ -280,6 +284,9 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
       flash = 0,
       wiperSweep = 0,
       wipersVisible = false,
+      dt = 0,
+      raining = false,
+      speedKmh = 0,
     }) {
       if (aspect !== lastAspect) {
         lastAspect = aspect;
@@ -319,6 +326,7 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
         _y.crossVectors(cfg.glassOut, _x);
         w.quaternion.setFromRotationMatrix(_m.makeBasis(_x, _y, cfg.glassOut));
       }
+      rain?.update({ dt, raining, speedKmh, wiperAngle: wipersVisible ? angle : null, night });
 
       if (occlusion) occlusion.cabinInverse.value.copy(model.matrixWorld).invert();
 
