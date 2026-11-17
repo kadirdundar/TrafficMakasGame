@@ -65,6 +65,14 @@ const SHIFT_SQUAT = 0.08; // and as it comes back
 // Changing down, the gearbox blips the throttle: the revs flare this far past the new gear's and
 // settle back in ~0.2 s
 const REV_BLIP = 0.07;
+// Tyre squeal on the road: from how fast the car's sideways speed changes (m/s², smoothed), so a
+// lane change stays quiet and a flick or a makas (one way, then straight back) squeals. It
+// starts above TYRE_STRAIN_FROM + TYRE_STRAIN_PER_KMH × speed and is at full strength
+// TYRE_STRAIN_SPAN above that. (A full-lock lane change reaches ~17 at 100 km/h and ~23 at 180,
+// a makas ~30 and ~36.)
+const TYRE_STRAIN_FROM = 21;
+const TYRE_STRAIN_PER_KMH = 0.04;
+const TYRE_STRAIN_SPAN = 12;
 // Where the player's car ends in front (the car is centred on z = 0, the chase view draws it so)
 const OWN_NOSE_Z = -2.5;
 // Body heave on the springs: ~1.1 Hz, damping ratio ~0.4 (a soft, floating ride)
@@ -392,6 +400,7 @@ class OtobanMakasGame {
     this.trackCar = createTrackCar(); // the car on İstanbul Park (src/trackDynamics.js)
     this.trackSetup = { layout: 'awd', cgHeight: 0.38 };
     this.tyreHowl = 0; // how hard the tyres are sliding, as the lateral g the squeal is driven with
+    this.tyreStrain = 0; // road: how fast the sideways speed changes, smoothed (m/s², see TYRE_STRAIN_*)
     this.tyreSmokeAmount = 0;
     this.chaseYaw = 0; // rad: the direction the chase camera stands behind the car in
     this.driftPoints = 0; // points of the drift in progress
@@ -2205,6 +2214,7 @@ class OtobanMakasGame {
     this.shiftCutSec = 0;
     this.shiftKick = 0;
     this.revBlip = 0;
+    this.tyreStrain = 0;
     // Online the room shares one traffic (the host's): it is not reset for one player
     if (!this.multiplayer.connected) this.traffic.resetTraffic();
     if (this.traffic.roadMode === 'track') {
@@ -3084,6 +3094,8 @@ class OtobanMakasGame {
     const rawLatG = (this.lateralVel - centrifugalDriftVel * 0.75) / 9.8 + latAccelG * 0.25;
     this.lateralG = THREE.MathUtils.lerp(this.lateralG, rawLatG, Math.min(1, dt * 12));
     this.tyreHowl = 0;
+    const sideAccel = Math.abs(this.lateralVel - prevLatVel) / Math.max(0.001, dt);
+    this.tyreStrain += (sideAccel - this.tyreStrain) * Math.min(1, dt * 5);
     if (isCentering && Math.abs(curveKappa) < 0.0003 && Math.abs(this.lateralG) < 0.005) {
       this.lateralG = 0;
     }
@@ -3538,10 +3550,18 @@ class OtobanMakasGame {
       this.roadNeon.forEach((glow) => glow.setNight(night));
     }
 
+    // The sound takes a lateral g: it is silent below 0.3 and at full strength at 0.9. On the track
+    // the tyre model's own g drives it; on the road only a sharp change of direction does.
+    const onTrack = this.traffic.roadMode === 'track';
+    const roadSqueal = THREE.MathUtils.clamp(
+      (this.tyreStrain - (TYRE_STRAIN_FROM + TYRE_STRAIN_PER_KMH * this.speedKmh)) / TYRE_STRAIN_SPAN,
+      0,
+      1
+    );
     const squealG = Math.max(
-      Math.abs(this.lateralG),
+      onTrack ? Math.abs(this.lateralG) : roadSqueal > 0 ? 0.3 + 0.6 * roadSqueal : 0,
       this.tyreHowl, // tyres sliding on the track
-      absActive && this.speedKmh > 50 ? 0.5 : 0 // tyres chattering on the ABS
+      absActive && this.speedKmh > 50 ? 0.42 : 0 // tyres chattering on the ABS
     );
     this.sound.updateEngine(this.rpm, driveThrottle, this.speedKmh, this.paused, squealG, throttle);
     this.updateHUD();

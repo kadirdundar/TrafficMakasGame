@@ -497,7 +497,7 @@ export class SoundEngine {
   // each other by how close the revs are to one or the other (equal power: they are unlike)
   updateEngineSamples(now, rpm, open) {
     const voices = this.sampleVoices;
-    if (!voices) return;
+    if (!voices?.length) return;
     this.sampleBus.gain.setTargetAtTime(SAMPLE_LEVEL * (1 + open * SAMPLE_LEVEL_OPEN), now, 0.1);
     let hi = voices.findIndex((v) => v.rpm >= rpm);
     if (hi === -1) hi = voices.length - 1;
