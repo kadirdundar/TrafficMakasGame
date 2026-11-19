@@ -20,6 +20,26 @@ const BLOWOFF_FROM_BOOST = 0.35;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+// Player volume per sound group (Ayarlar → Ses Seviyeleri), 0..MAX_VOLUME, saved in localStorage.
+// The game's own sounds each play into their group's bus (a GainNode at that volume), so a slider
+// changes them at once and 0 silences them; the menu music and the radio follow theirs in
+// menuMusic.js / radio.js. `master` scales everything.
+export const DEFAULT_VOLUMES = {
+  master: 1.0,
+  engine: 1.0, // engine tone, recorded loops, turbo, pops and blow-off
+  tire: 1.0, // tyre squeal and chirps
+  wind: 1.0, // wind, road roar, thumps over joints, rain and the whoosh past traffic
+  horn: 1.0,
+  crash: 1.0, // crashes and the engine bay catching fire
+  ui: 1.0, // clicks of the flasher and the menus
+  music: 0.7, // menu music
+  radio: 1.0,
+};
+const SFX_GROUPS = ['engine', 'tire', 'wind', 'horn', 'crash', 'ui'];
+const MAX_VOLUME = 1.5;
+const VOLUMES_KEY = 'otoban_audio_volumes';
+const clampVolume = (v) => Math.max(0, Math.min(MAX_VOLUME, v));
+
 // Recorded engine (engineSamples.js): how loud its loops play into the cabin chain next to the
 // synthesised tone (more through a thin cabin, as the tone itself gets harder there), and how
 // much of the synthesised tone stays under them (its clean low end)
@@ -69,15 +89,11 @@ export class SoundEngine {
     this.muffledHold = false; // paused: stays muffled until setMuffled(false)
     this.acousticZone = 'highway';
 
-    // Kullanıcıya özel ses seviyeleri (0.0 - 1.5 arası, varsayılan 1.0; localStorage üzerinde saklanır)
-    this.volumes = {
-      master: 1.0,
-      engine: 1.0,
-      tire: 1.0,
-      wind: 1.0,
-      music: 0.7,
-    };
+    // Kullanıcıya özel ses seviyeleri (0.0 - 1.5 arası; localStorage üzerinde saklanır)
+    this.volumes = { ...DEFAULT_VOLUMES };
     this.loadSavedVolumes();
+    this.buses = {}; // group → GainNode into the compressor (init)
+    this.echoSends = {}; // group → GainNode into the tunnel echo (setupTunnelAcoustics)
 
     // Smoothed engine load / turbo boost and gear-change envelope (see updateEngine)
     this.load = 0;
@@ -121,6 +137,13 @@ export class SoundEngine {
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.muted ? 0.0 : this.volumes.master;
     this.master.connect(this.masterGain);
+
+    for (const group of SFX_GROUPS) {
+      const bus = this.ctx.createGain();
+      bus.gain.value = this.volumes[group];
+      bus.connect(this.master);
+      this.buses[group] = bus;
+    }
 
     // Muffle: a low-pass that is wide open while driving and closes in for an "underwater" sound
     // after a crash and while the drive is paused (see muffleHit, setMuffled). The radio plays
@@ -172,7 +195,7 @@ export class SoundEngine {
     this.hornOsc1.connect(hornFilter);
     this.hornOsc2.connect(hornFilter);
     hornFilter.connect(this.hornGain);
-    this.hornGain.connect(this.master);
+    this.hornGain.connect(this.buses.horn);
     this.hornOsc1.start();
     this.hornOsc2.start();
 
@@ -268,20 +291,20 @@ export class SoundEngine {
     this.synthLevel.connect(bodyEq);
     bodyEq.connect(this.cabinFilter);
     this.cabinFilter.connect(this.engineGain);
-    this.engineGain.connect(this.master);
+    this.engineGain.connect(this.buses.engine);
   }
 
   // Turbo breath, tyre roar, wind and rain, all shaped from the shared noise source
   setupRoadNoise() {
     const ctx = this.ctx;
-    const band = (type, freq, q, gainNode) => {
+    const band = (type, freq, q, gainNode, group = 'wind') => {
       const f = ctx.createBiquadFilter();
       f.type = type;
       f.frequency.value = freq;
       f.Q.value = q;
       this.noise.connect(f);
       f.connect(gainNode);
-      gainNode.connect(this.master);
+      gainNode.connect(this.buses[group]);
       return f;
     };
     const silent = () => {
@@ -292,7 +315,7 @@ export class SoundEngine {
 
     // Twin-scroll turbos are barely audible in an A8: a soft rising whoosh, no whistle
     this.turboGain = silent();
-    this.turboFilter = band('bandpass', 1500, 1.2, this.turboGain);
+    this.turboFilter = band('bandpass', 1500, 1.2, this.turboGain, 'engine');
 
     this.roadGain = silent();
     this.roadFilter = band('lowpass', 220, 0.7, this.roadGain);
@@ -379,10 +402,10 @@ export class SoundEngine {
     this.tireShaper.connect(this.tireCabinDamp);
     this.tireCabinDamp.connect(this.tireGain);
 
-    // Ana kompresöre ve tünel yankısına bağla
-    this.tireGain.connect(this.master);
-    if (this.tunnelDelay) {
-      this.tireGain.connect(this.tunnelDelay);
+    // Lastik kanalına ve tünel yankısına bağla
+    this.tireGain.connect(this.buses.tire);
+    if (this.echoSends.tire) {
+      this.tireGain.connect(this.echoSends.tire);
     }
   }
 
@@ -412,8 +435,16 @@ export class SoundEngine {
     this.tunnelGain = ctx.createGain();
     this.tunnelGain.gain.value = 0.0;
 
+    // What each group sends into the echo follows its volume too, so 0 silences its echo as well
+    for (const group of ['engine', 'tire', 'wind']) {
+      const send = ctx.createGain();
+      send.gain.value = this.volumes[group];
+      send.connect(this.tunnelDelay);
+      this.echoSends[group] = send;
+    }
+
     if (this.cabinFilter) {
-      this.cabinFilter.connect(this.tunnelDelay);
+      this.cabinFilter.connect(this.echoSends.engine);
       this.tunnelDelay.connect(filter);
       filter.connect(feedback);
       feedback.connect(this.tunnelDelay);
@@ -526,10 +557,10 @@ export class SoundEngine {
     osc.frequency.setValueAtTime(82, now);
     osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.min(0.16, 0.085 * strength) * (this.volumes?.wind ?? 1) + 0.0001, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(Math.min(0.16, 0.085 * strength) + 0.0001, now + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
     osc.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.buses.wind);
     osc.start(now);
     osc.stop(now + 0.12);
   }
@@ -590,18 +621,18 @@ export class SoundEngine {
     // Executive cabin sound volume: quiet, calming, and never loud or raspy
     const shiftLevel = now < this.shiftDipUntil ? this.shiftDipLevel : 1;
     const engineVol =
-      (0.016 + rpmNorm * 0.022 + this.load * 0.026) * (1 + open * 1.3) * shiftLevel * this.volumes.engine;
+      (0.016 + rpmNorm * 0.022 + this.load * 0.026) * (1 + open * 1.3) * shiftLevel;
     this.engineGain.gain.setTargetAtTime(engineVol, now, 0.06);
 
     // Muted turbo breath (heavily insulated Hot-V turbos, no boy-racer whistle)
     this.turboFilter.frequency.setTargetAtTime(1100 + this.boost * 1200, now, 0.15);
-    this.turboGain.gain.setTargetAtTime(this.boost * 0.0025 * turbo * (1 + open) * this.volumes.engine, now, 0.15);
+    this.turboGain.gain.setTargetAtTime(this.boost * 0.0025 * turbo * (1 + open), now, 0.15);
 
     // Tyre roar and laminar wind create a peaceful, serene highway cruiser ambience
     this.roadFilter.frequency.setTargetAtTime(160 + speedNorm * 320, now, 0.2);
-    this.roadGain.gain.setTargetAtTime((0.010 + Math.pow(speedNorm, 1.6) * 0.045) * this.volumes.wind, now, 0.2);
+    this.roadGain.gain.setTargetAtTime((0.010 + Math.pow(speedNorm, 1.6) * 0.045), now, 0.2);
     this.windFilter.frequency.setTargetAtTime(600 + speedNorm * 800, now, 0.2);
-    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.5) * 0.0045 * this.volumes.wind, now, 0.2);
+    this.windGain.gain.setTargetAtTime(Math.pow(speedNorm, 2.5) * 0.0045, now, 0.2);
 
     // Gerçekçi lastik sesi: Hızlı ve sert sağ-sol manevralarda kauçuğun asfaltta kayma & ötüş hissi
     if (this.tireGain) {
@@ -612,8 +643,8 @@ export class SoundEngine {
       const slipExcess = Math.max(0, absG - 0.30);
       // Non-lineer kauçuk kayma tepkisi (sert manevrada belirginleşir)
       const slipIntensity = Math.min(1.0, Math.pow(slipExcess / 0.60, 1.3));
-      // Kullanıcının ayarladığı lastik sesi çarpanı ile ölçeklenir
-      const scrubVol = (paused || this.muted) ? 0.0 : Math.min(0.042, slipIntensity * 0.045 * speedFactor) * this.volumes.tire;
+      // Kullanıcının ayarladığı lastik sesi seviyesi lastik kanalında (buses.tire) uygulanır
+      const scrubVol = (paused || this.muted) ? 0.0 : Math.min(0.042, slipIntensity * 0.045 * speedFactor);
 
       // Yanal G ve hıza bağlı doğal kauçuk stick-slip formant frekans kayması
       const basePitch = 830 + Math.min(1.2, absG) * 220 + speedFactor * 50;
@@ -676,7 +707,7 @@ export class SoundEngine {
   playPop(strength, open) {
     const ctx = this.ctx;
     const t = ctx.currentTime + 0.005;
-    const level = strength * this.engine.crackle * (0.25 + open) * this.volumes.engine;
+    const level = strength * this.engine.crackle * (0.25 + open);
     if (level < 0.01) return;
     const dur = 0.03 + Math.random() * 0.05;
 
@@ -692,7 +723,7 @@ export class SoundEngine {
     crack.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(band);
     band.connect(crack);
-    crack.connect(this.master);
+    crack.connect(this.buses.engine);
     src.start(t, Math.random() * (src.buffer.duration - 0.2), dur + 0.02);
 
     const thud = ctx.createOscillator();
@@ -704,7 +735,7 @@ export class SoundEngine {
     body.gain.exponentialRampToValueAtTime(0.09 * level, t + 0.004);
     body.gain.exponentialRampToValueAtTime(0.0001, t + dur * 1.4);
     thud.connect(body);
-    body.connect(this.master);
+    body.connect(this.buses.engine);
     thud.start(t);
     thud.stop(t + dur * 1.5);
   }
@@ -715,7 +746,7 @@ export class SoundEngine {
     const ctx = this.ctx;
     const t = ctx.currentTime + 0.01;
     const { turbo } = this.engine;
-    const level = boost * Math.min(1.5, turbo / 1.5) * (0.35 + open) * this.volumes.engine;
+    const level = boost * Math.min(1.5, turbo / 1.5) * (0.35 + open);
     if (level < 0.02) return;
     const dur = 0.32 + boost * 0.18;
 
@@ -732,7 +763,7 @@ export class SoundEngine {
     hiss.gain.setTargetAtTime(0.0001, t + 0.06, dur / 3.5);
     src.connect(band);
     band.connect(hiss);
-    hiss.connect(this.master);
+    hiss.connect(this.buses.engine);
     src.start(t, Math.random() * (src.buffer.duration - dur - 0.1), dur + 0.1);
 
     if (turbo >= 2) {
@@ -768,7 +799,7 @@ export class SoundEngine {
     gain.gain.setValueAtTime(0.05, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
     osc.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.buses.ui);
     osc.start(now);
     osc.stop(now + 0.035);
   }
@@ -798,12 +829,12 @@ export class SoundEngine {
 
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.032 * (this.volumes?.tire ?? 1), now + 0.02);
+    gain.gain.linearRampToValueAtTime(0.032, now + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
 
     source.connect(f1);
     f1.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.buses.tire);
 
     source.start(now);
   }
@@ -869,9 +900,9 @@ export class SoundEngine {
     shearFilter.frequency.exponentialRampToValueAtTime(260, now + dur);
     shearFilter.Q.value = 1.6;
 
-    // Ana Rüzgar Kazanç Zarfı (Kullanıcı ses ayarı çarpanı ile ölçeklenir)
+    // Ana Rüzgar Kazanç Zarfı (kullanıcı ses ayarı rüzgar kanalında uygulanır)
     const whooshGain = this.ctx.createGain();
-    const peakGain = (isDouble ? 0.085 : isRazor ? 0.075 : 0.06) * speedRatio * (this.volumes?.wind ?? 1);
+    const peakGain = (isDouble ? 0.085 : isRazor ? 0.075 : 0.06) * speedRatio;
     whooshGain.gain.setValueAtTime(0.001, now);
     whooshGain.gain.linearRampToValueAtTime(peakGain, now + dur * 0.25);
     whooshGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
@@ -880,11 +911,11 @@ export class SoundEngine {
     noiseSource.connect(shearFilter);
     lowFilter.connect(whooshGain);
     shearFilter.connect(whooshGain);
-    whooshGain.connect(this.master);
+    whooshGain.connect(this.buses.wind);
 
     // Tünelde ise tünel duvarı yankısını ekle
-    if (this.acousticZone === 'tunnel' && this.tunnelDelay) {
-      whooshGain.connect(this.tunnelDelay);
+    if (this.acousticZone === 'tunnel' && this.echoSends.wind) {
+      whooshGain.connect(this.echoSends.wind);
     }
 
     noiseSource.start(now);
@@ -915,7 +946,7 @@ export class SoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.buses.crash);
     noise.start(now);
   }
 
@@ -950,7 +981,7 @@ export class SoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.master);
+    gain.connect(this.buses.crash);
     noise.start(now);
   }
 
@@ -999,36 +1030,33 @@ export class SoundEngine {
   }
 
   setVolume(category, value) {
-    if (!this.volumes || this.volumes[category] === undefined) return;
-    this.volumes[category] = Math.max(0, Math.min(1.5, Number(value) || 0));
+    if (!(category in DEFAULT_VOLUMES)) return;
+    this.volumes[category] = clampVolume(Number(value) || 0);
     this.saveVolumes();
+    if (!this.ctx) return;
 
-    if (this.ctx && this.running) {
-      const now = this.ctx.currentTime;
-      if (category === 'master' && this.masterGain) {
-        const target = this.muted ? 0.0 : this.volumes.master;
-        this.masterGain.gain.setTargetAtTime(target, now, 0.03);
-      }
+    const now = this.ctx.currentTime;
+    const v = this.volumes[category];
+    if (category === 'master') {
+      this.masterGain?.gain.setTargetAtTime(this.muted ? 0.0 : v, now, 0.03);
     }
+    this.buses[category]?.gain.setTargetAtTime(v, now, 0.03);
+    this.echoSends[category]?.gain.setTargetAtTime(v, now, 0.03);
   }
 
   loadSavedVolumes() {
     try {
-      const raw = localStorage.getItem('otoban_audio_volumes');
-      if (raw) {
-        const d = JSON.parse(raw);
-        if (typeof d.master === 'number') this.volumes.master = Math.max(0, Math.min(1.5, d.master));
-        if (typeof d.engine === 'number') this.volumes.engine = Math.max(0, Math.min(1.5, d.engine));
-        if (typeof d.tire === 'number') this.volumes.tire = Math.max(0, Math.min(1.5, d.tire));
-        if (typeof d.wind === 'number') this.volumes.wind = Math.max(0, Math.min(1.5, d.wind));
-        if (typeof d.music === 'number') this.volumes.music = Math.max(0, Math.min(1.5, d.music));
+      const d = JSON.parse(localStorage.getItem(VOLUMES_KEY) || 'null');
+      if (!d || typeof d !== 'object') return;
+      for (const key of Object.keys(DEFAULT_VOLUMES)) {
+        if (typeof d[key] === 'number' && Number.isFinite(d[key])) this.volumes[key] = clampVolume(d[key]);
       }
     } catch (_) {}
   }
 
   saveVolumes() {
     try {
-      localStorage.setItem('otoban_audio_volumes', JSON.stringify(this.volumes));
+      localStorage.setItem(VOLUMES_KEY, JSON.stringify(this.volumes));
     } catch (_) {}
   }
 }

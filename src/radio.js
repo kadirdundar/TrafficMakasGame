@@ -28,12 +28,15 @@ export const HUZUN_PLAYLIST = [
   },
 ];
 
+// How loud the radio plays at 100% on its slider (it sits under the engine and the road)
+const RADIO_LEVEL = 0.35;
+
 export class RadioPlayer {
   constructor(options = {}) {
     this.playlist = HUZUN_PLAYLIST;
     this.currentIndex = 0;
     this.isPlaying = false;
-    this.volume = 0.35;
+    this.volume = options.volume ?? 1.0; // the "Radyo" slider, 0..1.5
     this.masterVolume = options.masterVolume ?? 1.0;
     this.gain = null; // set once the element plays through the shared AudioContext
     this.stationName = 'HÜZÜN RADYOSU';
@@ -131,13 +134,13 @@ export class RadioPlayer {
   }
 
   applyVolume() {
-    const level = Math.max(0, Math.min(1, this.volume * this.masterVolume));
+    const level = Math.max(0, Math.min(1, RADIO_LEVEL * this.volume * this.masterVolume));
     if (this.gain) this.gain.gain.value = level;
     else this.audio.volume = level;
   }
 
   setVolume(vol) {
-    this.volume = Math.max(0, Math.min(1, vol));
+    this.volume = Math.max(0, Math.min(1.5, Number(vol) || 0));
     this.applyVolume();
   }
 

@@ -642,33 +642,20 @@
             </div>
 
             <div class="sound-sliders-list" id="sound-sliders-group">
-              <!-- Lastik / Kayma Sesi -->
+              <!-- Genel Ses (Master) -->
               <div class="sound-slider-card">
                 <div class="sound-slider-info">
                   <span class="sound-title">
-                    <span class="sound-glyph">🛞</span> Lastik &amp; Kayma Sesi
+                    <span class="sound-glyph">🔊</span> Genel Ses Düzeyi
                   </span>
-                  <span class="sound-pct" id="val-tire-volume">100%</span>
+                  <span class="sound-pct" id="val-master-volume">100%</span>
                 </div>
                 <div class="sound-track-wrap">
-                  <input type="range" class="sound-range" id="slider-tire-volume" min="0" max="150" step="5" value="100" aria-label="Lastik ve kayma sesi seviyesi" />
+                  <input type="range" class="sound-range" id="slider-master-volume" data-volume="master" min="0" max="100" step="5" value="100" aria-label="Genel ses düzeyi" />
                 </div>
               </div>
 
-              <!-- Rüzgar / Yakın Geçiş Sesi -->
-              <div class="sound-slider-card">
-                <div class="sound-slider-info">
-                  <span class="sound-title">
-                    <span class="sound-glyph">💨</span> Rüzgar &amp; Yakın Geçiş Sesi
-                  </span>
-                  <span class="sound-pct" id="val-wind-volume">100%</span>
-                </div>
-                <div class="sound-track-wrap">
-                  <input type="range" class="sound-range" id="slider-wind-volume" min="0" max="150" step="5" value="100" aria-label="Rüzgar ve yakın geçiş sesi seviyesi" />
-                </div>
-              </div>
-
-              <!-- Motor / Egzoz Sesi -->
+              <!-- Motor / Egzoz -->
               <div class="sound-slider-card">
                 <div class="sound-slider-info">
                   <span class="sound-title">
@@ -677,7 +664,72 @@
                   <span class="sound-pct" id="val-engine-volume">100%</span>
                 </div>
                 <div class="sound-track-wrap">
-                  <input type="range" class="sound-range" id="slider-engine-volume" min="0" max="150" step="5" value="100" aria-label="Motor ve egzoz sesi seviyesi" />
+                  <input type="range" class="sound-range" id="slider-engine-volume" data-volume="engine" min="0" max="150" step="5" value="100" aria-label="Motor ve egzoz sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Lastik / Kayma -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">🛞</span> Lastik &amp; Kayma Sesi
+                  </span>
+                  <span class="sound-pct" id="val-tire-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-tire-volume" data-volume="tire" min="0" max="150" step="5" value="100" aria-label="Lastik ve kayma sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Rüzgar / Yol / Yağmur / Yakın Geçiş -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">💨</span> Rüzgar, Yol &amp; Yağmur
+                  </span>
+                  <span class="sound-pct" id="val-wind-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-wind-volume" data-volume="wind" min="0" max="150" step="5" value="100" aria-label="Rüzgar, yol, yağmur ve yakın geçiş sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Korna -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">📯</span> Korna
+                  </span>
+                  <span class="sound-pct" id="val-horn-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-horn-volume" data-volume="horn" min="0" max="150" step="5" value="100" aria-label="Korna sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Çarpışma / Yangın -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">💥</span> Çarpışma &amp; Yangın
+                  </span>
+                  <span class="sound-pct" id="val-crash-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-crash-volume" data-volume="crash" min="0" max="150" step="5" value="100" aria-label="Çarpışma ve yangın sesi seviyesi" />
+                </div>
+              </div>
+
+              <!-- Arayüz / Selektör -->
+              <div class="sound-slider-card">
+                <div class="sound-slider-info">
+                  <span class="sound-title">
+                    <span class="sound-glyph">🖱️</span> Arayüz &amp; Selektör Tıkları
+                  </span>
+                  <span class="sound-pct" id="val-ui-volume">100%</span>
+                </div>
+                <div class="sound-track-wrap">
+                  <input type="range" class="sound-range" id="slider-ui-volume" data-volume="ui" min="0" max="150" step="5" value="100" aria-label="Arayüz ve selektör tık sesi seviyesi" />
                 </div>
               </div>
 
@@ -690,20 +742,20 @@
                   <span class="sound-pct" id="val-music-volume">70%</span>
                 </div>
                 <div class="sound-track-wrap">
-                  <input type="range" class="sound-range" id="slider-music-volume" min="0" max="150" step="5" value="70" aria-label="Menü müziği ses seviyesi" />
+                  <input type="range" class="sound-range" id="slider-music-volume" data-volume="music" min="0" max="150" step="5" value="70" aria-label="Menü müziği ses seviyesi" />
                 </div>
               </div>
 
-              <!-- Genel Ses (Master) -->
+              <!-- Radyo -->
               <div class="sound-slider-card">
                 <div class="sound-slider-info">
                   <span class="sound-title">
-                    <span class="sound-glyph">🔊</span> Genel Ses Düzeyi
+                    <span class="sound-glyph">📻</span> Hüzün Radyosu
                   </span>
-                  <span class="sound-pct" id="val-master-volume">100%</span>
+                  <span class="sound-pct" id="val-radio-volume">100%</span>
                 </div>
                 <div class="sound-track-wrap">
-                  <input type="range" class="sound-range" id="slider-master-volume" min="0" max="100" step="5" value="100" aria-label="Genel ses düzeyi" />
+                  <input type="range" class="sound-range" id="slider-radio-volume" data-volume="radio" min="0" max="150" step="5" value="100" aria-label="Radyo ses seviyesi" />
                 </div>
               </div>
             </div>

@@ -223,6 +223,7 @@ class OtobanMakasGame {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.traffic = new TrafficManager(this.scene);
     this.radio = new RadioPlayer({
+      volume: this.sound.volumes.radio,
       masterVolume: this.sound.volumes.master,
       onTrackChange: (track) => {
         this.showMakasNotification(`📻 HÜZÜN RADYOSU: ${track.title}`, 0, 'gold');
@@ -1951,15 +1952,28 @@ class OtobanMakasGame {
     }
   }
 
+  // Every slider in Ayarlar → Ses Seviyeleri carries its sound group in data-volume (index.html);
+  // moving it changes that group at once and saves it (SoundEngine.setVolume → localStorage).
+  // Letting go plays a short sample of the group, where it has one.
   setupAudioSettings() {
-    const bindSlider = (id, valId, category, soundPreview) => {
-      const slider = document.getElementById(id);
-      const valEl = document.getElementById(valId);
-      if (!slider) return;
+    const previews = {
+      tire: () => this.sound.playTireChirp(120),
+      wind: () => this.sound.playMakasWhoosh(1, false, 140, false),
+      horn: () => {
+        if (this.keys.horn) return; // the player is already on the horn
+        this.sound.setHorn(true);
+        clearTimeout(this.hornPreviewTimer);
+        this.hornPreviewTimer = setTimeout(() => {
+          if (!this.keys.horn) this.sound.setHorn(false);
+        }, 220);
+      },
+      crash: () => this.sound.playCrash(),
+      ui: () => this.sound.playSelektorClick(),
+    };
 
-      const current = this.sound.volumes[category] ?? 1.0;
-      slider.value = Math.round(current * 100);
-      if (valEl) valEl.textContent = `${slider.value}%`;
+    document.querySelectorAll('#sound-sliders-group [data-volume]').forEach((slider) => {
+      const category = slider.dataset.volume;
+      const valEl = document.getElementById(`val-${category}-volume`);
 
       const update = () => {
         const pct = parseInt(slider.value, 10) || 0;
@@ -1969,45 +1983,35 @@ class OtobanMakasGame {
         if (category === 'master') {
           this.menuMusic?.setMasterVolume(val);
           this.radio.setMasterVolume(val);
-        }
-        if (category === 'music') {
+        } else if (category === 'music') {
           this.menuMusic?.setVolume(val);
+        } else if (category === 'radio') {
+          this.radio.setVolume(val);
         }
       };
 
       slider.addEventListener('input', update);
       slider.addEventListener('change', () => {
         update();
-        if (soundPreview && !this.sound.muted) {
+        const preview = previews[category];
+        if (preview && !this.sound.muted) {
           this.sound.init();
-          soundPreview();
+          preview();
         }
       });
-    };
+    });
 
-    bindSlider('slider-tire-volume', 'val-tire-volume', 'tire', () => this.sound.playTireChirp(120));
-    bindSlider('slider-wind-volume', 'val-wind-volume', 'wind', () => this.sound.playMakasWhoosh(1, false, 140, false));
-    bindSlider('slider-engine-volume', 'val-engine-volume', 'engine');
-    bindSlider('slider-music-volume', 'val-music-volume', 'music');
-    bindSlider('slider-master-volume', 'val-master-volume', 'master');
-
-    document.getElementById('sound-sliders-group')?.classList.toggle('muted', this.sound.muted);
+    this.syncAudioSliders();
   }
 
   syncAudioSliders() {
-    const sync = (id, valId, category) => {
-      const slider = document.getElementById(id);
-      const valEl = document.getElementById(valId);
-      if (!slider) return;
+    document.querySelectorAll('#sound-sliders-group [data-volume]').forEach((slider) => {
+      const category = slider.dataset.volume;
       const current = this.sound.volumes[category] ?? 1.0;
       slider.value = Math.round(current * 100);
+      const valEl = document.getElementById(`val-${category}-volume`);
       if (valEl) valEl.textContent = `${slider.value}%`;
-    };
-    sync('slider-tire-volume', 'val-tire-volume', 'tire');
-    sync('slider-wind-volume', 'val-wind-volume', 'wind');
-    sync('slider-engine-volume', 'val-engine-volume', 'engine');
-    sync('slider-music-volume', 'val-music-volume', 'music');
-    sync('slider-master-volume', 'val-master-volume', 'master');
+    });
 
     document.getElementById('sound-sliders-group')?.classList.toggle('muted', this.sound.muted);
     const soundSwitch = document.getElementById('sound-switch');
