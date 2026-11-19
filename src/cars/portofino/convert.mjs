@@ -19,8 +19,9 @@ export default {
       [/Grille\dA_Material$/, 'grille'],
       [/BadgeA_Material$/, 'badge'],
     ],
-    // Engine block under the bonnet and the chassis plate under the car
-    dropNodes: ['Object_55', 'Object_19'],
+    // Engine block under the bonnet and the chassis plate under the car; prep.mjs's
+    // cockpit-only copies of the cabin, trims and paint
+    dropNodes: ['Object_55', 'Object_19', /^Object_(34|58|70)c(_\w+)?$/],
     mergeMaterials: [
       [/^black_matt$/, 'black_matt'],
       [/^grille$/, 'grille'],
@@ -43,16 +44,22 @@ export default {
   cockpit: {
     out: 'public/models/portofino-cockpit.glb',
     // Seen from the eye (lab.html → "Gözden görünen parçalar"); glass and the engine left out
+    // prep.mjs's cockpit copies (…c): the cabin with its light floor-level metal split off, the
+    // leather zone with its floor split off as carpet, the paint above the beltline only
     keepNodes: [
-      'Object_34', // the whole cabin: dash, wheel, seats, door cards, headliner
-      'Object_58', // dark trims, mirror glass
+      'Object_34c', // the whole cabin: dash, wheel, seats, door cards, headliner
+      'Object_34c_metal', // footrest, pedals and sill plates
+      'Object_58c', // leather colour zone (dash, pillars, console, seats), mirror glass
+      'Object_58c_floor', // carpet
+      'Object_34c_vents', // air vent chrome rings
+      'Object_58c_vents', // air vent vanes and barrels
       'Object_61', // carbon: wheel rim top, console, door inserts
       'Object_28', // tinted trims (colour zone)
       'Object_31', // perforated leather on the wheel and seats
       'Object_49', // vent grilles
       'Object_64', // black base trims
       'Object_67', // badges (wheel crest)
-      'Object_70', // bonnet, wings and mirror housings through the glass
+      'Object_70c', // bonnet, wings and mirror housings through the glass
       // The steering wheel, cut out of the meshes above by prep.mjs
       'Object_34_wheel', 'Object_31_wheel', 'Object_61_wheel', 'Object_67_wheel', 'Object_58_wheel', 'Object_28_wheel',
     ],
@@ -64,15 +71,22 @@ export default {
     wheelTrim: { from: ['Object_31_wheel', 'Object_61_wheel', 'Object_67_wheel', 'Object_58_wheel', 'Object_28_wheel'], radius: 0.21, axial: [-0.13, 0.07] },
     // Mirror glass: the rearward-facing triangles of the dark trim mesh inside each housing
     mirrors: [
-      { name: 'mirror_left', from: 'Object_58', x: [-1.0, -0.8], y: [0.9, 1.06], z: [-0.25, -0.05], facing: [0.41, -0.07, 0.91] },
-      { name: 'mirror_right', from: 'Object_58', x: [0.8, 1.0], y: [0.9, 1.06], z: [-0.25, -0.05], facing: [-0.41, -0.07, 0.91] },
-      { name: 'mirror_center', from: 'Object_58', x: [-0.3, 0.3], y: [1.1, 1.25], z: [-0.06, 0.03], facing: [-0.26, 0.05, 0.96] },
+      { name: 'mirror_left', from: 'Object_58c', x: [-1.0, -0.8], y: [0.9, 1.06], z: [-0.25, -0.05], facing: [0.41, -0.07, 0.91] },
+      { name: 'mirror_right', from: 'Object_58c', x: [0.8, 1.0], y: [0.9, 1.06], z: [-0.25, -0.05], facing: [-0.41, -0.07, 0.91] },
+      { name: 'mirror_center', from: 'Object_58c', x: [-0.3, 0.3], y: [1.1, 1.25], z: [-0.06, 0.03], facing: [-0.26, 0.05, 0.96] },
     ],
-    materials: [],
+    materials: [
+      // Black leather: the source's 0.07 grey at roughness 0.23 mirrored the sky (the mats and
+      // console read light grey); car.js → finishes sets the leather sheen
+      [/Coloured_Material$/, { color: [0.03, 0.03, 0.032] }],
+    ],
+    ao: { rays: 32, distance: 0.12, strength: 0.75, min: 0.4, skip: [/^MirrorMaterial$/] },
     join: true,
     cleanAttributes: true,
     simplify: { targetTris: 65000, maxError: 0.006, excludeNodes: ['steering_wheel'] },
     maxTextureSize: 1024,
+    // The cabin atlas, upscaled and sharpened by prep.mjs: every symbol on the dash sits in it
+    textureSizes: [[/InteriorA_Material/, 2048, ['baseColor']]],
     webpQuality: 90,
     compress: true,
   },

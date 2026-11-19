@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { paintFerrariCenter, paintFerrariCluster } from './screens.js';
 
 const BASE = import.meta.env.BASE_URL;
+const SRC = 'Ferrari_PortofinoRewardRecycled_2018'; // source material names
 
 // 2018 Ferrari Portofino. Model built by src/cars/portofino/prep.mjs + convert.mjs.
 // Field reference: src/cars/README.md
@@ -68,20 +70,48 @@ export default {
     wheelRadius: 0.17,
     steerSign: -1,
     softMaterials: new Set([]),
+    // Black leather over the dash, pillars, console and seats; carpet on the floor (prep.mjs); the
+    // footrest, pedals and sill plates in dark satin metal
+    finishes: {
+      [`${SRC}Coloured_Material`]: 'leather',
+      [`${SRC}InteriorTillingA_Material`]: 'leather', // perforated inserts
+      [`${SRC}InteriorTillingColourZoneA_Material`]: 'plastic',
+      [`${SRC}Base_Material`]: 'plastic',
+      [`${SRC}InteriorA_Material`]: { roughness: 0.6 },
+      [`${SRC}InteriorA_MaterialMetal`]: { roughness: 0.45, metalness: 0.35 },
+      [`${SRC}Carbon2_Material`]: { roughness: 0.3 },
+      Carpet: 'fabric',
+      VentChrome: 'satin',
+      VentPlastic: { roughness: 0.45, metalness: 0.2 },
+    },
     paintMaterials: new Set(['Ferrari_PortofinoRewardRecycled_2018Paint_Material']), // bonnet and wings through the glass
     screens: {
       // The whole binnacle face (two side screens round the centre dial), 4 mm in front of its
-      // front-most edges; ray-measured with the wheel hidden
+      // front-most edges; ray-measured with the wheel hidden. It reaches up to 0.93 so it covers
+      // the model's own static dial inside the carbon ring (the wheel rim hides the top edge)
       cluster: {
-        tl: [-0.547, 0.89, -0.331],
-        tr: [-0.195, 0.89, -0.331],
+        tl: [-0.547, 0.93, -0.3372],
+        tr: [-0.195, 0.93, -0.3372],
         bl: [-0.547, 0.812, -0.319],
         br: [-0.195, 0.812, -0.319],
         n: [0, 0.152, 0.988],
-        logical: [240, 54],
-        px: [1024, 230],
+        logical: [240, 80],
+        px: [1024, 341],
+      },
+      // The dash touchscreen: the glass triangles of the cabin atlas (u > 0.95) on its plane,
+      // 3 mm in front
+      center: {
+        tl: [-0.138, 0.803, -0.179],
+        tr: [0.168, 0.807, -0.164],
+        bl: [-0.138, 0.679, -0.148],
+        br: [0.168, 0.683, -0.134],
+        n: [-0.05, 0.24, 0.97],
+        logical: [240, 100],
+        px: [1024, 427],
       },
     },
+    // Ferrari's own displays (screens.js): yellow rev counter in the ring, map and radio
+    screenPainters: { cluster: paintFerrariCluster, center: paintFerrariCenter },
     ledPaths: [],
     // Windshield slope measured on the source glass (base y 0.90 / z -0.62, top y 1.19 / z 0.02);
     // pivots just under its base
@@ -90,5 +120,7 @@ export default {
     wiperPivots: [[-0.45, 0.885, -0.64], [0.05, 0.885, -0.66]],
     wiperLen: 0.55,
     floor: null,
+    // The model is lit without shadows: darken the footwell and lower door cards by height
+    occlusion: { y0: 0.2, y1: 0.85, min: 0.35 },
   },
 };

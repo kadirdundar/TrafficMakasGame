@@ -129,6 +129,7 @@ vites oranları devir göstergesini ve motor sesini sürer, ivmeyi değiştirmez
 | `finishes` | Malzemenin neyden yapıldığı: `{ ad: 'leather' \| 'plastic' \| 'fabric' \| 'gloss' \| 'satin' \| 'chrome' }` ya da `{ finish, roughness, metalness, color }` (`src/cabinFinish.js`). Parlaklığı ayarlar; deri, plastik ve kumaşa ince gren ekler (kendi normal haritası olan malzemeye eklenmez). `softMaterials`'tan sonra uygulanır. Gümüş parçalarda tam metal kullanma: gündüz gökyüzünü yansıtıp mavi, gece siyah görünür. |
 | `paintMaterials` | Ön camdan görünen kaput gibi koyu metalik boyanacak malzemeler. |
 | `screens.cluster` | Canlı gösterge camının köşeleri `tl/tr/bl/br`, normali `n`, `logical` boyut ve `px` çözünürlük. |
+| `screens.<ad>`, `screenPainters` | Başka canlı ekranlar (ör. orta ekran `center`) aynı alanlarla; `screenPainters: { <ad>: (ctx, w, h, durum) => … }` o ekranı aracın kendi çizimiyle boyar (`cluster` dahil; ör. `portofino/screens.js`). `durum`: hız, devir, vites, kilometre, uzun far, radyo, `redline`, `accent`. |
 | `ledPaths` | Ambiyans LED tüplerinin yolları. Model kendi şeritlerini (`ambient_led`) getiriyorsa `[]`. |
 | `glassOut`, `glassUp`, `wiperPivots`, `wiperLen` | Silecekler. |
 | `floor` | Zemini olmayan modeller için ayak boşluğu düzlemi, yoksa `null`. |

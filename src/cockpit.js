@@ -747,6 +747,13 @@ export class CarCockpit {
   paint3DScreen(name, ctx, w, h) {
     const s = this._screenState;
     if (!s) return;
+    // A car can draw its own displays (car.js → cockpit.screenPainters: { <screen name>: fn })
+    const own = getCar(this.carType)?.cockpit?.screenPainters?.[name];
+    if (own) {
+      const accent = AMBIENT_COLORS[this.ambientKey]?.css || '#00f0ff';
+      own(ctx, w, h, { ...s, redline: this.redlineRpm ?? 6500, speedoMax: this.speedoMaxKmh, accent });
+      return;
+    }
     if (name !== 'cluster') return;
     const style = getCar(this.carType)?.cockpit?.cluster || 'mercedes';
     if (style === 'bmw') {
