@@ -37,7 +37,9 @@ export default {
     // Number plates (src/cars/plate.js), metres above the ground: the rear bumper's recess
     // (ray-measured 0.50-0.67) and the plate mount under the grille
     plate: { front: { y: 0.36 }, rear: { y: 0.58 } },
-    head: { day: 0.5, night: 1.6, highBeam: 3.2 },
+    // The glow mask lights the thin LED strip at full strength: dimmer than the default so the
+    // strip reads as a lamp, not a white line
+    head: { day: 0.22, night: 0.6, highBeam: 1.6 },
     tail: { day: 0.35, night: 0.9, brake: 2.2 },
     rims: { materials: ['wheel'], tyres: ['wheel'], reach: 0.77 }, // rim and tyre share one material: stop at the rim's lip
     // Lamp bodies keep their texture; the emissive mask from the source's glow layer
@@ -48,8 +50,10 @@ export default {
       { match: /^tailLens$/, role: 'tail', color: 0x3a0006, emissive: 0xff1428, box: 'tail' },
     ],
     glow: {
-      front: { color: 0xe4eeff, opacity: 0.95, size: [1.0, 0.5], from: 'head', inset: 0.2, offset: 0.07 },
-      flare: { color: 0x9cc4ff, opacity: 0.95, size: [2.4, 1.3], offset: 0.1 },
+      // The headLight box runs back along the wings (side repeaters) and put the halo off the
+      // car's corner; ray-measured lamp face: x 0.46-0.80, 0.58-0.76 m up
+      front: { color: 0xe4eeff, opacity: 0.6, size: [0.6, 0.3], at: [0.64, 0.65, -1.95], offset: 0.07 },
+      flare: { color: 0x9cc4ff, opacity: 0.7, size: [1.8, 1.0], offset: 0.1 },
       // The tail material also covers the bumper reflectors; ray-measured round lamp: x 0.68-0.84,
       // 0.76-0.90 m up
       rear: { color: 0xff2032, opacity: 0.7, size: [0.4, 0.3], at: [0.76, 0.83, 2.05], offset: 0.06 },
