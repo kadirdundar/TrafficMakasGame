@@ -34,6 +34,9 @@ import { MenuMusicPlayer } from './menuMusic.js';
 import { PerfProbe } from './perfProbe.js';
 import { setStreakViewer } from './roadLight.js';
 
+// Longest the traffic models and the 3D cockpit wait for the garage car to download first
+const GARAGE_FIRST_MS = 4000;
+
 // Two-way road start positions per room slot: our lane, or just inside the shoulder beside it
 const TWO_WAY_START_X = [1.8, 3.0, 1.8, 3.0];
 // İstanbul Park track grid starting positions per room slot
@@ -221,7 +224,14 @@ class OtobanMakasGame {
     this.speedLinesLevel = -1;
     this.speedVignetteLevel = -1;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.traffic = new TrafficManager(this.scene);
+    // The menu's turntable car is the first thing on screen, so it downloads on its own: the
+    // traffic models and the 3D cockpit (~2 MB together) wait until it is shown, a drive
+    // starts, or GARAGE_FIRST_MS have passed, whichever comes first.
+    let openGarageGate;
+    this.garageFirst = new Promise((resolve) => (openGarageGate = resolve));
+    this.openGarageGate = () => openGarageGate();
+    setTimeout(this.openGarageGate, GARAGE_FIRST_MS);
+    this.traffic = new TrafficManager(this.scene, { modelsAfter: this.garageFirst });
     this.radio = new RadioPlayer({
       volume: this.sound.volumes.radio,
       masterVolume: this.sound.volumes.master,
@@ -351,12 +361,16 @@ class OtobanMakasGame {
           paintHex: SLOT_STYLES[this.selectedPaintSlot].paint,
           accent: AMBIENT_COLORS[this.cockpit.ambientKey]?.css,
           carType: this.selectedCar,
-          onReady: (ok) => document.getElementById('garage-loader')?.classList.add(ok ? 'done' : 'failed'),
+          onReady: (ok) => {
+            document.getElementById('garage-loader')?.classList.add(ok ? 'done' : 'failed');
+            this.openGarageGate();
+          },
         }
       );
     } catch (err) {
       console.warn('Garaj başlatılamadı', err);
       this.showroom = null;
+      this.openGarageGate();
       document.getElementById('garage-loader')?.classList.add('failed');
     }
     this.syncedPaintSlot = null;
@@ -808,6 +822,10 @@ class OtobanMakasGame {
     this.buildCarSelect();
     document.querySelectorAll('#garage-car-select [data-car]').forEach((btn) => {
       btn.addEventListener('click', () => this.setCar(btn.dataset.car));
+      // Pointing at a card starts that car's download, so it is often there by the click
+      const preload = () => this.showroom?.preload(btn.dataset.car);
+      btn.addEventListener('pointerenter', preload);
+      btn.addEventListener('focus', preload);
     });
     document.getElementById('btn-car-prev')?.addEventListener('click', () => this.stepCar(-1));
     document.getElementById('btn-car-next')?.addEventListener('click', () => this.stepCar(1));
@@ -863,7 +881,7 @@ class OtobanMakasGame {
       });
     });
 
-    this.loadCockpit3D();
+    this.garageFirst.then(() => this.loadCockpit3D());
     this.setupTouchControls();
   }
 
@@ -1447,12 +1465,16 @@ class OtobanMakasGame {
       if (text) text.textContent = `${config.model} garaja çekiliyor…`;
     }
 
-    if (switchShowroom) {
-      this.showroom?.switchCar(carId);
-    }
+    const shown = switchShowroom ? this.showroom?.switchCar(carId) : null;
 
     if (this.cockpit) {
-      this.cockpit.setCarType(carId, this.cabinEyeAnchor());
+      // In the menu the turntable car downloads first; the interior is only needed for a drive
+      // (beginDrive asks for it straight away if the player starts before it is in)
+      const loadInterior = () => {
+        if (this.selectedCar === carId) this.cockpit.setCarType(carId, this.cabinEyeAnchor());
+      };
+      if (shown && this.uiState === 'menu') shown.finally(loadInterior);
+      else loadInterior();
     }
 
     if (this.multiplayer) {
@@ -1766,6 +1788,9 @@ class OtobanMakasGame {
       // An online match starting while a car not bought yet is selected: drive the first one that is
       this.setCar((CAR_LIST.find((car) => this.profile.owns(car)) ?? CAR_LIST[0]).id);
     }
+    // Downloads held back for the turntable car start now, and the selected car's interior too
+    this.openGarageGate();
+    this.cockpit.setCarType(this.selectedCar, this.cabinEyeAnchor());
     this.cancelCountdown();
     this.closeSettings();
     this.closeControlPicker();

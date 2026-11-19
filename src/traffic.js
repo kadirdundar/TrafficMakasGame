@@ -52,8 +52,11 @@ const HAZARD_SEC = 6;
 const SHAKEN_SEC = 1.6;
 
 export class TrafficManager {
-  constructor(scene) {
+  // modelsAfter: the converted car models start downloading once it settles (the menu's
+  // turntable car goes first, see main.js → garageFirst)
+  constructor(scene, { modelsAfter = Promise.resolve() } = {}) {
     this.scene = scene;
+    this.modelsAfter = modelsAfter;
     this.vehicles = [];
     this.densityMode = 'heavy'; // 'normal' | 'heavy' | 'extreme'
     this.maxVehicles = 18;
@@ -171,7 +174,8 @@ export class TrafficManager {
   // procedural ones of their type once they have loaded; until then, and if loading fails, the
   // procedural cars drive on. The loader is a chunk of its own, so the game starts without it.
   useCarModels() {
-    import('./trafficModels.js')
+    this.modelsAfter
+      .then(() => import('./trafficModels.js'))
       .then(async ({ loadTrafficModels, trafficModelFor }) => {
         await loadTrafficModels();
         this.vehicles.forEach((car, i) => {

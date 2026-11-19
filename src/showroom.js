@@ -23,6 +23,21 @@ const VIEWS = {
 };
 
 const AUTO_ROTATE_RESUME_MS = 4500;
+// Garage cars kept in memory (GPU included) so going back to one is instant
+const CAR_CACHE_SIZE = 4;
+
+// Frees a garage car's GPU memory. Materials and textures it shares with other cars (carbon,
+// plates) are only released, not destroyed: three.js uploads them again when next drawn.
+function disposeCar(car) {
+  car.group.traverse((o) => {
+    o.geometry?.dispose();
+    [o.material].flat().forEach((m) => {
+      if (!m) return;
+      Object.values(m).forEach((v) => v?.isTexture && v.dispose());
+      m.dispose();
+    });
+  });
+}
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 function canvasTexture(size, draw) {
@@ -102,6 +117,7 @@ export class A8Showroom {
     this.active = false;
     this.raf = 0;
     this.car = null;
+    this.cache = new Map(); // car id -> promise of a car ready to draw (see prepare)
     this.reflection = null;
     this.carType = carType;
     this.paintHex = paintHex;
@@ -254,6 +270,63 @@ export class A8Showroom {
     shadow.renderOrder = 3;
   }
 
+  // A car ready to draw, from memory if it was shown or pointed at lately (CAR_CACHE_SIZE cars
+  // are kept, the longest unused one is freed). Its shaders are compiled in the background
+  // (KHR_parallel_shader_compile where the GPU has it) and its textures uploaded before it is
+  // shown: left to the first frame, that froze the garage for 0.1–3 s on every new car.
+  prepare(type) {
+    let entry = this.cache.get(type);
+    if (entry) {
+      this.cache.delete(type); // most recently used goes to the end
+      this.cache.set(type, entry);
+      return entry;
+    }
+    entry = loadCarExterior(type, { paintHex: this.paintHex }).then(async (car) => {
+      car.setLights({ night: this.lightsOn });
+      car.setParts(this.parts);
+      await this.warm(car);
+      return car;
+    });
+    entry.catch(() => {
+      if (this.cache.get(type) === entry) this.cache.delete(type); // a later try downloads again
+    });
+    this.cache.set(type, entry);
+    this.evict();
+    return entry;
+  }
+
+  // Starts a car's download ahead of the click (pointing at its card)
+  preload(type) {
+    this.prepare(type).catch(() => {});
+  }
+
+  async warm(car) {
+    const textures = new Set();
+    car.group.traverse((o) => {
+      [o.material].flat().forEach((m) => m && Object.values(m).forEach((v) => v?.isTexture && textures.add(v)));
+    });
+    let n = 0;
+    for (const texture of textures) {
+      this.renderer.initTexture(texture);
+      // A breath every few uploads, so the menu keeps animating while a big car comes in
+      if (++n % 4 === 0) await new Promise((resolve) => setTimeout(resolve));
+    }
+    try {
+      await this.renderer.compileAsync(car.group, this.camera, this.scene);
+    } catch (err) {
+      console.warn('Garaj gölgelendiricileri önceden derlenemedi', err); // the first frame does it
+    }
+  }
+
+  evict() {
+    for (const [type, entry] of this.cache) {
+      if (this.cache.size <= CAR_CACHE_SIZE) break;
+      if (type === this.carType) continue;
+      this.cache.delete(type);
+      entry.then((car) => car !== this.car && disposeCar(car), () => {});
+    }
+  }
+
   async loadCar(type = this.carType || DEFAULT_CAR_ID) {
     this.carType = type;
     if (this.car) {
@@ -265,8 +338,9 @@ export class A8Showroom {
       this.reflection = null;
     }
     try {
-      const car = await loadCarExterior(type, { paintHex: this.paintHex });
-      // Another car was picked while this one downloaded (the garage's car strip): drop it
+      const car = await this.prepare(type);
+      // Another car was picked while this one downloaded (the garage's car strip): it stays
+      // in the cache for when it is picked again
       if (this.carType !== type) return;
       if (this.car) this.scene.remove(this.car.group);
       this.car = car;
