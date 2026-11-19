@@ -16,7 +16,7 @@ const CLUSTER_LETTERING = {
   porsche: { text: 'PORSCHE', size: 0.08, italic: true },
   toyota: { text: 'TOYOTA', size: 0.08 },
   ford: { text: 'Ford', size: 0.11, italic: true },
-  fiat: { text: 'FIAT', size: 0.09 },
+  ferrari: { text: 'FERRARI', size: 0.08, italic: true },
 };
 
 // Source reference image dimensions: 600 x 338
