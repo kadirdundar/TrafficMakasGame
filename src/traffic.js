@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { LANE_CENTERS, WEATHER_PRESETS } from './world.js';
+import { MERGE_LEAD_M } from './roadClosures.js';
 import { TRAFFIC_MASS } from './progression/drivetrain.js';
 import {
   advanceTrafficWheelSpin,
@@ -62,6 +63,8 @@ export class TrafficManager {
     this.maxVehicles = 18;
     this.roadMode = 'highway'; // 'highway' | 'twoway'
     this.isRemoteControlled = false;
+    // Lanes shut by road works or a broken-down car (src/roadClosures.js, set by the game)
+    this.closures = null;
     this.nightLights = null; // Synced from world.weatherKey in update()
     this.wetRoad = false; // rain: the cars' lamps leave streaks on the road (also from update())
 
@@ -354,6 +357,7 @@ export class TrafficManager {
     let z = customZ !== null ? customZ : frontAnchorZ - 165 - Math.random() * 135;
 
     for (let attempt = 0; attempt < 10; attempt++) {
+      lane = this.openLaneNear(lane, z);
       const conflict = this.vehicles.some(
         (other) =>
           other !== car &&
@@ -386,6 +390,7 @@ export class TrafficManager {
     if (occupiedLanesAtZ.size >= 3 && occupiedLanesAtZ.has(lane)) {
       z -= 30;
     }
+    lane = this.openLaneNear(lane, z);
 
     car.lane = lane;
     car.targetLane = lane;
@@ -560,8 +565,23 @@ export class TrafficManager {
     return best;
   }
 
+  // Lane shut at scene z by road works or a broken-down car, from `leadM` before it
+  laneShut(lane, z, leadM = 0) {
+    return Boolean(this.closures?.laneClosedAt(lane, z, leadM));
+  }
+
+  // The nearest lane that is open at z (closures are at the edge, so it is on the open side)
+  openLaneNear(lane, z, leadM = MERGE_LEAD_M) {
+    for (const d of [0, -1, 1, -2, 2, -3, 3]) {
+      const l = lane + d;
+      if (l >= 0 && l <= 3 && !this.laneShut(l, z, leadM)) return l;
+    }
+    return lane;
+  }
+
   isLaneClear(car, candidateLane, marginZ = 15, playerX = null, mpContext = null) {
     if (candidateLane < 0 || candidateLane > 3) return false;
+    if (this.laneShut(candidateLane, car.z, MERGE_LEAD_M - 40)) return false;
     const candidateX = LANE_CENTERS[candidateLane];
 
     // Never swerve into the lane if the local player car is nearby in or near that lane
@@ -781,7 +801,26 @@ export class TrafficManager {
           car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, carAhead.speedKmh * 0.92, dt * 4);
           isBraking = true;
         } else {
-          car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, car.targetSpeedKmh, dt * 1.5);
+          const cap = this.closures ? this.closures.speedCapAt(car.z) : Infinity;
+          car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, Math.min(car.targetSpeedKmh, cap), dt * 1.5);
+        }
+
+        // Its lane is shut ahead (road works, a broken-down car): signal over to an open lane in
+        // good time, and if no gap comes, brake to a stop short of the cones and wait for one
+        const shutM = this.closures?.distanceToShut(car.targetLane, car.z) ?? null;
+        if (shutM !== null) {
+          if (car.pendingLane < 0 && car.lane === car.targetLane) {
+            const lane = this.openLaneNear(car.targetLane, car.z);
+            if (lane !== car.targetLane && this.isLaneClear(car, lane, 12, playerX, mpContext)) {
+              this.signalLaneChange(car, lane, shutM < 60 ? 0.4 : 1.0);
+            }
+          }
+          const room = shutM - 10;
+          const maxKmh = room <= 0 ? 0 : Math.sqrt(2 * 3.5 * room) * 3.6;
+          if (car.speedKmh > maxKmh) {
+            car.speedKmh = maxKmh;
+            isBraking = true;
+          }
         }
 
         // Signalled long enough: move over once the lane is clear; if it stays blocked for

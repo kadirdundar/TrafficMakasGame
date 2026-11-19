@@ -7,6 +7,7 @@ import { DrawBatcher } from './drawBatcher.js';
 import { LUXURY_SPEC } from './vehicleModels.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
+import { RoadClosures } from './roadClosures.js';
 import { MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { CarFire } from './carFire.js';
 import { A8Showroom } from './showroom.js';
@@ -232,6 +233,10 @@ class OtobanMakasGame {
     this.openGarageGate = () => openGarageGate();
     setTimeout(this.openGarageGate, GARAGE_FIRST_MS);
     this.traffic = new TrafficManager(this.scene, { modelsAfter: this.garageFirst });
+    // Road works or a broken-down car shutting lanes now and then on the motorway
+    this.roadClosures = new RoadClosures(this.scene);
+    this.roadClosures.setWorld(this.world);
+    this.traffic.closures = this.roadClosures;
     this.radio = new RadioPlayer({
       volume: this.sound.volumes.radio,
       masterVolume: this.sound.volumes.master,
@@ -2213,6 +2218,7 @@ class OtobanMakasGame {
     this.combo = 1.0;
     this.comboTimer = 0;
     this.tripDistanceKm = 0;
+    this.roadClosures?.reset();
     this.playTimeSec = 0;
     this.runCoins = 0;
     this.coinScoreMark = 0;
@@ -2707,6 +2713,19 @@ class OtobanMakasGame {
       );
     }
     this.updateDamageVisuals();
+  }
+
+  // Driving into the cones of road works or into a broken-down car: a crash, and the car is put
+  // back beside the cone line (the knock carries it on towards the open lanes)
+  updateClosureHit() {
+    const hit = this.roadClosures.playerHit(this.playerX, this.speedKmh);
+    if (!hit) return;
+    this.playerX = hit.edgeX;
+    this.lateralVel = 0;
+    this.knockVel = -hit.side * 2.2;
+    this.headingAngle *= 0.3;
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.5);
+    this.handleCollision(hit.message, hit.severe);
   }
 
   // Clean driving mends one hit per REPAIR_KM; the shield after a knock runs down
@@ -3452,6 +3471,18 @@ class OtobanMakasGame {
       }
     }
 
+    // Road works / a broken-down car every so often on the motorway (offline: online the
+    // host's traffic is shared and the closure would have to be too)
+    this.roadClosures.update(dt, {
+      worldDistM: this.world.worldDistM || 0,
+      tripM: this.tripDistanceKm * 1000,
+      enabled: this.traffic.roadMode === 'highway' && !this.multiplayer.connected,
+      night: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
+      nowSec: performance.now() / 1000,
+    });
+    const closureNote = this.roadClosures.takeWarning();
+    if (closureNote) this.showMakasNotification(closureNote, 0, 'gold');
+
     this.traffic.update(
       dt,
       this.speedKmh,
@@ -3467,6 +3498,7 @@ class OtobanMakasGame {
       this.world,
       this.multiplayer.getTrafficContext()
     );
+    this.updateClosureHit();
     this.updateOvertakeRun();
     this.updateTrackProgression();
 
