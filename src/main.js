@@ -1418,29 +1418,27 @@ class OtobanMakasGame {
     );
   }
 
-  // Model credit line (CC BY requires naming the source, author and licence)
-  renderCarCredit(car) {
-    const el = document.getElementById('garage-credit');
-    const c = car.credit;
-    if (!el) return;
-    el.hidden = !c;
-    if (!c) return;
+  // 3D model credits for every car, listed in the guide (CC BY needs source, author and licence)
+  renderCarCredits() {
+    const el = document.getElementById('model-credits');
+    if (!el || el.childElementCount) return;
     const link = (href, text) => {
       const a = document.createElement('a');
       a.href = href;
       a.target = '_blank';
       a.rel = 'noopener';
       a.textContent = text;
+      a.style.cssText = 'color: var(--accent-cyan); text-decoration: underline;';
       return a;
     };
-    const parts = ['3D model: ', link(c.url, `"${c.title}"`), ` — ${c.author}, `, link(c.licenseUrl, c.license)];
-    if (c.note) {
-      const note = document.createElement('span');
-      note.className = 'credit-extra';
-      note.textContent = ` ${c.note}`;
-      parts.push(note);
+    for (const car of CAR_LIST) {
+      const c = car.credit;
+      if (!c) continue;
+      const row = document.createElement('div');
+      row.append('🚗 ', link(c.url, `"${c.title}"`), ` · ${c.author} · `, link(c.licenseUrl, c.license));
+      if (c.note) row.append(` · ${c.note}`);
+      el.append(row);
     }
-    el.replaceChildren(...parts);
   }
 
   // Garage car model selection
@@ -1450,7 +1448,7 @@ class OtobanMakasGame {
     localStorage.setItem('otoban_selected_car', carId);
 
     const config = CARS[carId];
-    this.renderCarCredit(config);
+    this.renderCarCredits();
     this.setHudText('garage-car-make', config.make);
     const modelEl = document.getElementById('garage-car-model');
     if (modelEl) {
