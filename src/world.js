@@ -1084,6 +1084,7 @@ export class HighwayWorld {
     this.environments.tunnel = createEnvironmentTexture(TUNNEL_ENVIRONMENT);
     this.environmentKey = 'night';
     this.scene.environment = this.environments.night;
+    this.nightLevel = 1;
     this.scene.environmentIntensity = 0.85;
 
     // Player Low-Beam Headlight (Wider, brighter & longer throw for night highway visibility)
@@ -2369,6 +2370,16 @@ export class HighwayWorld {
   applyWeather(key) {
     const preset = WEATHER_PRESETS[key] || WEATHER_PRESETS.night;
     this.weatherKey = preset.key;
+    this.lightTarget = null; // a day/night fade's in-between light (blendWeather)
+    this.sunBlend = null;
+    if (this.blendEnvKey) {
+      this.environments[this.blendEnvKey]?.dispose();
+      delete this.environments[this.blendEnvKey];
+      this.blendEnvKey = null;
+      this.environmentKey = null; // let setEnvironment below put the preset's back
+    }
+    // 0 day … 1 night: how far the lamps are lit (part way during a day/night fade)
+    this.nightLevel = preset.streetlightsOn ? 1 : 0;
 
     this.scene.background = new THREE.Color(preset.skyColor);
     this.scene.fog = new THREE.FogExp2(preset.fogColor, preset.fogDensity);
@@ -2426,6 +2437,89 @@ export class HighwayWorld {
     if (key === this.environmentKey || !this.environments[key]) return;
     this.environmentKey = key;
     this.scene.environment = this.environments[key];
+  }
+
+  // The light part way (t: 0..1) from one preset to the next, for the slow day/night cycle
+  // (dayCycle.js). Lamps, reflections and everything keyed on the weather switch half way.
+  blendWeather(fromKey, toKey, t) {
+    const a = WEATHER_PRESETS[fromKey];
+    const b = WEATHER_PRESETS[toKey];
+    const key = t < 0.5 ? fromKey : toKey;
+    if (this.weatherKey !== key) this.applyWeather(key);
+    const lerp = THREE.MathUtils.lerp;
+    const mix = (target, x, y) => target.setHex(x).lerp(this._blendTmp.setHex(y), t);
+    this._blendTmp ??= new THREE.Color();
+    const L = (this.lightTarget ??= { ambientColorObj: new THREE.Color(), dirColorObj: new THREE.Color() });
+    mix(L.ambientColorObj, a.ambientColor, b.ambientColor);
+    mix(L.dirColorObj, a.dirColor, b.dirColor);
+    L.ambientIntensity = lerp(a.ambientIntensity, b.ambientIntensity, t);
+    L.dirIntensity = lerp(a.dirIntensity, b.dirIntensity, t);
+
+    if (this.scene.background?.isColor) mix(this.scene.background, a.skyColor, b.skyColor);
+    if (this.scene.fog) {
+      mix(this.scene.fog.color, a.fogColor, b.fogColor);
+      this.scene.fog.density = lerp(a.fogDensity, b.fogDensity, t);
+    }
+    this.dirLight.color.copy(L.dirColorObj);
+    this.hemiLight?.groundColor.setHex(a.hemiGroundColor || 0x2a364f).lerp(this._blendTmp.setHex(b.hemiGroundColor || 0x2a364f), t);
+    if (this.roadMat) {
+      this.roadMat.roughness = lerp(a.roadRoughness, b.roadRoughness, t);
+      this.roadMat.metalness = lerp(a.roadMetalness, b.roadMetalness, t);
+    }
+    if (this.lampPoolMat) {
+      this.lampPoolMat.opacity = lerp(a.lampPool ?? 0, b.lampPool ?? 0, t);
+      this.lampPoolMat.visible = this.lampPoolMat.opacity > 0.005;
+    }
+    const beam = (p) => (p.streetlightsOn ? 0.6 : 0.06);
+    this.headlightPoolStrength = lerp(beam(a), beam(b), t);
+    this.lowBeamLight.intensity = lerp(a.streetlightsOn ? 14 : 2.5, b.streetlightsOn ? 14 : 2.5, t);
+
+    // The lamps come on (or go off) over the middle of the fade, not all at once; the traffic
+    // and the cabin follow this level too
+    const lit = (p) => (p.streetlightsOn ? 1 : 0);
+    const mid = THREE.MathUtils.smoothstep(t, 0.3, 0.7);
+    this.nightLevel = lerp(lit(a), lit(b), mid);
+    this.lampFixtures.forEach((mat) => mat.color.setHex(0x64748b).lerp(this._blendTmp.setHex(0xffdf99), this.nightLevel));
+    this.sunBlend = { from: fromKey, to: toKey, t };
+    this.setBlendEnvironment(fromKey, toKey, t);
+  }
+
+  // Reflections fade from one weather's environment to the next in tenths: each step is a
+  // new texture (the renderer prefilters a texture once, so one canvas can't just be redrawn)
+  setBlendEnvironment(fromKey, toKey, t) {
+    const step = Math.round(t * 10);
+    if (step <= 0 || step >= 10) {
+      if (this.blendEnvKey) {
+        const blendTex = this.environments[this.blendEnvKey];
+        if (this.environmentKey === this.blendEnvKey) this.setEnvironment(this.weatherKey);
+        blendTex?.dispose();
+        delete this.environments[this.blendEnvKey];
+        this.blendEnvKey = null;
+      }
+      return;
+    }
+    const key = `blend:${fromKey}>${toKey}:${step}`;
+    if (this.blendEnvKey === key) return;
+    const a = this.environments[fromKey].image;
+    const b = this.environments[toKey].image;
+    const canvas = document.createElement('canvas');
+    canvas.width = a.width;
+    canvas.height = a.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(a, 0, 0);
+    ctx.globalAlpha = step / 10;
+    ctx.drawImage(b, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const old = this.blendEnvKey && this.environments[this.blendEnvKey];
+    this.environments[key] = tex;
+    this.blendEnvKey = key;
+    if (this.environmentKey !== 'tunnel') this.setEnvironment(key);
+    if (old) {
+      delete this.environments[Object.keys(this.environments).find((k) => this.environments[k] === old)];
+      old.dispose();
+    }
   }
 
   cycleWeather() {
@@ -2615,7 +2709,9 @@ export class HighwayWorld {
     this.currentZone = playerZone;
 
     const preset = WEATHER_PRESETS[this.weatherKey] || WEATHER_PRESETS.night;
-    this.setEnvironment(playerZone === 'tunnel' ? 'tunnel' : preset.key);
+    this.setEnvironment(playerZone === 'tunnel' ? 'tunnel' : this.blendEnvKey ?? preset.key);
+    // Where the lights settle: the preset's, or part way to the next during a day/night fade
+    const light = this.lightTarget ?? preset;
 
     if (playerZone === 'tunnel') {
       if (this.groundMesh) this.groundMesh.visible = false;
@@ -2627,17 +2723,17 @@ export class HighwayWorld {
     } else if (playerZone === 'bridge') {
       if (this.groundMesh) this.groundMesh.visible = false;
       if (this.rainSystem) this.rainSystem.visible = Boolean(preset.rain);
-      this.ambientLight.color.lerp(preset.ambientColorObj, dt * 3.5);
-      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, preset.ambientIntensity, dt * 3.5);
-      this.hemiLight.color.lerp(preset.dirColorObj, dt * 3.5);
-      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, preset.dirIntensity, dt * 3.5);
+      this.ambientLight.color.lerp(light.ambientColorObj, dt * 3.5);
+      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, light.ambientIntensity, dt * 3.5);
+      this.hemiLight.color.lerp(light.dirColorObj, dt * 3.5);
+      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, light.dirIntensity, dt * 3.5);
     } else {
       if (this.groundMesh) this.groundMesh.visible = true;
       if (this.rainSystem) this.rainSystem.visible = Boolean(preset.rain);
-      this.ambientLight.color.lerp(preset.ambientColorObj, dt * 3.5);
-      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, preset.ambientIntensity, dt * 3.5);
-      this.hemiLight.color.lerp(preset.dirColorObj, dt * 3.5);
-      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, preset.dirIntensity, dt * 3.5);
+      this.ambientLight.color.lerp(light.ambientColorObj, dt * 3.5);
+      this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, light.ambientIntensity, dt * 3.5);
+      this.hemiLight.color.lerp(light.dirColorObj, dt * 3.5);
+      this.dirLight.intensity = THREE.MathUtils.lerp(this.dirLight.intensity, light.dirIntensity, dt * 3.5);
     }
 
     // Update Headlight & Selektör position to follow player car X + Audi Matrix Adaptive Cornering light swivel

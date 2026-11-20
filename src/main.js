@@ -8,6 +8,7 @@ import { LUXURY_SPEC } from './vehicleModels.js';
 import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_PRESETS } from './world.js';
 import { TrafficManager } from './traffic.js';
 import { RoadClosures } from './roadClosures.js';
+import { DayCycle } from './dayCycle.js';
 import { MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
 import { CarFire } from './carFire.js';
 import { A8Showroom } from './showroom.js';
@@ -234,6 +235,8 @@ class OtobanMakasGame {
     setTimeout(this.openGarageGate, GARAGE_FIRST_MS);
     this.traffic = new TrafficManager(this.scene, { modelsAfter: this.garageFirst });
     // Road works or a broken-down car shutting lanes now and then on the motorway
+    this.dayCycle = new DayCycle(this.world);
+    this.chosenWeather = this.world.weatherKey;
     this.roadClosures = new RoadClosures(this.scene);
     this.roadClosures.setWorld(this.world);
     this.traffic.closures = this.roadClosures;
@@ -637,7 +640,7 @@ class OtobanMakasGame {
       }
       if (code === 'KeyT') {
         const preset = this.world.cycleWeather();
-        this.syncWeatherUI(preset);
+        this.pickWeather(preset);
       }
       if (code === 'KeyC') {
         this.applyCameraPreset(this.cameraPresetIndex + 1);
@@ -850,7 +853,7 @@ class OtobanMakasGame {
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-weather');
         const preset = this.world.applyWeather(key);
-        this.syncWeatherUI(preset);
+        this.pickWeather(preset);
       });
     });
 
@@ -1338,6 +1341,14 @@ class OtobanMakasGame {
     this.keys.highBeam = active;
     const ind = document.getElementById('ind-highbeam');
     if (ind) ind.classList.toggle('active', active);
+  }
+
+  // The player picked the weather: the next drive starts in it, and the day/night cycle goes on
+  // from it
+  pickWeather(preset) {
+    this.chosenWeather = preset.key;
+    this.dayCycle?.anchor(preset.key, this.tripDistanceKm || 0);
+    this.syncWeatherUI(preset);
   }
 
   syncWeatherUI(preset) {
@@ -2217,6 +2228,13 @@ class OtobanMakasGame {
     this.comboTimer = 0;
     this.tripDistanceKm = 0;
     this.roadClosures?.reset();
+    if (this.dayCycle && !this.multiplayer?.connected) {
+      // A new drive starts in the picked weather, wherever the last one's day had got to
+      if (this.world.weatherKey !== this.chosenWeather || this.world.lightTarget) {
+        this.syncWeatherUI(this.world.applyWeather(this.chosenWeather));
+      }
+      this.dayCycle.anchor(this.chosenWeather, 0);
+    }
     this.playTimeSec = 0;
     this.runCoins = 0;
     this.coinScoreMark = 0;
@@ -2769,11 +2787,24 @@ class OtobanMakasGame {
   // sunset, none under clouds, at night or in the tunnel (the contact shadows stay everywhere).
   // The sun stands ahead and to the left, like the scene's directional light.
   updateShadowSun() {
-    const key = this.world.currentZone === 'tunnel' ? 'tunnel' : this.world.weatherKey;
+    const tunnel = this.world.currentZone === 'tunnel';
+    const blend = !tunnel && this.world.sunBlend;
+    const key = tunnel ? 'tunnel' : blend ? `${blend.from}>${blend.to}:${Math.round(blend.t * 50)}` : this.world.weatherKey;
     if (key === this.shadowSunKey) return;
     this.shadowSunKey = key;
-    if (key === 'day') this.carShadows.setSun(0.36, 0.73, 0.45);
-    else if (key === 'sunset') this.carShadows.setSun(0.8, 1.6, 0.34);
+    // Day and dusk throw a shadow (x, z per metre of height, opacity); through a fade the sun
+    // swings and the shadow fades between the two
+    const SUNS = { day: [0.36, 0.73, 0.45], sunset: [0.8, 1.6, 0.34] };
+    const sun = (k) => SUNS[k] ?? null;
+    let s = tunnel ? null : sun(this.world.weatherKey);
+    if (blend) {
+      const a = sun(blend.from);
+      const b = sun(blend.to);
+      const pa = a ?? [b?.[0] ?? 0, b?.[1] ?? 0, 0];
+      const pb = b ?? [a?.[0] ?? 0, a?.[1] ?? 0, 0];
+      s = pa.map((v, i) => v + (pb[i] - v) * blend.t);
+    }
+    if (s && s[2] > 0.01) this.carShadows.setSun(s[0], s[1], s[2]);
     else this.carShadows.setSun();
   }
 
@@ -3471,6 +3502,10 @@ class OtobanMakasGame {
 
     // Road works / a broken-down car every so often on the motorway (offline: online the
     // host's traffic is shared and the closure would have to be too)
+    // Night turns slowly to day and back as the kilometres go by
+    const cycled = this.dayCycle.update(this.tripDistanceKm, !this.multiplayer.connected);
+    if (cycled) this.syncWeatherUI(cycled);
+
     this.roadClosures.update(dt, {
       worldDistM: this.world.worldDistM || 0,
       tripM: this.tripDistanceKm * 1000,
@@ -3589,7 +3624,7 @@ class OtobanMakasGame {
         lateralG: this.lateralG,
         bodyRoll: this.bodyRoll,
         bodyPitch: this.bodyPitch,
-        cabinNight: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn),
+        cabinNight: this.world.nightLevel ?? (WEATHER_PRESETS[this.world.weatherKey]?.streetlightsOn ? 1 : 0),
         // Rain lands on the windscreen everywhere but in the tunnel
         rainOnGlass: Boolean(WEATHER_PRESETS[this.world.weatherKey]?.rain) && this.world.currentZone !== 'tunnel',
         radio: {

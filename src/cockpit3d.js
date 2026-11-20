@@ -308,14 +308,14 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
         }
       }
 
-      const ledKey = `${ambientHex}|${flash.toFixed(2)}|${night ? 1 : 0}`;
+      const ledKey = `${ambientHex}|${flash.toFixed(2)}|${night >= 0.5 ? 1 : 0}`;
       if (ledKey !== lastLedKey) {
         lastLedKey = ledKey;
         ledColor.setHex(ambientHex);
         leds.coreMat.color.copy(ledColor).multiplyScalar(1 + flash * 0.8);
         leds.glowMat.color.copy(ledColor);
         atlasLedMats.forEach((m) => m.color.copy(leds.coreMat.color));
-        leds.glowMat.opacity = (night ? 0.38 : 0.2) + flash * 0.4;
+        leds.glowMat.opacity = (night >= 0.5 ? 0.38 : 0.2) + flash * 0.4;
       }
 
       const angle = WIPER_REST + wiperSweep * WIPER_SWEEP;
@@ -326,7 +326,7 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
         _y.crossVectors(cfg.glassOut, _x);
         w.quaternion.setFromRotationMatrix(_m.makeBasis(_x, _y, cfg.glassOut));
       }
-      rain?.update({ dt, raining, speedKmh, wiperAngle: wipersVisible ? angle : null, night });
+      rain?.update({ dt, raining, speedKmh, wiperAngle: wipersVisible ? angle : null, night: night >= 0.5 });
 
       if (occlusion) occlusion.cabinInverse.value.copy(model.matrixWorld).invert();
 
@@ -334,10 +334,13 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
         lastAngle = steerAngle;
         pivot.quaternion.copy(baseQuat).multiply(_spin.setFromAxisAngle(Z_AXIS, cfg.steerSign * steerAngle));
       }
-      if (night !== lastNight) {
-        lastNight = night;
-        cabinLight.intensity = night ? 0.15 : 1.3;
-        cabinMats.forEach((m) => (m.emissiveIntensity = night ? cfg.cabinNightGlow ?? CABIN_NIGHT_GLOW : 0.05));
+      // 0 day … 1 night, part way while the light fades at dusk and dawn
+      const level = Math.round(Number(night) * 50) / 50;
+      if (level !== lastNight) {
+        lastNight = level;
+        cabinLight.intensity = 1.3 + (0.15 - 1.3) * level;
+        const glow = cfg.cabinNightGlow ?? CABIN_NIGHT_GLOW;
+        cabinMats.forEach((m) => (m.emissiveIntensity = 0.05 + (glow - 0.05) * level));
       }
     },
     // Screen-space circle of the wheel rim (CSS px) for mouse/touch steering

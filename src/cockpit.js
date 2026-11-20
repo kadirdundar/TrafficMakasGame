@@ -944,7 +944,7 @@ export class CarCockpit {
       this._screenState = { ...state, nearbyCars };
       this.interior3d.update({
         steerAngle: this.currentSteerVisual,
-        night: Boolean(state.cabinNight),
+        night: Number(state.cabinNight) || 0, // 0 day … 1 night
         aspect: (this.overlayCanvas.clientWidth || window.innerWidth) / (this.overlayCanvas.clientHeight || window.innerHeight),
         ambientHex: AMBIENT_COLORS[this.ambientKey]?.hex ?? 0x00f0ff,
         flash: this.makasFlashIntensity,

@@ -80,7 +80,10 @@ export class TrafficManager {
   setNightLights(night) {
     this.nightLights = night;
     setVehicleLightsNightMode(night);
-    for (const car of this.vehicles) car.visual.setNight(night);
+    for (const car of this.vehicles) {
+      car.nightOn = night;
+      car.visual.setNight(night);
+    }
   }
 
   setWetRoad(wet) {
@@ -196,7 +199,7 @@ export class TrafficManager {
           car.visual = built;
           car.leftBlinker = built.leftBlinker;
           car.rightBlinker = built.rightBlinker;
-          if (this.nightLights !== null) built.setNight(this.nightLights);
+          if (car.nightOn !== undefined) built.setNight(car.nightOn);
           built.setWet(this.wetRoad);
         });
         this.onModelsReady?.();
@@ -699,8 +702,21 @@ export class TrafficManager {
 
     // Night / dusk / rain: brighter LEDs + glow halos on every traffic car
     if (world) {
-      const night = Boolean(WEATHER_PRESETS[world.weatherKey]?.streetlightsOn);
-      if (night !== this.nightLights) this.setNightLights(night);
+      // Through a dusk or dawn the cars switch their lamps one by one, each at its own moment
+      const level = world.nightLevel ?? (WEATHER_PRESETS[world.weatherKey]?.streetlightsOn ? 1 : 0);
+      const night = level >= 0.5;
+      if (night !== this.nightLights) {
+        this.nightLights = night;
+        setVehicleLightsNightMode(night);
+      }
+      for (const car of this.vehicles) {
+        car.lightAt ??= 0.1 + Math.random() * 0.8;
+        const on = level >= 1 || (level > 0 && level > car.lightAt);
+        if (on !== car.nightOn) {
+          car.nightOn = on;
+          car.visual.setNight(on);
+        }
+      }
       const wet = Boolean(WEATHER_PRESETS[world.weatherKey]?.rain);
       if (wet !== this.wetRoad) this.setWetRoad(wet);
     }
