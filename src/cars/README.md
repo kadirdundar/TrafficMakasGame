@@ -72,7 +72,7 @@ kalkış ama hantal), AMG GT (22.000), 911 (30.000, en iyi manevra), Portofino (
 200 km/s), Corolla (5.000, 200 km/s), Focus (5.000, 205 km/s), Passat B8 (8.000, 220 km/s), C 200 (12.000, 246 km/s). Yükseltmeler, spoylerler, jant renkleri,
 kazanç ve fiyat basamakları `src/progression/config.js` içinde.
 
-Fren: `braking: 1` kuru yolda 1,15 g'dir (hava direnci buna eklenir, yani araç yüksek hızdan
+Fren: `braking: 1` kuru yolda 2,75 g'dir (oyun için bilerek gerçeğin üstünde) (hava direnci buna eklenir, yani araç yüksek hızdan
 daha sert yavaşlar). Yağmurda fren tutuşu %80'e iner, pistte lastikler 1,6 g tutar. Tam frende
 ABS devreye girer (hafif titreşim) ve direksiyon etkisi yarıya iner.
 

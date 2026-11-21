@@ -6,7 +6,6 @@ Claude `/siradaki` ile ilk Todo maddesini alır, bitirince Done'a taşır.
 Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 
 ## Todo
--arabaların fren kabileyeti daha iyi olsun 
 -akıcı trafikde sol iki şerit biraz daha boş olsun
 -gazdan kesince her arabada çıkan ses her arabada çıkmasın sadece spor otomobillerde çıksın 
 -araç renk seçim kısmı için rengi kişiler kendisi oluşturabilsin, metalik parlak vs gibi özellikleri de seçerek bir renk oluşturma aracı gibi özellikle birlikte
@@ -18,5 +17,7 @@ Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 ## Blocked
 
 ## Done
+- [x] arabaların fren kabileyeti daha iyi olsun (2026-11-21)
+  - Tüm araçların taban freni 2,3 g → 2,75 g; 100→0 durma mesafesi ~%16 kısaldı, araç sıralaması aynı
 - [x] gece yolun biraz daha net ve biraz daha aydınlık görünmesini istiyorum (2026-11-21)
   - Gece ayarında sis inceltildi, ortam ışığı ve lamba havuzları artırıldı (src/world.js)
