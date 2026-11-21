@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-BlKUq2V-.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-3t0WLtfX.css">
+  <script type="module" crossorigin src="./assets/index-bJXp35FG.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BR96bNf0.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -358,9 +358,26 @@
                   <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #0e6f9c" aria-label="Navarra Mavisi"></button>
                   <button type="button" class="paint-swatch" data-paint="2" style="--sw-color: #e4e8ec" aria-label="Buzul Beyazı"></button>
                   <button type="button" class="paint-swatch" data-paint="3" style="--sw-color: #17191f" aria-label="Mitos Siyahı"></button>
+                  <button type="button" class="paint-swatch paint-swatch-custom" data-paint="custom" aria-label="Kendi Rengin" title="Kendi rengini oluştur"></button>
                 </div>
                 <span id="garage-paint-name" class="paint-name">Tango Kırmızısı</span>
               </div>
+              <!-- Paint creator (src/paintCreator.js): opens with the custom swatch -->
+              <div class="paint-creator" id="paint-creator" hidden>
+                <div class="paint-creator-head">
+                  <span class="paint-creator-preview" id="paint-creator-preview"></span>
+                  <label class="paint-hex">
+                    <span>#</span>
+                    <input id="paint-hex" type="text" maxlength="6" spellcheck="false" autocomplete="off" aria-label="Renk kodu">
+                  </label>
+                </div>
+                <label class="paint-slider"><span>Ton</span><input type="range" id="paint-h" min="0" max="359" step="1"></label>
+                <label class="paint-slider"><span>Doygunluk</span><input type="range" id="paint-s" min="0" max="100" step="1"></label>
+                <label class="paint-slider"><span>Parlaklık</span><input type="range" id="paint-v" min="0" max="100" step="1"></label>
+              </div>
+              <!-- Finish of whichever colour is on (cards from src/progression/garageUI.js) -->
+              <h4 class="paint-creator-sub paint-finish-head">Kaplama</h4>
+              <div id="paint-finish-cards"></div>
               <p class="panel-note">Online'da arkadaşların seni bu renkte görür.</p>
             </div>
             <!-- New version: spoilers and rim colours -->
