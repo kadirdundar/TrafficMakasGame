@@ -6,7 +6,6 @@ Claude `/siradaki` ile ilk Todo maddesini alır, bitirince Done'a taşır.
 Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 
 ## Todo
--Araçlar oyun açıldığında en kötü özellikliden en iyi özellikliye doğru sıralansın(yeni kullanıcılar için) eğer kullanıcı farklı bir şey satın aldıysa vs o seçili kalsın
 
 
 ## In progress
@@ -14,6 +13,8 @@ Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 ## Blocked
 
 ## Done
+- [x] Araçlar oyun açıldığında en kötü özellikliden en iyi özellikliye doğru sıralansın(yeni kullanıcılar için) eğer kullanıcı farklı bir şey satın aldıysa vs o seçili kalsın (2026-11-21)
+  - Garaj sırası 4 özelliğin ortalamasına göre: Passat B5 > Corolla > Focus > Passat B8 > G700 > C 200 > A8 > AMG GT > M4 > Portofino > 911. Yeni oyuncu ücretsiz A8 ile başlar; seçilen/satın alınan araç seçili kalır (src/cars/index.js)
 - [x] araç renk seçim kısmı için rengi kişiler kendisi oluşturabilsin, metalik parlak vs gibi özellikleri de seçerek bir renk oluşturma aracı gibi özellikle birlikte (2026-11-21)
   - Garaj → Boya'da gökkuşağı kutucuğu: ton/doygunluk/parlaklık ve renk kodu ile renk oluşturma; altında kaplama (fabrika/metalik/mat/sedef, satın alma sistemiyle). Renk online'da arkadaşlara da gidiyor (src/paintCreator.js)
 - [x] gazdan kesince her arabada çıkan ses her arabada çıkmasın sadece spor otomobillerde çıksın (2026-11-21)

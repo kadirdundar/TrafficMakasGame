@@ -40,7 +40,7 @@ Claude Code içinde `/arac-ekle` komutu bu adımları sırayla yürütür.
 | --- | --- |
 | `id` | Kısa ve benzersiz ad (klasör adıyla aynı). localStorage'a ve online mesajlara bu yazılır. |
 | `draft` | `true` iken garajda görünmez; önizleme sayfaları yine açar. |
-| `order` | Garajdaki sıra. İlk araç varsayılandır. |
+| `order` | Artık kullanılmıyor: garaj, araçları `performance` değerlerinin ortalamasına göre en zayıftan en iyiye sıralar. Yeni oyuncunun varsayılan aracı fiyatı olmayan (ücretsiz) araçtır. |
 | `label` | Garaj düğmesindeki yazı. |
 | `make`, `model`, `variant` | Garajdaki başlık (ör. `BMW` / `M4 CS` / `G82 · VR46 Edition`). |
 | `aliases` | Eski veya gevşek adlar (ör. `['bmw']`). Eski sürümden gelen kayıtları bu araca yönlendirir. |
