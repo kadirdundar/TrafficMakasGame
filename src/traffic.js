@@ -14,6 +14,9 @@ import {
 // Blinker time before a lane change; a car yielding to a Selektör flash moves sooner so the
 // flash still clears the lane in time
 const LANE_CHANGE_SIGNAL_SEC = 2.0;
+// Flowing traffic: how often (per second) a car in one of the two left lanes with a clear road
+// ahead moves back over to the right
+const KEEP_RIGHT_PER_SEC = 0.12;
 const YIELD_SIGNAL_SEC = 1.0;
 // How far a driver keeps to the far side of the lane when giving room to a car alongside
 const ROOM_OFFSET_M = 0.45;
@@ -320,8 +323,8 @@ export class TrafficManager {
         lane = 3;
       }
     } else if (this.densityMode === 'normal') {
-      // Akıcı mod: Sol şerit (lane 0) yaklaşık %90 boş (~%10 araç),
-      // hemen yanındaki soldan ikinci şerit (lane 1) ise yaklaşık %80 boş (~%20 araç).
+      // Akıcı mod: Sol şerit (lane 0) ~%5, soldan ikinci şerit (lane 1) ~%10 araç alır;
+      // sol iki şerit makas için ferah kalır.
       // Kamyon ve vanlar kesinlikle sağ şeritlerde (2 veya 3) kalır.
       if (car.spec.type === 'truck') {
         lane = Math.random() < 0.75 ? 3 : 2;
@@ -330,14 +333,14 @@ export class TrafficManager {
       } else {
         // Otomobiller (sedan, sport, suv) için şerit seçimi:
         // Kamyon ve vanlar toplam havuzun %40'ı olup tamamı sağ şeritlerde olduğundan,
-        // kalan %60'lık binek araç havuzundan %17'si lane 0 (%10 genel pay),
-        // %33'ü lane 1 (%20 genel pay) alır. Böylece sol şerit ~%90, soldan 2. şerit ~%80 boş kalır.
+        // kalan %60'lık binek araç havuzundan %8'i lane 0 (~%5 genel pay),
+        // %17'si lane 1 (~%10 genel pay) alır; gerisi sağdaki iki şeride gider.
         const r = Math.random();
-        if (r < 0.17) {
-          lane = 0; // %90 boş
-        } else if (r < 0.50) {
-          lane = 1; // %80 boş
-        } else if (r < 0.75) {
+        if (r < 0.08) {
+          lane = 0;
+        } else if (r < 0.25) {
+          lane = 1;
+        } else if (r < 0.62) {
           lane = 2;
         } else {
           lane = 3;
@@ -802,7 +805,7 @@ export class TrafficManager {
                   this.signalLaneChange(car, tryRight, LANE_CHANGE_SIGNAL_SEC);
                 } else if (tryLeft > 1 && this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
                   this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
-                } else if (tryLeft === 1 && Math.random() < 0.15 && this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
+                } else if (tryLeft === 1 && Math.random() < 0.06 && this.isLaneClear(car, tryLeft, 16, playerX, mpContext)) {
                   this.signalLaneChange(car, tryLeft, LANE_CHANGE_SIGNAL_SEC);
                 }
               }
@@ -819,6 +822,20 @@ export class TrafficManager {
         } else {
           const cap = this.closures ? this.closures.speedCapAt(car.z) : Infinity;
           car.speedKmh = THREE.MathUtils.lerp(car.speedKmh, Math.min(car.targetSpeedKmh, cap), dt * 1.5);
+          // Akıcı modda sağdan git: sol iki şeritteki araç, önü boşken ara sıra sinyal verip
+          // sağa geçer (oyuncuların hemen yanında değilken), böylece sol şeritler açık kalır
+          if (
+            this.densityMode === 'normal' &&
+            car.targetLane <= 1 &&
+            car.lane === car.targetLane &&
+            car.pendingLane < 0 &&
+            car.z < frontMostZ - 16 &&
+            nowSec > car.holdLaneUntil &&
+            Math.random() < dt * KEEP_RIGHT_PER_SEC &&
+            this.isLaneClear(car, car.targetLane + 1, 20, playerX, mpContext)
+          ) {
+            this.signalLaneChange(car, car.targetLane + 1, LANE_CHANGE_SIGNAL_SEC);
+          }
         }
 
         // Its lane is shut ahead (road works, a broken-down car): signal over to an open lane in
