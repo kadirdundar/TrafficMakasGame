@@ -241,7 +241,12 @@ export class CarCockpit {
     this.overlayCanvas = document.getElementById('cockpit-canvas');
     this.overlayCtx = this.overlayCanvas ? this.overlayCanvas.getContext('2d') : null;
 
-    this.ambientKey = 'cyan';
+    // Cabin ambient light: red unless the player picked another (kept between visits)
+    let savedAmbient = null;
+    try {
+      savedAmbient = localStorage.getItem('otoban_ambient');
+    } catch (_) {}
+    this.ambientKey = AMBIENT_COLORS[savedAmbient] ? savedAmbient : 'red';
     this.speedoMaxKmh = 260; // end of the speedometer scale (faster cars get a longer one)
     this.makasFlashIntensity = 0;
 
@@ -780,9 +785,12 @@ export class CarCockpit {
   }
 
   setAmbientColor(key) {
-    const info = AMBIENT_COLORS[key] || AMBIENT_COLORS.cyan;
+    if (!AMBIENT_COLORS[key]) key = 'red';
     this.ambientKey = key;
-    return info;
+    try {
+      localStorage.setItem('otoban_ambient', key);
+    } catch (_) {}
+    return AMBIENT_COLORS[key];
   }
 
   cycleAmbientColor() {

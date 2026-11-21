@@ -57,14 +57,18 @@ function createScreen(def) {
   return { mesh, canvas, ctx: canvas.getContext('2d'), texture, logical: def.logical };
 }
 
+// What the diffuser over an ambient light strip mixes into its colour
+const LED_DIFFUSE = new THREE.Color(0xffffff);
+
 function createLedStrips(paths) {
   const core = [];
   const glow = [];
   for (const path of paths) {
     const curve = new THREE.CatmullRomCurve3(path.map((p) => new THREE.Vector3().fromArray(p)));
     const segs = Math.max(4, path.length * 6);
-    core.push(new THREE.TubeGeometry(curve, segs, 0.0025, 5, false));
-    glow.push(new THREE.TubeGeometry(curve, segs, 0.008, 6, false));
+    // A thin light guide, and a narrow halo where it lights the trim beside it
+    core.push(new THREE.TubeGeometry(curve, segs, 0.0018, 5, false));
+    glow.push(new THREE.TubeGeometry(curve, segs, 0.0055, 6, false));
   }
   const coreMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, toneMapped: false });
   const glowMat = new THREE.MeshBasicMaterial({
@@ -308,14 +312,18 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
         }
       }
 
-      const ledKey = `${ambientHex}|${flash.toFixed(2)}|${night >= 0.5 ? 1 : 0}`;
+      // Ambient light as in a real car: a light guide behind a diffuser, so the line is a soft,
+      // slightly paler tint of the colour (not a saturated neon tube), barely there by day and
+      // glowing gently at night; the halo only shows in the dark
+      const dark = Math.round(Number(night) * 20) / 20;
+      const ledKey = `${ambientHex}|${flash.toFixed(2)}|${dark}`;
       if (ledKey !== lastLedKey) {
         lastLedKey = ledKey;
-        ledColor.setHex(ambientHex);
-        leds.coreMat.color.copy(ledColor).multiplyScalar(1 + flash * 0.8);
-        leds.glowMat.color.copy(ledColor);
+        ledColor.setHex(ambientHex).lerp(LED_DIFFUSE, 0.22);
+        leds.coreMat.color.copy(ledColor).multiplyScalar((0.38 + 0.47 * dark) * (1 + flash * 0.8));
+        leds.glowMat.color.setHex(ambientHex);
         atlasLedMats.forEach((m) => m.color.copy(leds.coreMat.color));
-        leds.glowMat.opacity = (night >= 0.5 ? 0.38 : 0.2) + flash * 0.4;
+        leds.glowMat.opacity = 0.04 + 0.2 * dark + flash * 0.3;
       }
 
       const angle = WIPER_REST + wiperSweep * WIPER_SWEEP;

@@ -871,6 +871,7 @@ class OtobanMakasGame {
         this.syncAmbientUI(colorKey, info.css);
       });
     });
+    this.syncAmbientUI(this.cockpit.ambientKey, AMBIENT_COLORS[this.cockpit.ambientKey].css);
 
     // Touch steering: the same three choices in Ayarlar and in the first-drive picker
     this.buildSteerOptions(document.getElementById('steer-mode-group'), (mode) => this.setSteerMode(mode));
