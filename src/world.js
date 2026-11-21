@@ -543,9 +543,12 @@ function createHeadlightPoolTexture() {
     const t = 1 - y / (H - 1); // 0 at the bumper, 1 at the far end
     for (let x = 0; x < W; x++) {
       const sx = (x / (W - 1) - 0.5) * 2; // -1 left edge, +1 right edge
-      const right = sx > 0;
-      // How far the beam reaches on this side, and how wide it fans out at this distance
-      const reach = right ? 1 : 0.72;
+      // How far the beam reaches at this side position, and how wide it fans out at this
+      // distance. The two lamps' light overlaps in the middle, so the longer right-hand reach
+      // rises gradually across the centre (the cut-off's diagonal kink) instead of stepping at
+      // one line down the lane
+      const k = Math.min(1, Math.max(0, (sx + 0.45) / 0.9));
+      const reach = 0.72 + 0.28 * k * k * (3 - 2 * k);
       const tt = Math.min(1, t / reach);
       const halfW = 0.34 + 0.62 * Math.pow(tt, 0.45);
       const along = Math.min(1, t / 0.06) * Math.pow(Math.max(0, 1 - tt), 1.35);
