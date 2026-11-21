@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { cabinSymbolPainter, paintMercedesWheelButtons } from './painters.js';
+import { paintMercedesCenter } from './screen.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -101,7 +102,20 @@ export default {
         logical: [240, 79],
         px: [1024, 337],
       },
+      // The tall MBUX touchscreen on the console (w206_screen, a single flat quad); the screen
+      // quad sits 2 mm in front of it (createScreen)
+      center: {
+        tl: [-0.0995, 0.9291, -0.4129],
+        tr: [0.1193, 0.9292, -0.4015],
+        bl: [-0.1073, 0.7387, -0.2637],
+        br: [0.1124, 0.7387, -0.2523],
+        n: [-0.041, 0.617, 0.786],
+        logical: [200, 221],
+        px: [768, 849],
+      },
     },
+    // MBUX home screen on the centre display (screen.js); the cluster keeps the shared painter
+    screenPainters: { center: paintMercedesCenter },
     // The model brings its own strips (ambient_led)
     ledPaths: [],
     // Windshield runs from y 0.93 / z -0.91 up to y 1.36 / z -0.07
