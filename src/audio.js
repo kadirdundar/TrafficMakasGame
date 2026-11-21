@@ -684,6 +684,7 @@ export class SoundEngine {
       this.overrunUntil = 0; // back on the gas: the pops stop
     } else if (!this.lifted && pedal < LIFT_PEDAL && this.recentPedal > LIFT_FROM_PEDAL) {
       this.lifted = true;
+      if (!this.engine.liftOffSound) return; // everyday cars: no blow-off, no pops
       if (this.engine.turbo > 0 && this.boost > BLOWOFF_FROM_BOOST) {
         this.playBlowOff(this.boost, open);
         this.boost *= 0.2;

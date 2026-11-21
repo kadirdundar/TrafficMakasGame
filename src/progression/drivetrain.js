@@ -21,6 +21,9 @@ export const DEFAULT_DRIVETRAIN = Object.freeze({
   turbo: 1,
   // Pops and bangs from the exhaust when the gas is lifted at high revs (0: none, 1: loud)
   crackle: 0,
+  // Sports cars only: lifting off sharply lets the turbo's blow-off and the exhaust pops be
+  // heard; everyday cars stay quiet when the gas is lifted
+  liftOffSound: false,
   // Under braking a sporty gearbox changes down early to keep the engine above these revs,
   // blipping the throttle on every change (0: it waits until the revs have fallen right off)
   brakeShiftRpm: 0,

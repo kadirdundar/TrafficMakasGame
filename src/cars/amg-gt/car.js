@@ -16,7 +16,7 @@ export default {
   price: 42000,
   performance: { topSpeed: 300, power: 1.1, traction: 0.97, handling: 1.03, braking: 1.04, upgradeCost: 1.35 },
   // 4.0 V8 biturbo up front, 7-speed dual-clutch transaxle at the rear axle
-  drivetrain: { gears: [3.4, 2.19, 1.63, 1.29, 1.03, 0.84, 0.72], finalDrive: 3.67, wheelCircumference: 2.12, idleRpm: 800, redline: 7000, cruiseShiftRpm: 2300, shiftSec: 0.25, cylinders: 8, insulation: 0.35, turbo: 1.8, crackle: 1, brakeShiftRpm: 3000, engineSound: 'v8' },
+  drivetrain: { gears: [3.4, 2.19, 1.63, 1.29, 1.03, 0.84, 0.72], finalDrive: 3.67, wheelCircumference: 2.12, idleRpm: 800, redline: 7000, cruiseShiftRpm: 2300, shiftSec: 0.25, cylinders: 8, insulation: 0.35, turbo: 1.8, crackle: 1, liftOffSound: true, brakeShiftRpm: 3000, engineSound: 'v8' },
   chassis: { layout: 'rwd', mass: 1650, roll: 0.5, pitch: 0.55 },
   credit: {
     title: 'Mercedes Amg GT roadster',

@@ -92,6 +92,7 @@ vites oranları devir göstergesini ve motor sesini sürer, ivmeyi değiştirmez
 | `drivetrain.cylinders` | Silindir sayısı: ateşleme frekansını, yani sesin perdesini belirler. |
 | `drivetrain.insulation` | Kabin yalıtımı: 1 çift camlı limuzin (A8), 0'a doğru egzoz sesi içeri girer (spor araç ~0.35-0.45, eski sedan ~0.5-0.6). |
 | `drivetrain.turbo` | Turbo sesinin gücü; atmosferik motorda 0. |
+| `drivetrain.liftOffSound` | Yalnızca spor araçlarda `true`: gazdan hızla çekince turbo "pışş"ı ve egzoz patlamaları duyulur. Varsayılan `false` (sessiz). |
 | `drivetrain.crackle` | Gazdan hızla çekince yüksek devirde egzoz patlamaları: 0 yok (varsayılan), 1 AMG GT kadar gürültülü. Duyulma oranı kabin yalıtımına da bağlı. |
 | `drivetrain.brakeShiftRpm` | Frenlerken şanzımanın devri en az bu kadar tutmak için vitesleri teker teker, ara gazla küçültmesi (spor araç ~2600-3100). 0 (varsayılan): devir düşene kadar bekler. |
 | `drivetrain.engineSound` | İsteğe bağlı. Kaydedilmiş motor sesi seti (`src/engineSamples.js`, şimdilik yalnızca `'v8'`): devre göre çalan döngüler, sentez sesin büyük kısmının yerine. Yazılmazsa yalnızca sentez ses. |
