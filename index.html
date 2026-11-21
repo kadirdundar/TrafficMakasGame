@@ -357,8 +357,24 @@
                   <button type="button" class="paint-swatch" data-paint="1" style="--sw-color: #0e6f9c" aria-label="Navarra Mavisi"></button>
                   <button type="button" class="paint-swatch" data-paint="2" style="--sw-color: #e4e8ec" aria-label="Buzul Beyazı"></button>
                   <button type="button" class="paint-swatch" data-paint="3" style="--sw-color: #17191f" aria-label="Mitos Siyahı"></button>
+                  <button type="button" class="paint-swatch paint-swatch-custom" data-paint="custom" aria-label="Kendi Rengin" title="Kendi rengini oluştur"></button>
                 </div>
                 <span id="garage-paint-name" class="paint-name">Tango Kırmızısı</span>
+              </div>
+              <!-- Paint creator (src/paintCreator.js): opens with the custom swatch -->
+              <div class="paint-creator" id="paint-creator" hidden>
+                <div class="paint-creator-head">
+                  <span class="paint-creator-preview" id="paint-creator-preview"></span>
+                  <label class="paint-hex">
+                    <span>#</span>
+                    <input id="paint-hex" type="text" maxlength="6" spellcheck="false" autocomplete="off" aria-label="Renk kodu">
+                  </label>
+                </div>
+                <label class="paint-slider"><span>Ton</span><input type="range" id="paint-h" min="0" max="359" step="1"></label>
+                <label class="paint-slider"><span>Doygunluk</span><input type="range" id="paint-s" min="0" max="100" step="1"></label>
+                <label class="paint-slider"><span>Parlaklık</span><input type="range" id="paint-v" min="0" max="100" step="1"></label>
+                <h4 class="paint-creator-sub">Kaplama</h4>
+                <div id="paint-finish-cards"></div>
               </div>
               <p class="panel-note">Online'da arkadaşların seni bu renkte görür.</p>
             </div>

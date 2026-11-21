@@ -58,6 +58,23 @@ export const SLOT_STYLES = [
   { paint: 0x17191f, tag: '#a855f7' }, // Mitos Siyahı
 ];
 
+// A paint "slot" is one of the SLOT_STYLES presets (0-3) or a colour the player made in the
+// garage's paint creator: CUSTOM_PAINT + 0xRRGGBB. An older version that only knows the presets
+// reads a custom one as some preset (slot % 4) and carries on.
+export const CUSTOM_PAINT = 0x1000000;
+
+export function normPaintSlot(value) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  if (n >= CUSTOM_PAINT && n <= CUSTOM_PAINT + 0xffffff) return n;
+  return n % SLOT_STYLES.length;
+}
+
+export function paintHexOf(slot) {
+  const s = normPaintSlot(slot);
+  return s >= CUSTOM_PAINT ? s - CUSTOM_PAINT : SLOT_STYLES[s].paint;
+}
+
 // Everyone launches side by side, one lane each
 export const SLOT_START_X = [-1.8, 1.8, -5.4, 5.4];
 
@@ -110,10 +127,7 @@ export class MultiplayerManager {
     this.connected = false; // host: at least one guest in the room; guest: welcomed by the host
     this.playerName = localStorage.getItem('otoban_player_name') || 'OYUNCU';
     this.localCarModel = getCar(localStorage.getItem('otoban_selected_car')).id;
-    const savedPaint = Number(localStorage.getItem('otoban_selected_paint') ?? 0);
-    this.localPaintSlot = (Number.isFinite(savedPaint) && savedPaint >= 0 && savedPaint < SLOT_STYLES.length)
-      ? savedPaint
-      : 0;
+    this.localPaintSlot = normPaintSlot(localStorage.getItem('otoban_selected_paint') ?? 0);
     this.localParts = {}; // spoiler, rim colour and plate of our car (src/progression/profile.js → parts), sent with the state
     this.localId = null;
     this.localSlot = 0;
@@ -275,7 +289,7 @@ export class MultiplayerManager {
   // Each friend gets their own optimized car model (separate chunk + glb, fetched once and
   // then served from the HTTP cache); single-player never downloads it.
   loadPeerModel(player) {
-    const paintHex = player.style?.paint ?? SLOT_STYLES[player.paintSlot % SLOT_STYLES.length]?.paint;
+    const paintHex = player.style?.paint ?? paintHexOf(player.paintSlot);
     loadCarExterior(player.carModel, { paintHex, plainGlass: true })
       .then((model) => {
         if (!player.removed) {
@@ -292,10 +306,10 @@ export class MultiplayerManager {
 
   addRemotePlayer(id, name, slot, carModel = DEFAULT_CAR_ID, paintSlot = null) {
     const assignedPaintSlot = (paintSlot !== null && Number.isFinite(Number(paintSlot)))
-      ? (Number(paintSlot) % SLOT_STYLES.length)
+      ? normPaintSlot(paintSlot)
       : (slot % SLOT_STYLES.length);
     const slotStyle = SLOT_STYLES[slot % SLOT_STYLES.length];
-    const paintHex = SLOT_STYLES[assignedPaintSlot].paint;
+    const paintHex = paintHexOf(assignedPaintSlot);
     const style = { paint: paintHex, tag: slotStyle.tag };
     const car = this.createPeerCarMesh(style);
     car.group.visible = false;
@@ -812,10 +826,10 @@ export class MultiplayerManager {
       this.loadPeerModel(player);
     }
     if (data.paintSlot !== undefined) {
-      const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+      const pSlot = normPaintSlot(data.paintSlot);
       if (player.paintSlot !== pSlot) {
         player.paintSlot = pSlot;
-        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        const newPaintHex = paintHexOf(pSlot);
         player.style.paint = newPaintHex;
         player.car.setPaint(newPaintHex);
       }
@@ -840,9 +854,9 @@ export class MultiplayerManager {
       this.onGuestGone(player.id);
     } else if (data.type === 'paint_changed') {
       if (data.paintSlot !== undefined) {
-        const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+        const pSlot = normPaintSlot(data.paintSlot);
         player.paintSlot = pSlot;
-        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        const newPaintHex = paintHexOf(pSlot);
         player.style.paint = newPaintHex;
         player.car.setPaint(newPaintHex);
         this.broadcast({ type: 'roster', players: this.roster() });
@@ -853,9 +867,9 @@ export class MultiplayerManager {
         this.loadPeerModel(player);
       }
       if (data.paintSlot !== undefined) {
-        const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+        const pSlot = normPaintSlot(data.paintSlot);
         player.paintSlot = pSlot;
-        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        const newPaintHex = paintHexOf(pSlot);
         player.style.paint = newPaintHex;
         player.car.setPaint(newPaintHex);
       }
@@ -970,9 +984,9 @@ export class MultiplayerManager {
           this.loadPeerModel(p);
         }
         if (data.paintSlot !== undefined) {
-          const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+          const pSlot = normPaintSlot(data.paintSlot);
           p.paintSlot = pSlot;
-          const newPaintHex = SLOT_STYLES[pSlot].paint;
+          const newPaintHex = paintHexOf(pSlot);
           p.style.paint = newPaintHex;
           p.car.setPaint(newPaintHex);
         }
@@ -980,9 +994,9 @@ export class MultiplayerManager {
     } else if (data.type === 'paint_changed') {
       const p = this.players.get(data.from);
       if (p && data.paintSlot !== undefined) {
-        const pSlot = Number(data.paintSlot) % SLOT_STYLES.length;
+        const pSlot = normPaintSlot(data.paintSlot);
         p.paintSlot = pSlot;
-        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        const newPaintHex = paintHexOf(pSlot);
         p.style.paint = newPaintHex;
         p.car.setPaint(newPaintHex);
       }
@@ -1003,10 +1017,10 @@ export class MultiplayerManager {
           this.loadPeerModel(existing);
         }
         if (entry.paintSlot !== undefined) {
-          const pSlot = Number(entry.paintSlot) % SLOT_STYLES.length;
+          const pSlot = normPaintSlot(entry.paintSlot);
           if (existing.paintSlot !== pSlot) {
             existing.paintSlot = pSlot;
-            const newPaintHex = SLOT_STYLES[pSlot].paint;
+            const newPaintHex = paintHexOf(pSlot);
             existing.style.paint = newPaintHex;
             existing.car.setPaint(newPaintHex);
           }
@@ -1030,10 +1044,10 @@ export class MultiplayerManager {
       this.loadPeerModel(player);
     }
     if (d.paintSlot !== undefined) {
-      const pSlot = Number(d.paintSlot) % SLOT_STYLES.length;
+      const pSlot = normPaintSlot(d.paintSlot);
       if (player.paintSlot !== pSlot) {
         player.paintSlot = pSlot;
-        const newPaintHex = SLOT_STYLES[pSlot].paint;
+        const newPaintHex = paintHexOf(pSlot);
         player.style.paint = newPaintHex;
         player.car.setPaint(newPaintHex);
       }
@@ -1237,7 +1251,7 @@ export class MultiplayerManager {
   }
 
   setLocalPaintSlot(paintSlot) {
-    const slot = Number(paintSlot) % SLOT_STYLES.length;
+    const slot = normPaintSlot(paintSlot);
     this.localPaintSlot = (Number.isFinite(slot) && slot >= 0) ? slot : 0;
     if (this.connected) {
       this.broadcast({ type: 'paint_changed', paintSlot: this.localPaintSlot });

@@ -81,6 +81,8 @@ export class GarageProgressUI {
     this.perfEl = document.getElementById('garage-perf');
     this.upgradesEl = document.getElementById('garage-upgrades');
     this.partsEl = document.getElementById('garage-parts');
+    // The paint finishes sit in the paint creator, beside the colour they finish
+    this.finishEl = document.getElementById('paint-finish-cards');
     this.confirmEl = document.getElementById('garage-confirm');
     this.footerEl = document.getElementById('garage-footer');
 
@@ -124,6 +126,9 @@ export class GarageProgressUI {
     this.hudCard?.classList.toggle('hidden', !on);
     if (this.tabsEl) this.tabsEl.hidden = !on;
     if (this.partsEl) this.partsEl.hidden = !on;
+    if (this.finishEl && !on) {
+      this.finishEl.replaceChildren(el('p', 'panel-note', 'Metalik, mat ve sedef kaplamalar Yeni Sürüm\'de.'));
+    }
     this.renderWallet();
     this.renderCarCards();
     if (on && car) this.renderPages();
@@ -283,9 +288,12 @@ export class GarageProgressUI {
   renderParts(car) {
     if (!this.profile.owns(car)) {
       this.partsEl.replaceChildren(this.lockedNote(car, 'Görünüm parçaları ve plaka için önce aracı satın al.'));
+      this.finishEl?.replaceChildren(el('p', 'panel-note', 'Kaplama için önce aracı satın al.'));
       return;
     }
-    const sections = Object.keys(PARTS).map((kind) => {
+    this.finishEl?.replaceChildren(this.buildParts(car, 'finish'));
+    const kinds = Object.keys(PARTS).filter((kind) => !(kind === 'finish' && this.finishEl));
+    const sections = kinds.map((kind) => {
       const section = el('div', 'panel-section');
       section.append(el('h3', '', PART_HEADINGS[kind] ?? kind), this.buildParts(car, kind));
       return section;

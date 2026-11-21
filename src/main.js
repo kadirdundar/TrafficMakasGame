@@ -9,7 +9,8 @@ import { HighwayWorld, MIRROR_SKIP_LAYER, ROAD_MODES, TRACK_LAP_LENGTH, WEATHER_
 import { TrafficManager } from './traffic.js';
 import { RoadClosures } from './roadClosures.js';
 import { DayCycle } from './dayCycle.js';
-import { MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES } from './multiplayer.js';
+import { CUSTOM_PAINT, MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES, normPaintSlot, paintHexOf } from './multiplayer.js';
+import { PaintCreator } from './paintCreator.js';
 import { CarFire } from './carFire.js';
 import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
@@ -299,10 +300,8 @@ class OtobanMakasGame {
       },
     });
     this.lastTandemTime = 0;
-    const savedPaint = Number(localStorage.getItem('otoban_selected_paint') ?? 0);
-    this.selectedPaintSlot = (Number.isFinite(savedPaint) && savedPaint >= 0 && savedPaint < SLOT_STYLES.length)
-      ? savedPaint
-      : 0;
+    // One of the four preset colours (0-3) or the player's own (CUSTOM_PAINT + hex)
+    this.selectedPaintSlot = normPaintSlot(localStorage.getItem('otoban_selected_paint') ?? 0);
 
     // Zero-overhead 10-second Drone Replay & Video Exporter
     this.replay = new DroneReplayManager(
@@ -366,7 +365,7 @@ class OtobanMakasGame {
         document.getElementById('garage-canvas'),
         document.getElementById('garage-stage'),
         {
-          paintHex: SLOT_STYLES[this.selectedPaintSlot].paint,
+          paintHex: paintHexOf(this.selectedPaintSlot),
           accent: AMBIENT_COLORS[this.cockpit.ambientKey]?.css,
           carType: this.selectedCar,
           onReady: (ok) => {
@@ -843,8 +842,16 @@ class OtobanMakasGame {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.showroom?.setAutoRotate(false);
     }
+    // The custom swatch opens the paint creator and wears the colour made there
+    this.paintCreator = new PaintCreator({
+      onPreview: (hex) => this.showroom?.setPaint(hex),
+      onApply: (hex) => this.setGaragePaint(CUSTOM_PAINT + hex),
+    });
     document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
-      sw.addEventListener('click', () => this.setGaragePaint(Number(sw.dataset.paint)));
+      sw.addEventListener('click', () => {
+        if (sw.dataset.paint === 'custom') this.setGaragePaint(CUSTOM_PAINT + this.paintCreator.color);
+        else this.setGaragePaint(Number(sw.dataset.paint));
+      });
     });
     this.setGaragePaint(this.selectedPaintSlot);
 
@@ -1638,15 +1645,18 @@ class OtobanMakasGame {
     this.showroom?.setAccent(cssColor);
   }
 
-  // Garage paint preview: the four colours friends see online, one per room slot
+  // Garage paint: one of the four preset colours or the player's own from the paint creator;
+  // friends online see the car in it
   setGaragePaint(slot) {
-    this.selectedPaintSlot = (Number.isFinite(slot) && slot >= 0 && slot < SLOT_STYLES.length) ? slot : 0;
+    this.selectedPaintSlot = normPaintSlot(slot);
+    const custom = this.selectedPaintSlot >= CUSTOM_PAINT;
     try {
       localStorage.setItem('otoban_selected_paint', String(this.selectedPaintSlot));
     } catch (_) {}
-    this.showroom?.setPaint(SLOT_STYLES[this.selectedPaintSlot].paint);
+    this.showroom?.setPaint(paintHexOf(this.selectedPaintSlot));
+    this.paintCreator?.open(custom);
     document.querySelectorAll('#garage-paint-group .paint-swatch').forEach((sw) => {
-      const on = Number(sw.dataset.paint) === this.selectedPaintSlot;
+      const on = custom ? sw.dataset.paint === 'custom' : Number(sw.dataset.paint) === this.selectedPaintSlot;
       sw.classList.toggle('active', on);
       if (on) this.setHudText('garage-paint-name', sw.getAttribute('aria-label'));
     });

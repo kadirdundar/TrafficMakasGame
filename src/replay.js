@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { advanceTrafficWheelSpin, createLuxurySedan } from './vehicleModels.js';
 import { getCar, loadCarExterior } from './cars/index.js';
-import { SLOT_STYLES } from './multiplayer.js';
+import { SLOT_STYLES, paintHexOf } from './multiplayer.js';
 
 // Maximum replay window: 10 seconds at up to 60 Hz = 600 frames
 const MAX_DURATION_SEC = 10.0;
@@ -149,7 +149,7 @@ export class DroneReplayManager {
   // Pre-warm or switch the local player's exterior 3D car model
   ensurePlayerExteriorModel(carId, paintSlot = 0, parts = {}) {
     const cleanId = getCar(carId).id;
-    const paintHex = SLOT_STYLES[paintSlot % SLOT_STYLES.length]?.paint ?? SLOT_STYLES[0].paint;
+    const paintHex = paintHexOf(paintSlot);
     this.playerParts = parts;
 
     if (this.loadedCarId === cleanId) {
@@ -184,7 +184,7 @@ export class DroneReplayManager {
     const peerSlot = this.replayPeers[slotIdx];
     if (!peerSlot) return;
     const cleanId = getCar(carId).id;
-    const paintHex = SLOT_STYLES[paintSlot % SLOT_STYLES.length]?.paint ?? SLOT_STYLES[1].paint;
+    const paintHex = paintHexOf(paintSlot);
     peerSlot.parts = parts;
 
     if (peerSlot.loadedCarId === cleanId) {
