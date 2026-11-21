@@ -19,18 +19,19 @@ export const WEATHER_PRESETS = {
     icon: '🌙',
     skyColor: 0x0d1528,
     fogColor: 0x131e36,
-    fogDensity: 0.0022,
-    // Kept low at night: the street lamps' pools and the headlights light the road, the space
-    // between them stays dark (the cabin keeps its own light)
-    ambientIntensity: 0.62,
+    // Thin enough that the road stays readable well past the headlamps
+    fogDensity: 0.0014,
+    // Still lower than by day: the street lamps' pools and the headlights light the road, but
+    // the space between them stays visible (the cabin keeps its own light)
+    ambientIntensity: 0.85,
     ambientColor: 0x9bb4e8,
-    hemiGroundColor: 0x2a364f,
-    dirIntensity: 0.55,
+    hemiGroundColor: 0x34425e,
+    dirIntensity: 0.72,
     dirColor: 0xa5c4ff,
     roadRoughness: 0.42,
     roadMetalness: 0.2,
     streetlightsOn: true,
-    lampPool: 0.3, // how bright the pools under the street lamps are (0: none)
+    lampPool: 0.45, // how bright the pools under the street lamps are (0: none)
     rain: false,
   },
   rain: {
