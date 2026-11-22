@@ -14,8 +14,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Otoban Makas" />
-  <script type="module" crossorigin src="./assets/index-DlJHrKzG.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BR96bNf0.css">
+  <script type="module" crossorigin src="./assets/index-D0vq0VqV.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-B-O7Az-u.css">
 </head>
 <body>
   <!-- 3D WebGL Highway Canvas Container -->
@@ -314,6 +314,16 @@
               </div>
             </div>
           </div>
+
+          <!-- Daily missions and login streak (src/progression/dailyUI.js) -->
+          <section class="daily-block" id="daily-block" aria-labelledby="daily-title">
+            <div class="daily-head">
+              <h2 class="panel-kicker" id="daily-title">Günlük görevler</h2>
+              <span class="daily-meta" id="daily-meta"></span>
+            </div>
+            <ul class="daily-list" id="daily-missions"></ul>
+            <p class="daily-foot" id="daily-foot"></p>
+          </section>
         </div>
 
         <nav class="home-nav" aria-label="Menü">
@@ -558,6 +568,22 @@
   </div>
 
   <!-- Result card after a crash: the car burned, the drive is over (main.js → openGameOver) -->
+  <!-- Daily login reward, once a day when the menu opens (src/progression/dailyUI.js) -->
+  <div id="daily-reward-overlay" class="pause-overlay daily-reward-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="daily-reward-title">
+    <div class="pause-card daily-reward-card">
+      <div class="pause-head">
+        <span class="daily-reward-gift" aria-hidden="true">🎁</span>
+        <h2 id="daily-reward-title">GÜNLÜK ÖDÜL</h2>
+        <p class="daily-reward-sub" id="daily-reward-sub"></p>
+      </div>
+      <ol class="streak-days" id="streak-days"></ol>
+      <button id="btn-daily-claim" type="button" class="cta-btn start-btn pause-resume daily-claim-btn">
+        <span class="start-text"><span id="daily-claim-label">TOPLA</span></span>
+      </button>
+      <p class="daily-reward-note">Her gün gel, ödül büyüsün. Bir gün kaçırırsan seri baştan başlar.</p>
+    </div>
+  </div>
+
   <div id="gameover-overlay" class="pause-overlay gameover-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
     <div class="pause-card gameover-card">
       <header class="pause-head">
@@ -569,6 +595,7 @@
           <span><b id="gameover-km">0.00</b> km</span>
         </p>
         <p id="gameover-best" class="gameover-best"></p>
+        <p id="gameover-coins" class="gameover-coins"></p>
       </header>
       <button id="btn-gameover-retry" type="button" class="cta-btn start-btn pause-resume">
         <span aria-hidden="true">↻</span>
