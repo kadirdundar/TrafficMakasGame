@@ -6,6 +6,7 @@ Claude `/siradaki` ile ilk Todo maddesini alır, bitirince Done'a taşır.
 Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 
 ## Todo
+- Oyunun performansını arttırmak için yapılabilecek bir şey var mı ? Daha az güç harcamasını sağlayacak şeyler
 - 
 
 ## In progress
@@ -13,6 +14,8 @@ Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 ## Blocked
 
 ## Done
+- [x] Oyunu app store'a yükleyeceğimizi düşünürsek neler çıkarmamız lazım, örneğin araba markaları ve çizimlerin lisansına gerek olmadığını düşünüyorum markaları başkalaştırıp modelleri o şekilde kullanırız. Bu gibi gereksinimlerin planın olduğu bir dosya oluştur. Ayrıca oyuna farklı neler eklenmesi gerektiğine dair de bilgiler ver. (2026-11-22)
+  - Plan: docs/APP-STORE-PLANI.md (lisanslar, marka temizliği, Apple gereksinimleri, kontrol listesi, eklenecekler)
 - [x] araç kamerası değişirken üçüncü seçenek dıştan görünüm olsun (2026-11-22)
   - Sıra: Standart → Tam Kabin → Dış Kamera → Yakın Sürüş (kamera butonu, C tuşu ve Ayarlar)
 - [x] mercedes araçların birinde ayak koyma yerinde beyaz renkte bir şey var.bu olmasın dikkat çekmemesi için buralar koyu renkte olsun (2026-11-22)
