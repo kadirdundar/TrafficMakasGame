@@ -14,7 +14,7 @@ export default {
   aliases: ['ford'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Budget sedan: slow to 100 and an early top speed, but light and easy to place
-  price: 4500,
+  price: 11000,
   performance: { topSpeed: 205, power: 0.66, traction: 0.72, handling: 0.94, braking: 0.82, upgradeCost: 0.65 },
   // 2.0 naturally aspirated four-cylinder, 5-speed manual, front-wheel drive
   drivetrain: { gears: [3.67, 2.14, 1.45, 1.03, 0.77], finalDrive: 4.06, wheelCircumference: 1.93, idleRpm: 800, redline: 6500, cruiseShiftRpm: 2500, shiftSec: 0.55, cylinders: 4, insulation: 0.55, turbo: 0 },

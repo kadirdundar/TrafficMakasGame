@@ -14,7 +14,7 @@ export default {
   aliases: ['toyota', 'corolla'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Everyday 1.6 sedan: slow to pull, soft but honest handling
-  price: 4000,
+  price: 9000,
   performance: { topSpeed: 200, power: 0.64, traction: 0.72, handling: 0.86, braking: 0.8, upgradeCost: 0.6 },
   // 1.6 naturally aspirated four-cylinder, 6-speed manual, front-wheel drive
   drivetrain: { gears: [3.54, 1.91, 1.31, 0.97, 0.82, 0.7], finalDrive: 4.21, wheelCircumference: 1.99, idleRpm: 800, redline: 6400, cruiseShiftRpm: 2400, shiftSec: 0.55, cylinders: 4, insulation: 0.6, turbo: 0 },

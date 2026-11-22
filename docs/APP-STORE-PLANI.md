@@ -15,7 +15,7 @@ eklenebilecekleri toplar. Tespitler kodun bugünkü hâlinden (2026-11-22) çık
 | 1 | **Ferrari Portofino modeli CC BY-NC-SA** | "NC" = ticari kullanım yasak. Satın alma veya reklam olan bir uygulamada kullanılamaz. | Aracı çıkar ya da ticari lisanslı/kendi modelinle değiştir. |
 | 2 | **Gerçek marka adları, logolar, rozetler** | Apple 5.2.1: izinsiz üçüncü taraf markası → red. | Hayali markalar; logo/rozetleri modellerden ve koddan sil (bkz. 2.2). |
 | 3 | **Kaynağı belirsiz içerik** | `public/audi_cockpit.png` fotoğrafı ve Hüzün Radyosu şarkılarının hakları kodda yazmıyor. | Hakları belgele ya da değiştir. |
-| 4 | **Test parası açık** | `TEST_MIN_COINS = 1.000.000` her profili 1M paraya tamamlıyor. | `src/progression/config.js` içinde `0` yap. |
+| 4 | ~~**Test parası açık**~~ | Çözüldü (2026-11-22): test parası yalnızca adrese `?test` eklenince, ayrı bir test kaydında var. | Uygulama kabuğunda `?test` adresi açılmadığından emin ol. |
 | 5 | **Web sitesinin kopyası gibi görünme riski** | Apple 4.2 (asgari işlev): tarayıcıda aynen çalışan uygulamalar sık reddediliyor. | Yerel özellikler ekle (Game Center, titreşim, oyun kumandası, çevrimdışı). |
 | 6 | **Gizlilik politikası ve online altyapı** | Her uygulama için gizlilik politikası URL'si zorunlu; online oyun ücretsiz genel PeerJS sunucusuna bağlı. | Politika yaz; kendi PeerJS sunucunu kur. |
 
@@ -146,7 +146,7 @@ reddediliyor. Oyun içeriği güçlü olsa da yerel özellikler riski azaltır:
 
 ### 3.4 Para ve satın alma
 
-- [ ] `TEST_MIN_COINS` → `0` (`src/progression/config.js`).
+- [x] Test parası yalnızca `?test` adresinde ve ayrı kayıtta; gerçek oyuncu 0 parayla başlıyor (2026-11-22).
 - [ ] Para şu an yalnızca oynayarak kazanılıyor; sorun yok. **Gerçek parayla para/araç
       satılacaksa Apple'ın uygulama içi satın alması (IAP) zorunlu** (Guideline 3.1.1);
       başka ödeme yöntemi veya bağlantı kullanılamaz.
@@ -175,7 +175,7 @@ reddediliyor. Oyun içeriği güçlü olsa da yerel özellikler riski azaltır:
 2. [ ] Tüm araçlarda hayali marka adları; koddan ve dokulardan logo/rozet temizliği.
 3. [ ] `audi_cockpit.png` ve radyo şarkılarının haklarını netleştir.
 4. [ ] Künye ekranına sesleri ve müziği ekle.
-5. [ ] `TEST_MIN_COINS = 0`.
+5. [x] Test parası canlı oyundan çıktı (yalnızca `?test`).
 6. [ ] Capacitor kabuğu, içeriği uygulamaya gömme, çevrimdışı açılış.
 7. [ ] Game Center + titreşim + kumanda.
 8. [ ] Kendi PeerServer'ı + TURN; ad filtresi ve engelleme.
@@ -190,8 +190,8 @@ reddediliyor. Oyun içeriği güçlü olsa da yerel özellikler riski azaltır:
 Öncelik, hem oyuncunun geri gelmesine hem de App Store incelemesine katkısına göre.
 
 ### Yüksek öncelik
-- **Günlük görevler ve haftalık meydan okumalar:** "fren yapmadan 5 km", "10 kez yakın makas",
-  "gece 200 km/s üstü 1 dakika". Tamamlayınca para; oyuncuyu her gün geri getirir.
+- **Günlük görevler ve haftalık meydan okumalar:** günlük giriş ödülü serisi ve günde 3 görev
+  eklendi (2026-11-22, `src/progression/daily.js`). Sırada haftalık meydan okumalar var.
 - **Game Center skor tabloları ve başarımlar:** hem eğlence hem 4.2 için yerel özellik.
 - **İngilizce dil desteği:** bugün her şey Türkçe; mağazanın çoğu İngilizce. Metinleri tek
   bir dil dosyasına topla.

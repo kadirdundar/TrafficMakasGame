@@ -17,7 +17,7 @@ export default {
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // The garage's fastest car (320 km/h) and the dearest; rear-drive, so it leaves the line a
   // touch behind the four-wheel-drive M4, and it turns less sharply than the 911
-  price: 60000,
+  price: 200000,
   performance: { topSpeed: 320, power: 1.12, traction: 0.98, handling: 1.06, braking: 1.08, upgradeCost: 1.55 },
   // F154 3.9 twin-turbo V8 (flat-plane crank), 7-speed dual-clutch, rear-wheel drive, 285/35 R20
   drivetrain: { gears: [3.08, 2.19, 1.63, 1.29, 1.03, 0.84, 0.69], finalDrive: 3.9, wheelCircumference: 2.12, idleRpm: 750, redline: 7500, cruiseShiftRpm: 2300, shiftSec: 0.2, cylinders: 8, insulation: 0.4, turbo: 1.6, crackle: 0.7, liftOffSound: true, brakeShiftRpm: 3000, engineSound: 'v8' },

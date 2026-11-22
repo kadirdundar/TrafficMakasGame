@@ -6,13 +6,16 @@ Claude `/siradaki` ile ilk Todo maddesini alır, bitirince Done'a taşır.
 Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 
 ## Todo
-- Oyun içerisindeki para kazanma ile araç alma özellik ekleme gibi şeyleri optimize et sanki birisi 0 tl ile oyuna başlıyor gibi bu kadar kolay olmasın bir şeyler yapmak ki kişiler oyunda daha fazla kalsın.
 
 ## In progress
 
 ## Blocked
 
 ## Done
+- [x] Oyun içerisindeki para kazanma ile araç alma özellik ekleme gibi şeyleri optimize et sanki birisi 0 tl ile oyuna başlıyor gibi bu kadar kolay olmasın bir şeyler yapmak ki kişiler oyunda daha fazla kalsın. (2026-11-22)
+  - 0 parayla başlangıç, kazanç yarıya indi, araçlar 2-3 kat, yükseltme/parçalar ~2 kat pahalı (src/progression/config.js, car.js fiyatları)
+  - Günlük giriş ödülü serisi (250 → 1.500) ve günde 3 görev + hepsine bonus; ana ekranda görev kutusu, kaza kartında kazanılan para (src/progression/daily.js, dailyUI.js)
+  - Kayıt sıfırlandı (otoban_profile_v2; eski kayıt silinmedi). Test parası yalnızca adrese ?test eklenince, ayrı kayıtta
 - [x] Oyunun performansını arttırmak için yapılabilecek bir şey var mı ? Daha az güç harcamasını sağlayacak şeyler (2026-11-22)
   - Oyun ve garaj en fazla 60 FPS çiziyor (120 Hz ekranlarda iş yarıya iner); Ayarlar → Performans → Pil Tasarrufu: 30 FPS + 1,25x çözünürlük (src/frameCap.js)
 - [x] Oyunu app store'a yükleyeceğimizi düşünürsek neler çıkarmamız lazım, örneğin araba markaları ve çizimlerin lisansına gerek olmadığını düşünüyorum markaları başkalaştırıp modelleri o şekilde kullanırız. Bu gibi gereksinimlerin planın olduğu bir dosya oluştur. Ayrıca oyuna farklı neler eklenmesi gerektiğine dair de bilgiler ver. (2026-11-22)

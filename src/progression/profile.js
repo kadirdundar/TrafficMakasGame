@@ -13,11 +13,17 @@ import { cleanPlate, parsePlate } from './plate.js';
 
 // The player's save in the new version: coins, cars bought, and per car the upgrade levels,
 // the parts (spoilers, rim colours, paint finish, carbon, window film, neon) bought / fitted and
-// the number plate.
+// the number plate, plus the daily login streak and missions (src/progression/daily.js).
 // Stored in localStorage under one versioned key; cars are referred to by their car.js id, so
 // cars added later simply start out unowned and unupgraded.
+//
+// v2 is the economy where a new player starts with nothing. v1 saves were made while every
+// profile was topped up with test coins, so they are left behind (still in localStorage).
+// Opened with ?test in the address the game uses a tester save instead, topped up with
+// TEST_MIN_COINS, and the real save is not touched.
 
-const STORAGE_KEY = 'otoban_profile_v1';
+export const TEST_MODE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('test');
+const STORAGE_KEY = TEST_MODE ? 'otoban_profile_test' : 'otoban_profile_v2';
 const SAVE_DELAY_MS = 4000;
 
 export function carPrice(car) {
@@ -29,7 +35,7 @@ const isObject = (v) => Boolean(v) && typeof v === 'object';
 
 function freshProfile() {
   const parts = Object.fromEntries(PART_KEYS.map((key) => [key, {}]));
-  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, ...parts, plates: {} };
+  return { coins: STARTING_COINS, totalEarned: 0, owned: [], upgrades: {}, ...parts, plates: {}, daily: {} };
 }
 
 function readStored() {
@@ -44,6 +50,7 @@ function readStored() {
       upgrades: isObject(data.upgrades) ? data.upgrades : {},
       ...Object.fromEntries(PART_KEYS.map((key) => [key, isObject(data[key]) ? data[key] : {}])),
       plates: isObject(data.plates) ? data.plates : {},
+      daily: isObject(data.daily) ? data.daily : {},
     };
   } catch (_) {
     return freshProfile();
@@ -53,7 +60,7 @@ function readStored() {
 export class PlayerProfile {
   constructor() {
     this.data = readStored();
-    this.data.coins = Math.max(this.data.coins, TEST_MIN_COINS);
+    if (TEST_MODE) this.data.coins = Math.max(this.data.coins, TEST_MIN_COINS);
     this.saveTimer = null;
     this.listeners = new Set();
   }

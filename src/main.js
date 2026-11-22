@@ -33,6 +33,8 @@ import { isNewVersionEnabled, setNewVersionEnabled } from './progression/flag.js
 import { COINS_PER_KM, COINS_PER_POINT, MATCH_WIN_COINS, neonColorHex } from './progression/config.js';
 import { createNeonGlow, createNeonSpill } from './cars/neon.js';
 import { GarageProgressUI } from './progression/garageUI.js';
+import { DailyGoals, missionText } from './progression/daily.js';
+import { DailyGoalsUI } from './progression/dailyUI.js';
 import { FirstDriveCoach, coachDone, resetCoach } from './tutorial.js';
 import { MenuMusicPlayer } from './menuMusic.js';
 import { PerfProbe } from './perfProbe.js';
@@ -363,6 +365,11 @@ class OtobanMakasGame {
     // temporary switch in the garage. Off, every car drives with CLASSIC_PHYSICS as before.
     this.newVersion = isNewVersionEnabled();
     this.profile = new PlayerProfile();
+    // A car not owned (a save from before the economy reset, a car only looked at) opens as the free one
+    if (!this.profile.owns(CARS[this.selectedCar])) this.selectedCar = getCar(null).id;
+    // Daily login reward and missions (src/progression/daily.js): the drive reports km, makas, …
+    this.daily = new DailyGoals(this.profile, { onDone: (mission, bonus) => this.onMissionDone(mission, bonus) });
+    this.dailyUI = new DailyGoalsUI(this.daily);
     this.carPhysics = CLASSIC_PHYSICS;
     this.roadPhysics = { ...CLASSIC_PHYSICS }; // carPhysics on today's road (see updatePhysics)
     this.drivetrain = resolveDrivetrain(null);
@@ -1620,6 +1627,7 @@ class OtobanMakasGame {
   // New version: a drive pays coins for the points scored (penalties take none back) and the
   // distance covered. Whole coins go straight into the profile, which saves them shortly after.
   earnCoins(distanceKm) {
+    this.daily.add('km', distanceKm);
     const gained = this.score - this.coinScoreMark;
     this.coinScoreMark = this.score;
     if (!this.newVersion) return;
@@ -1629,6 +1637,16 @@ class OtobanMakasGame {
       this.coinCarry -= whole;
       this.runCoins += whole;
       this.profile.earn(whole);
+    }
+  }
+
+  // A daily mission done in the drive: its coins (already in the profile) count towards this
+  // drive's coins on the HUD, and a chip says so
+  onMissionDone(mission, bonus) {
+    this.runCoins += mission.reward + bonus;
+    this.showMakasNotification(`✅ GÖREV: ${missionText(mission)} · +${mission.reward.toLocaleString('tr-TR')} PARA`, 0, 'gold');
+    if (bonus > 0) {
+      setTimeout(() => this.showMakasNotification(`🏆 TÜM GÖREVLER BİTTİ · +${bonus.toLocaleString('tr-TR')} PARA`, 0, 'gold'), 1200);
     }
   }
 
@@ -1836,6 +1854,7 @@ class OtobanMakasGame {
     document.getElementById('menu-overlay')?.classList.remove('hidden');
     this.setHudText('menu-best', Math.floor(this.bestScore).toLocaleString('tr-TR'));
     this.setScreen(screen);
+    if (screen === 'home') this.dailyUI.maybeShowReward();
     this.syncDroneReplayButton();
     this.menuMusic?.fadeIn(0.7);
   }
@@ -1849,7 +1868,10 @@ class OtobanMakasGame {
     document.querySelectorAll('[data-screen-panel]').forEach((panel) => {
       panel.hidden = panel.dataset.screenPanel !== screen;
     });
-    if (screen === 'home') this.updateHomeSummary();
+    if (screen === 'home') {
+      this.updateHomeSummary();
+      this.dailyUI.render();
+    }
     if (screen === 'garage') {
       document.querySelector('#garage-car-select .active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }
@@ -1878,6 +1900,7 @@ class OtobanMakasGame {
     this.warmShaders();
     this.runActive = true;
     this.hasStartedDriving = true;
+    this.daily.refresh();
     this.setUiState('drive');
     if (!coachDone()) {
       this.coach.start({ touch: this.isTouch(), steerMode: this.steerMode, roadMode: this.traffic.roadMode });
@@ -2160,6 +2183,8 @@ class OtobanMakasGame {
   // A higher score is a record of the whole game and of the road it was driven on. Kept in
   // memory while driving; saveRecords() writes them (at events, pauses and the end of a drive).
   noteScore({ save = false } = {}) {
+    this.daily.best('score', this.score);
+    this.daily.best('combo', this.combo);
     if (this.score > this.bestScore) this.bestScore = Math.floor(this.score);
     const mode = this.traffic.roadMode;
     if (mode in this.modeBest && this.score > this.modeBest[mode]) this.modeBest[mode] = Math.floor(this.score);
@@ -2521,6 +2546,7 @@ class OtobanMakasGame {
       this.lapStartTime = performance.now();
       const completedLap = this.currentLap;
       this.currentLap = currentLapNumber;
+      this.daily.add('laps', 1);
       const timeStr = this.formatLapTime(lapTimeSec);
 
       let isNewRecord = false;
@@ -2606,6 +2632,7 @@ class OtobanMakasGame {
       basePts = 300 * speedFactor * (1 + 2 * risk);
       this.combo = Math.min(10.0, this.combo + 0.5 + risk);
       if (this.overtakeRun) this.overtakeRun.passed += 1;
+      this.daily.add('sollama', 1);
       const count = this.overtakeRun?.passed ?? 1;
       label = risk > 0.6 ? '⚡ KIL PAYI SOLLAMA!' : count > 1 ? `SOLLAMA ×${count}` : 'SOLLAMA!';
       if (risk > 0.6) style = 'gold';
@@ -2615,6 +2642,7 @@ class OtobanMakasGame {
       basePts = 350 * closeness * speedFactor;
       this.combo = Math.min(10.0, this.combo + 1.0);
       label = `😱 KARŞIDAN SIYIRDIN (${Math.round(lateralGap * 100)} CM)`;
+      this.daily.add('makas', 1);
       style = 'gold';
     }
     this.comboTimer = 1.0;
@@ -2642,6 +2670,8 @@ class OtobanMakasGame {
       return;
     }
     const { lateralGap, speedKmh, isRazorClose, isDoubleMakas } = data;
+    this.daily.add('makas', 1);
+    if (isRazorClose || isDoubleMakas) this.daily.add('razor', 1);
     // Increase combo multiplier (up to 10.0x)
     const comboStep = isDoubleMakas ? 1.5 : isRazorClose ? 1.0 : 0.5;
     this.combo = Math.min(10.0, this.combo + comboStep);
@@ -3084,6 +3114,10 @@ class OtobanMakasGame {
       'gameover-best',
       record ? '🏆 YENİ REKOR!' : `En iyi skor: ${Math.floor(this.bestScore).toLocaleString('tr-TR')}`
     );
+    this.setHudText(
+      'gameover-coins',
+      `+${this.runCoins.toLocaleString('tr-TR')} para · Günlük görevler ${this.daily.doneCount()}/${this.daily.missions().length}`
+    );
     document.getElementById('gameover-overlay')?.classList.remove('hidden');
   }
 
@@ -3499,6 +3533,7 @@ class OtobanMakasGame {
       this.score += (this.speedKmh - 100) * 0.35 * this.combo * dt;
       this.noteScore();
     }
+    if (this.speedKmh >= 200) this.daily.add('fastSec', dt);
     this.earnCoins(frameDistanceKm);
     this.updateRepair(dt, frameDistanceKm);
     this.coach.update(dt, { speedKmh: this.speedKmh, playerX: this.playerX });

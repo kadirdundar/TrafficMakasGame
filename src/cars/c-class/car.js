@@ -28,7 +28,7 @@ export default {
   aliases: ['c200', 'w206', 'mercedes-c'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Premium sedan between the Passat B8 and the M4: 204 hp, 0-100 in 7.3 s, 246 km/h
-  price: 9000,
+  price: 22000,
   performance: { topSpeed: 246, power: 0.78, traction: 0.8, handling: 0.92, braking: 0.9, upgradeCost: 0.9 },
   // C 200: 1.5 four-cylinder turbo, 9-speed automatic, rear-wheel drive
   drivetrain: { gears: [5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], finalDrive: 3.07, wheelCircumference: 2.05, idleRpm: 750, redline: 6300, cruiseShiftRpm: 2000, cylinders: 4, insulation: 0.8, turbo: 1.4 },

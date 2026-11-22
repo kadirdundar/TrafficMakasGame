@@ -14,7 +14,7 @@ export default {
   aliases: ['b5'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // The cheapest car: a slow diesel with soft handling and modest brakes
-  price: 2500,
+  price: 6000,
   performance: { topSpeed: 200, power: 0.62, traction: 0.7, handling: 0.82, braking: 0.78, upgradeCost: 0.6 },
   // 1.8 T, 5-speed manual, front-wheel drive: long gears, a thin bulkhead and soft springs
   drivetrain: { gears: [3.5, 1.94, 1.3, 0.97, 0.8], finalDrive: 3.89, wheelCircumference: 1.99, idleRpm: 850, redline: 6200, cruiseShiftRpm: 2500, shiftSec: 0.6, cylinders: 4, insulation: 0.5, turbo: 1.5 },

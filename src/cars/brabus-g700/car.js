@@ -14,7 +14,7 @@ export default {
   aliases: ['brabus', 'g700', 'g63', 'g-class', 'gwagon', 'g-wagon', 'mercedes-brabus'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Brute force: strong pull off the line, but heavy, boxy and slow to turn
-  price: 32000,
+  price: 90000,
   performance: { topSpeed: 240, power: 1.2, traction: 0.92, handling: 0.82, braking: 0.86, upgradeCost: 1.3 },
   // 4.0 V8 biturbo, 9-speed automatic, three locking differentials, side exhausts
   drivetrain: { gears: [5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], finalDrive: 3.27, wheelCircumference: 2.5, redline: 6300, cylinders: 8, insulation: 0.55, turbo: 1.5, crackle: 0.8, brakeShiftRpm: 2600, engineSound: 'v8' },

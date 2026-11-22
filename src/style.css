@@ -4447,6 +4447,210 @@
     font-size: 0.78rem;
   }
 
+  /* --- Home: daily missions (src/progression/dailyUI.js) --- */
+  .daily-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .daily-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .daily-meta {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 800;
+    color: #e2e8f0;
+  }
+
+  .daily-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .daily-mission {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.035);
+    overflow: hidden;
+  }
+
+  /* Progress along the bottom edge */
+  .daily-mission::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-end: 0;
+    block-size: 2px;
+    inline-size: calc(var(--p, 0) * 100%);
+    background: var(--accent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+
+  .daily-check {
+    display: grid;
+    place-items: center;
+    inline-size: 18px;
+    block-size: 18px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    font-size: 0.66rem;
+    font-weight: 900;
+  }
+
+  .daily-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-inline-size: 0;
+  }
+
+  .daily-copy strong {
+    font-size: 0.74rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .daily-copy small {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+
+  .daily-reward {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #fcd34d;
+  }
+
+  .daily-mission.done {
+    border-color: color-mix(in srgb, var(--accent-emerald) 35%, transparent);
+    background: color-mix(in srgb, var(--accent-emerald) 7%, transparent);
+  }
+
+  .daily-mission.done::after {
+    background: var(--accent-emerald);
+    box-shadow: none;
+  }
+
+  .daily-mission.done .daily-check {
+    border-color: var(--accent-emerald);
+    background: var(--accent-emerald);
+    color: #04140c;
+  }
+
+  .daily-mission.done .daily-copy strong,
+  .daily-mission.done .daily-reward {
+    opacity: 0.6;
+  }
+
+  .daily-foot {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+
+  /* --- Daily login reward card --- */
+  .daily-reward-card {
+    inline-size: min(420px, 100%);
+    border-color: rgba(252, 211, 77, 0.4);
+  }
+
+  .daily-reward-gift {
+    font-size: 2.2rem;
+    line-height: 1;
+  }
+
+  .daily-reward-card h2 {
+    color: #fcd34d;
+  }
+
+  .daily-reward-sub,
+  .daily-reward-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+
+  .daily-reward-note {
+    text-align: center;
+    font-size: 0.64rem;
+  }
+
+  .streak-days {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .streak-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 7px 2px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .streak-day small {
+    font-size: 0.52rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .streak-day b {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: #e2e8f0;
+  }
+
+  .streak-day.taken {
+    opacity: 0.45;
+  }
+
+  .streak-day.taken b::before {
+    content: '✓ ';
+    color: var(--accent-emerald);
+  }
+
+  .streak-day.today {
+    border-color: #fcd34d;
+    background: rgba(252, 211, 77, 0.14);
+    box-shadow: 0 0 16px rgba(252, 211, 77, 0.25);
+  }
+
+  .streak-day.today b {
+    color: #fcd34d;
+  }
+
+  .gameover-coins {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
   /* --- Pause card over the frozen road --- */
   .pause-overlay {
     position: fixed;

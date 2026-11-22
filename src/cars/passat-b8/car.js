@@ -14,7 +14,7 @@ export default {
   aliases: ['passat', 'b8'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
   // Family sedan: gentle launch, soft brakes, lower top speed
-  price: 6500,
+  price: 15000,
   performance: { topSpeed: 220, power: 0.7, traction: 0.76, handling: 0.9, braking: 0.86, upgradeCost: 0.75 },
   // 1.5 TSI, 7-speed DSG (its two final drives folded into the ratios), front-wheel drive
   drivetrain: { gears: [3.77, 2.27, 1.53, 1.12, 0.86, 0.69, 0.58], finalDrive: 4.44, wheelCircumference: 2.0, idleRpm: 750, redline: 6200, cruiseShiftRpm: 2000, shiftSec: 0.3, cylinders: 4, insulation: 0.75, turbo: 1.2 },

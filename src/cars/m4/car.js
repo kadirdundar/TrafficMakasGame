@@ -14,7 +14,7 @@ export default {
   variant: 'G82 · VR46 Edition',
   aliases: ['bmw'],
   // New version only (garage price in coins, stats): src/cars/README.md → performance
-  price: 25000,
+  price: 70000,
   performance: { topSpeed: 290, power: 1.06, traction: 1.0, handling: 1.08, braking: 1.05, upgradeCost: 1.25 },
   // S58 3.0 straight-six biturbo, 8-speed M Steptronic, M xDrive
   drivetrain: { gears: [5.0, 3.2, 2.14, 1.72, 1.31, 1.0, 0.82, 0.64], finalDrive: 3.15, wheelCircumference: 2.13, idleRpm: 800, redline: 7200, cruiseShiftRpm: 2300, shiftSec: 0.3, cylinders: 6, insulation: 0.45, turbo: 2.4, crackle: 0.6, liftOffSound: true, brakeShiftRpm: 2900 },
