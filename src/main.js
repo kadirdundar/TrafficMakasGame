@@ -100,6 +100,10 @@ const CAMERA_PRESETS = [
   // (updateChaseView). `lookDown` tilts it towards the car (rad).
   { name: 'Dış Kamera', chase: true, offset: new THREE.Vector3(0.0, 2.3, 6.4), baseFov: 60, horizonShiftY: 0.04, lookDown: 0.13 },
 ];
+// The order the camera button (and C) steps through them: the outside view comes third. The
+// indices above stay as they are (saved choice, cockpit seat presets)
+const CAMERA_CYCLE = [0, 1, 3, 2];
+const nextCameraPreset = (index) => CAMERA_CYCLE[(CAMERA_CYCLE.indexOf(index) + 1) % CAMERA_CYCLE.length];
 
 // Touch steering choices, in Ayarlar and in the picker before the first drive
 const STEER_MODES = [
@@ -642,7 +646,7 @@ class OtobanMakasGame {
         this.pickWeather(preset);
       }
       if (code === 'KeyC') {
-        this.applyCameraPreset(this.cameraPresetIndex + 1);
+        this.applyCameraPreset(nextCameraPreset(this.cameraPresetIndex));
       }
       if (code === 'KeyK') {
         this.toggleRadio();
@@ -729,7 +733,7 @@ class OtobanMakasGame {
     });
 
     document.getElementById('btn-camera')?.addEventListener('click', () => {
-      this.applyCameraPreset(this.cameraPresetIndex + 1);
+      this.applyCameraPreset(nextCameraPreset(this.cameraPresetIndex));
     });
 
     document.getElementById('btn-radio')?.addEventListener('click', () => {
