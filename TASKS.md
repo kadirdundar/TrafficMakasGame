@@ -6,6 +6,7 @@ Claude `/siradaki` ile ilk Todo maddesini alır, bitirince Done'a taşır.
 Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 
 ## Todo
+- araç kamerası değişirken üçüncü seçenek dıştan görünüm olsun
 - 
 
 ## In progress
@@ -13,6 +14,8 @@ Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 ## Blocked
 
 ## Done
+- [x] mercedes araçların birinde ayak koyma yerinde beyaz renkte bir şey var.bu olmasın dikkat çekmemesi için buralar koyu renkte olsun (2026-11-22)
+  - C 200'ün pedalları (dokusu kaybolmuş, neredeyse beyaz) koyu mat kauçuk rengine çekildi; yeni cockpit.meshColors ayarı (src/cockpit3d.js)
 - [x] sürdüğüm aracın farlarının(sağ sol) birleştiği yer yolda çok belirgin gerçekte böyle değil. daha gerçekci olsun (2026-11-21)
   - Far ışığı deseninde sol/sağ menzil farkı ortada keskin çizgi yerine yumuşak geçişle karışıyor (src/world.js)
 - [x] mercedes aracının içerisinde ekran boş duruyor buraya default bir şey yapalım (2026-11-21)

@@ -90,6 +90,12 @@ export default {
       w206_leather_perf: { roughness: 0.6 },
     },
     paintMaterials: new Set(['w206_paint']),
+    // The pedals lost their texture in the export and share a near-white material with the
+    // bonnet underside and the lamp glass: dark rubber pedals instead of white blocks in the
+    // footwell
+    meshColors: {
+      w206_brakepedal_w206_pedal_d_0: { color: 0x1c1d20, roughness: 0.75, metalness: 0.1 },
+    },
     screens: {
       // The model's flat cluster plate (w206_gauges): x 0.219-0.527, y 0.879-0.98, z 0.431 (bottom)
       // to 0.458 (top) in the source; the quad sits 4 mm in front of it

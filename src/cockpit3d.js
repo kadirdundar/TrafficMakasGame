@@ -166,6 +166,19 @@ export async function loadCockpit3D({ carType, eyeAnchor, mirrorTexture, paintSc
   for (const patch of cfg.atlasPatches || []) applyAtlasPatch(model, patch);
   const satin = new THREE.MeshStandardMaterial({ color: 0xb4bac2, metalness: 1, roughness: 0.3 });
   for (const [name, point] of cfg.satinPieces || []) applyPieceMaterial(model, name, point, satin);
+  // Single meshes recoloured on their own (car.js → cockpit.meshColors: { <mesh name>: { color,
+  // roughness, metalness } }), for a part whose material it shares with others came out wrong
+  for (const [name, look] of Object.entries(cfg.meshColors || {})) {
+    model.getObjectByName(name)?.traverse((m) => {
+      if (!m.isMesh) return;
+      m.material = m.material.clone();
+      m.material.name = `${m.material.name}#${name}`;
+      m.material.map = null;
+      if (look.color !== undefined) m.material.color.setHex(look.color);
+      if (look.roughness !== undefined) m.material.roughness = look.roughness;
+      if (look.metalness !== undefined) m.material.metalness = look.metalness;
+    });
+  }
 
   // Live mirrors
   const mirror = (name, u0, u1) => {
