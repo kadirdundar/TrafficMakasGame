@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FrameCap } from './frameCap.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DEFAULT_CAR_ID, loadCarExterior } from './cars/index.js';
 
@@ -130,6 +131,8 @@ export class A8Showroom {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // The turntable follows the game's performance setting (main.js → setPowerMode)
+    this.frameCap = new FrameCap(60);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.22;
     this.renderer.setClearColor(0x000000, 0);
@@ -378,7 +381,7 @@ export class A8Showroom {
     this.resize();
     const loop = () => {
       this.raf = requestAnimationFrame(loop);
-      this.frame();
+      if (this.frameCap.ready(performance.now())) this.frame();
     };
     loop();
   }
@@ -461,6 +464,13 @@ export class A8Showroom {
       this.controls.update(dt);
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // Frame-rate cap and highest resolution (main.js → setPowerMode)
+  setPowerMode(fps, pixelRatio) {
+    this.frameCap.set(fps);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatio));
+    this.resize();
   }
 
   setPaint(hex) {

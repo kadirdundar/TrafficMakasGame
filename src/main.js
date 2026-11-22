@@ -11,6 +11,7 @@ import { RoadClosures } from './roadClosures.js';
 import { DayCycle } from './dayCycle.js';
 import { CUSTOM_PAINT, MATCH_TARGET_POINTS, MAX_PLAYERS, MultiplayerManager, SLOT_START_X, SLOT_STYLES, normPaintSlot, paintHexOf } from './multiplayer.js';
 import { PaintCreator } from './paintCreator.js';
+import { FrameCap } from './frameCap.js';
 import { CarFire } from './carFire.js';
 import { A8Showroom } from './showroom.js';
 import { RadioPlayer } from './radio.js';
@@ -128,6 +129,13 @@ const STEER_MODES = [
   },
 ];
 const STEER_MODE_KEY = 'otoban_steer_mode';
+// Performance setting: 'normal' draws up to 60 FPS at up to 2x resolution; 'saver' (battery
+// saving) 30 FPS at up to 1.25x, so the phone runs cooler and longer
+const POWER_MODE_KEY = 'otoban_power_mode';
+const POWER_MODES = {
+  normal: { fps: 60, pixelRatio: 2 },
+  saver: { fps: 30, pixelRatio: 1.25 },
+};
 
 // Garage camera view that shows each part best (src/showroom.js → VIEWS)
 const PART_VIEWS = {
@@ -194,7 +202,13 @@ class OtobanMakasGame {
     });
     // Adaptive render scale: starts at the device pixel ratio (max 2), steps down while the
     // frame rate is too low and back up once there is headroom again (see adaptRenderScale)
-    this.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    let savedPower = null;
+    try {
+      savedPower = localStorage.getItem(POWER_MODE_KEY);
+    } catch (_) {}
+    this.powerMode = POWER_MODES[savedPower] ? savedPower : 'normal';
+    this.frameCap = new FrameCap(POWER_MODES[this.powerMode].fps);
+    this.maxPixelRatio = Math.min(window.devicePixelRatio || 1, POWER_MODES[this.powerMode].pixelRatio);
     this.minPixelRatio = Math.min(1, this.maxPixelRatio);
     this.pixelRatio = this.maxPixelRatio;
     this.renderer.setPixelRatio(this.pixelRatio);
@@ -876,6 +890,11 @@ class OtobanMakasGame {
       });
     });
     this.syncAmbientUI(this.cockpit.ambientKey, AMBIENT_COLORS[this.cockpit.ambientKey].css);
+
+    document.querySelectorAll('#power-mode-group [data-power]').forEach((btn) => {
+      btn.addEventListener('click', () => this.setPowerMode(btn.dataset.power));
+    });
+    this.setPowerMode(this.powerMode);
 
     // Touch steering: the same three choices in Ayarlar and in the first-drive picker
     this.buildSteerOptions(document.getElementById('steer-mode-group'), (mode) => this.setSteerMode(mode));
@@ -1634,6 +1653,33 @@ class OtobanMakasGame {
       this.setHudText('resume-sub', `${ROAD_LABELS[road] ?? ''} · ${weather} · ${score} puan`);
     }
     this.garageUI?.setDriveLabel(this.runActive ? 'BU ARAÇLA DEVAM ET' : 'BU ARAÇLA SÜR');
+  }
+
+  // Performance setting (Ayarlar → Performans): frame-rate cap and highest resolution of the
+  // road and of the garage turntable
+  setPowerMode(mode) {
+    if (!POWER_MODES[mode]) mode = 'normal';
+    const { fps, pixelRatio } = POWER_MODES[mode];
+    const changed = mode !== this.powerMode;
+    this.powerMode = mode;
+    try {
+      localStorage.setItem(POWER_MODE_KEY, mode);
+    } catch (_) {}
+    this.frameCap.set(fps);
+    this.maxPixelRatio = Math.min(window.devicePixelRatio || 1, pixelRatio);
+    this.minPixelRatio = Math.min(1, this.maxPixelRatio);
+    if (changed || this.pixelRatio > this.maxPixelRatio) {
+      // Start the new mode at its own top resolution; adaptRenderScale steps down if needed
+      this.pixelRatio = this.maxPixelRatio;
+      this.renderer.setPixelRatio(this.pixelRatio);
+      Object.assign(this.perf, { frames: 0, elapsed: 0, calls: 0, goodWindows: 0, settle: 1 });
+    }
+    this.showroom?.setPowerMode(fps, pixelRatio);
+    document.querySelectorAll('#power-mode-group [data-power]').forEach((btn) => {
+      const on = btn.dataset.power === mode;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
   }
 
   syncAmbientUI(key, cssColor) {
@@ -3859,14 +3905,17 @@ class OtobanMakasGame {
     }
 
     const STEP = 0.25;
+    // Judged against the frame-rate cap: 60 FPS mode steps down under 48 and up from 57,
+    // the battery saver's 30 FPS under 24 and from 28.5
+    const target = POWER_MODES[this.powerMode].fps;
     let next = this.pixelRatio;
-    if (fps < 48 && this.pixelRatio > this.minPixelRatio) {
+    if (fps < target * 0.8 && this.pixelRatio > this.minPixelRatio) {
       if (p.window - p.lastRaise <= 3) {
         this.maxPixelRatio = Math.max(this.minPixelRatio, this.pixelRatio - STEP);
       }
       next = Math.max(this.minPixelRatio, this.pixelRatio - STEP);
       p.goodWindows = 0;
-    } else if (fps >= 57) {
+    } else if (fps >= target * 0.95) {
       p.goodWindows += 1;
       if (p.goodWindows >= 5 && this.pixelRatio < this.maxPixelRatio) {
         next = Math.min(this.maxPixelRatio, this.pixelRatio + STEP);
@@ -3888,6 +3937,8 @@ class OtobanMakasGame {
     requestAnimationFrame(() => this.animate());
 
     const now = performance.now();
+    // At most 60 FPS (30 with battery saving), whatever the screen's refresh rate
+    if (!this.frameCap.ready(now)) return;
     const frameSec = (now - this.lastTime) / 1000;
     const dt = Math.min(0.05, frameSec);
     this.lastTime = now;

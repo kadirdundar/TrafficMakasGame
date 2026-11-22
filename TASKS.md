@@ -6,14 +6,15 @@ Claude `/siradaki` ile ilk Todo maddesini alır, bitirince Done'a taşır.
 Tümünü sırayla yaptırmak için `/loop /siradaki` kullan.
 
 ## Todo
-- Oyunun performansını arttırmak için yapılabilecek bir şey var mı ? Daha az güç harcamasını sağlayacak şeyler
-- 
+- Oyun içerisindeki para kazanma ile araç alma özellik ekleme gibi şeyleri optimize et sanki birisi 0 tl ile oyuna başlıyor gibi bu kadar kolay olmasın bir şeyler yapmak ki kişiler oyunda daha fazla kalsın.
 
 ## In progress
 
 ## Blocked
 
 ## Done
+- [x] Oyunun performansını arttırmak için yapılabilecek bir şey var mı ? Daha az güç harcamasını sağlayacak şeyler (2026-11-22)
+  - Oyun ve garaj en fazla 60 FPS çiziyor (120 Hz ekranlarda iş yarıya iner); Ayarlar → Performans → Pil Tasarrufu: 30 FPS + 1,25x çözünürlük (src/frameCap.js)
 - [x] Oyunu app store'a yükleyeceğimizi düşünürsek neler çıkarmamız lazım, örneğin araba markaları ve çizimlerin lisansına gerek olmadığını düşünüyorum markaları başkalaştırıp modelleri o şekilde kullanırız. Bu gibi gereksinimlerin planın olduğu bir dosya oluştur. Ayrıca oyuna farklı neler eklenmesi gerektiğine dair de bilgiler ver. (2026-11-22)
   - Plan: docs/APP-STORE-PLANI.md (lisanslar, marka temizliği, Apple gereksinimleri, kontrol listesi, eklenecekler)
 - [x] araç kamerası değişirken üçüncü seçenek dıştan görünüm olsun (2026-11-22)
